@@ -12,11 +12,25 @@
     <Version Condition="'$(Version)' == ''">0.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- ScreenRecorderLib は x64 の C++/CLI アセンブリなので、Any CPU では参照を解決できない。 -->
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ScreenRecorderLib" Version="7.0.1" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ScreenRecorder.Core\ScreenRecorder.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- C++/CLI のアセンブリは単一ファイルに埋め込むと起動時に BadImageFormatException になるため、exe の横に置く。 -->
+  <Target Name="ExcludeScreenRecorderLibFromSingleFile" BeforeTargets="_ComputeFilesToBundle">
+    <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'ScreenRecorderLib'">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>
