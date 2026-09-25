@@ -1,0 +1,13 @@
+{
+  "name": "screen-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "タスクトレイ常駐のスクリーンショット・画面録画ツール (C# / WinForms)。このパッケージはレビュー・配布ツールの実行基盤で、アプリ本体は dotnet でビルドする。",
+  "scripts": {
+    "review:codex": "node tools/cross-review.js codex",
+    "review:codex:fix": "node tools/cross-review.js codex --fix",
+    "review:claude": "node tools/cross-review.js claude",
+    "sync:cross-review": "node tools/cross-review.sync.js",
+    "sync:cross-review:check": "node tools/cross-review.sync.js --check"
+  }
+}

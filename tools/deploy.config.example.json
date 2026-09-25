@@ -1,0 +1,12 @@
+{
+  "_comment": "このファイルをコピーして tools/deploy.config.json を作成し、実際の値を設定してください。deploy.config.json は認証情報を含むため .gitignore で管理しています。host / port / user / password には ktysne.info を配信している FTP サーバの接続情報を設定し、remoteRoot は配布先の /ktysne.info/agent-gc を指定します。ファイルを置けない環境では AGENTGC_FTP_HOST / AGENTGC_FTP_USER / AGENTGC_FTP_PASSWORD / AGENTGC_FTP_REMOTE_ROOT (任意で AGENTGC_FTP_PORT / AGENTGC_FTP_SECURE / AGENTGC_FTP_SECURE_OPTIONS) の環境変数でも指定できます。詳細は docs/development.md の「パッケージ発行」を参照してください。",
+  "host": "ftp.example.com",
+  "port": 21,
+  "user": "your-username",
+  "password": "your-password",
+  "secure": true,
+  "remoteRoot": "/ktysne.info/agent-gc",
+
+  "_secureOptions_comment": "secure: true で証明書検証エラーが出る場合の逃げ道です。通常は npm run site:upload が --use-system-ca 付きで Node を起動するため不要です。それでも失敗する場合だけ設定してください（例: { \"rejectUnauthorized\": false }）。値は Node の tls 接続オプションにそのまま渡されます。",
+  "secureOptions": null
+}
