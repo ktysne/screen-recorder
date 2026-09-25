@@ -166,7 +166,7 @@ internal sealed class SettingsForm : Form
         BindCheck(audio, UiLabels.CaptureSystemAudio, settings => settings.CaptureSystemAudio, (settings, value) => settings.CaptureSystemAudio = value);
         _microphoneEnabled = BindCheck(audio, UiLabels.CaptureMicrophone, settings => settings.CaptureMicrophone, (settings, value) => settings.CaptureMicrophone = value);
         var microphone = BindChoice(audio, UiLabels.MicrophoneDevice,
-            [(UiLabels.DefaultDevice, (string?)null)],
+            MicrophoneChoices(_initialSettings.MicrophoneDeviceId),
             settings => settings.MicrophoneDeviceId, (settings, value) => settings.MicrophoneDeviceId = value);
         _microphoneControls.Add(microphone);
         _audioFormat = BindChoice(audio, UiLabels.AudioFormat,
@@ -474,8 +474,15 @@ internal sealed class SettingsForm : Form
         _formStatus.Text = nonShortcutIssue is null ? string.Empty : ValidationLabel(nonShortcutIssue.SettingName);
         if (nonShortcutIssue is not null) invalid = true;
         if (allIssues.Any(issue => issue.Kind is SettingsIssueKind.InvalidShortcut or SettingsIssueKind.DuplicateShortcut)) invalid = true;
+        if (_directoryIssues.Keys.Any(invalidProperties.Contains)) invalid = true;
         _saveButton.Enabled = !invalid;
     }
+
+    // デバイスの一覧を持たない間も、保存済みの ID をほかの設定の保存で消さないために選択肢へ残す。
+    private static (string Label, string? Value)[] MicrophoneChoices(string? savedDeviceId) =>
+        savedDeviceId is null
+            ? [(UiLabels.DefaultDevice, null)]
+            : [(UiLabels.DefaultDevice, null), (UiLabels.SavedMicrophoneDevice, savedDeviceId)];
 
     private HotkeyFailure? GetCurrentFailure(RecorderAction action, string notation)
     {

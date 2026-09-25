@@ -60,6 +60,7 @@ public static class UiLabels
     public const string AacBitrate = "AAC のビットレート";
     public const string Mp3Bitrate = "MP3 のビットレート";
     public const string DefaultDevice = "既定のデバイス";
+    public const string SavedMicrophoneDevice = "保存済みのデバイス";
     public const string Jpeg = "JPEG";
     public const string Png = "PNG";
     public const string PngFast = "速い";

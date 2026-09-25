@@ -101,6 +101,22 @@ public sealed class SettingsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void UnassignedShortcutStaysUnassignedAfterReload()
+    {
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { ScreenshotRegionShortcut = "" });
+        Assert.Equal("", repository.Load().ScreenshotRegionShortcut);
+    }
+
+    [Fact]
+    public void MissingShortcutFallsBackToDefault()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "settings.json"), "{\"screenshotRegionShortcut\":5}");
+        Assert.Equal("PrtSc", new SettingsRepository(_directory).Load().ScreenshotRegionShortcut);
+    }
+
+    [Fact]
     public void FailedSaveKeepsPreviousSettings()
     {
         var repository = new SettingsRepository(_directory);
