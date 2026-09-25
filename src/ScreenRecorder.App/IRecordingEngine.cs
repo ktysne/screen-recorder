@@ -30,7 +30,11 @@ internal sealed record RecordingStartRequest(
     bool CaptureCursor,
     bool HighlightClicks,
     bool HardwareEncodingEnabled,
-    bool RequireCaptureBorder);
+    bool RequireCaptureBorder,
+    bool CaptureSystemAudio,
+    bool CaptureMicrophone,
+    string? MicrophoneDeviceId,
+    int AacBitrateKbps);
 
 internal sealed class RecordingEngineStatusChangedEventArgs(RecordingEngineStatus status) : EventArgs
 {
@@ -49,11 +53,17 @@ internal sealed class RecordingEngineFailedEventArgs(string filePath, string err
     public RecordingTerminationOutcome Outcome { get; } = outcome;
 }
 
+internal sealed class RecordingEngineWarningEventArgs(string message) : EventArgs
+{
+    public string Message { get; } = message;
+}
+
 internal interface IRecordingEngine : IDisposable
 {
     event EventHandler<RecordingEngineStatusChangedEventArgs>? StatusChanged;
     event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
     event EventHandler<RecordingEngineFailedEventArgs>? RecordingFailed;
+    event EventHandler<RecordingEngineWarningEventArgs>? RecordingWarning;
 
     void Start(RecordingStartRequest request);
     void Pause();
