@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
+using System.Media;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
@@ -13,10 +14,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu;
     private readonly HotkeyManager _hotkeyManager;
+    private readonly ScreenshotCaptureService _screenshotCaptureService;
+    private readonly Icon _trayIcon;
     private readonly Dictionary<RecorderAction, ToolStripMenuItem> _shortcutMenuItems = [];
     private Settings _settings;
     private SettingsForm? _settingsForm;
     private bool _isRecording;
+    private bool _screenshotCaptureInProgress;
+    private string? _pendingScreenshotPath;
     private System.Windows.Forms.Timer? _startupNotificationTimer;
 
     public TrayApplicationContext(Settings settings, DailyLog log, SettingsRepository settingsRepository, AutoStartSynchronizer autoStartSynchronizer)
@@ -25,9 +30,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _log = log;
         _settingsRepository = settingsRepository;
         _autoStartSynchronizer = autoStartSynchronizer;
+        _screenshotCaptureService = new ScreenshotCaptureService(log);
         _menu = CreateMenu();
-        _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = CreateIcon(false), ContextMenuStrip = _menu, Visible = true };
+        _trayIcon = CreateIcon(false);
+        _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = _trayIcon, ContextMenuStrip = _menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowSettings();
+        _tray.BalloonTipClicked += (_, _) => OpenPendingScreenshotLocation();
         _hotkeyManager = new HotkeyManager(PerformAction);
         var failures = _hotkeyManager.Replace(_settings);
         UpdateShortcutMenuLabels();
@@ -42,6 +50,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _hotkeyManager.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
+        _trayIcon.Dispose();
         _menu.Dispose();
         base.ExitThreadCore();
     }
@@ -176,25 +185,120 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray.ShowBalloonTip(3500, UiLabels.StartupHotkeyFailureTitle, body, ToolTipIcon.Warning);
     }
 
-    private void PerformAction(RecorderAction action)
+    private async void PerformAction(RecorderAction action)
     {
         _log.Write($"Action requested: {action}");
+        var mode = action switch
+        {
+            RecorderAction.ScreenshotFullScreen => ScreenshotMode.Full,
+            RecorderAction.ScreenshotRegion => ScreenshotMode.Region,
+            RecorderAction.ScreenshotWindow => ScreenshotMode.Window,
+            _ => (ScreenshotMode?)null
+        };
+        if (mode is { } screenshotMode)
+        {
+            if (_screenshotCaptureInProgress) return;
+            _screenshotCaptureInProgress = true;
+            _pendingScreenshotPath = null;
+            var captureSettings = _settings.Clone();
+            try
+            {
+                using var result = await _screenshotCaptureService.CaptureAsync(screenshotMode, captureSettings);
+                if (result is null) return;
+                CompleteScreenshot(result, screenshotMode, captureSettings);
+            }
+            catch (Exception exception)
+            {
+                _log.Write($"Screenshot failed: mode={screenshotMode}; {exception}");
+                var reason = exception.Message.Length > 180 ? exception.Message[..180] : exception.Message;
+                _tray.ShowBalloonTip(4000, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
+            }
+            finally
+            {
+                _screenshotCaptureInProgress = false;
+            }
+            return;
+        }
         _tray.ShowBalloonTip(2500, UiLabels.AppName, UiLabels.NotImplemented, ToolTipIcon.Info);
+    }
+
+    private void CompleteScreenshot(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings)
+    {
+        string? warning = null;
+        if (settings.CopyImageToClipboard)
+        {
+            try { Clipboard.SetImage(result.Image); }
+            catch (Exception exception)
+            {
+                _log.Write($"Screenshot clipboard copy failed: {exception}");
+                warning = UiLabels.ScreenshotClipboardFailed;
+            }
+        }
+
+        if (settings.PlayCaptureSound)
+        {
+            try { SystemSounds.Asterisk.Play(); }
+            catch (Exception exception) { _log.Write($"Screenshot sound failed: {exception}"); }
+        }
+        try
+        {
+            switch (settings.AfterCaptureAction)
+            {
+                case CaptureAfterAction.OpenFile:
+                    using (Process.Start(new ProcessStartInfo(result.FilePath) { UseShellExecute = true })) { }
+                    break;
+                case CaptureAfterAction.OpenFolder:
+                    if (!OpenFolder(Path.GetDirectoryName(result.FilePath) ?? settings.StillImageDirectory, notifyFailure: false))
+                        warning = UiLabels.ScreenshotAfterActionFailed;
+                    break;
+            }
+        }
+        catch (Exception exception)
+        {
+            _log.Write($"Screenshot after-action failed: mode={mode}, action={settings.AfterCaptureAction}, file={result.FilePath}; {exception}");
+            warning = UiLabels.ScreenshotAfterActionFailed;
+        }
+
+        if (settings.NotifyWhenSaved)
+        {
+            _pendingScreenshotPath = result.FilePath;
+        }
+        if (warning is not null) _tray.ShowBalloonTip(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
+        else if (settings.NotifyWhenSaved) _tray.ShowBalloonTip(4000, UiLabels.AppName, UiLabels.ScreenshotSavedNotification, ToolTipIcon.Info);
+    }
+
+    private void OpenPendingScreenshotLocation()
+    {
+        var path = _pendingScreenshotPath;
+        if (path is null || !File.Exists(path)) return;
+        try
+        {
+            var start = new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true };
+            using (Process.Start(start)) { }
+        }
+        catch (Exception exception)
+        {
+            _log.Write($"Open screenshot location failed: file={path}; {exception}");
+            _tray.ShowBalloonTip(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+        }
     }
 
     private void NotifyNotImplemented() => _tray.ShowBalloonTip(2500, UiLabels.AppName, UiLabels.NotImplemented, ToolTipIcon.Info);
 
-    private void OpenFolder(string path)
+    private bool OpenFolder(string path, bool notifyFailure = true)
     {
         try
         {
             Directory.CreateDirectory(path);
-            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+            var start = new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true };
+            using (Process.Start(start)) { }
+            return true;
         }
         catch (Exception exception)
         {
             _log.Write($"Open folder failed: {exception}");
-            _tray.ShowBalloonTip(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+            if (notifyFailure) _tray.ShowBalloonTip(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+            return false;
         }
     }
 
@@ -212,7 +316,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (recording) graphics.FillEllipse(Brushes.White, 11, 11, 10, 10);
             else graphics.DrawRectangle(Pens.White, 9, 9, 14, 14);
         }
-        return Icon.FromHandle(bitmap.GetHicon());
+        var iconHandle = bitmap.GetHicon();
+        try
+        {
+            using var icon = Icon.FromHandle(iconHandle);
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            NativeMethods.DestroyIcon(iconHandle);
+        }
     }
 }
 
