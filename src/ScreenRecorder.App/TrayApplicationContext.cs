@@ -750,7 +750,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             warning = UiLabels.RecordingAfterActionFailed;
         }
 
-        if (warning is not null) ShowNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
+        if (warning is not null) ShowCaptureNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning, finalPath);
         else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.RecordingSavedNotification, ToolTipIcon.Info, finalPath);
     }
 
@@ -1043,7 +1043,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             warning = UiLabels.ScreenshotAfterActionFailed;
         }
 
-        if (warning is not null) ShowNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
+        if (warning is not null) ShowCaptureNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning, result.FilePath);
         else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.ScreenshotSavedNotification, ToolTipIcon.Info, result.FilePath);
     }
 
