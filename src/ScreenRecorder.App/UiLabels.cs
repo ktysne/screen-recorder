@@ -100,7 +100,7 @@ public static class UiLabels
     public const string ScreenshotCaptureFailed = "撮影できませんでした: {0}";
     public const string ScreenshotExitWaiting = "撮影と保存の処理が終わったら ScreenRecorder を終了します。";
     public const string ScreenshotClipboardFailed = "画像は保存しましたが、クリップボードへコピーできませんでした。";
-    public const string ScreenshotAfterActionFailed = "画像は保存しましたが、撮影後の動作に失敗しました。";
+    public const string ScreenshotAfterActionFailed = "画像は保存しましたが、撮影後の動作に失敗しました。クリックすると保存先でファイルを選択します。";
     public const string RecordingSavedNotification = "動画を保存しました。クリックすると保存先でファイルを選択します。";
     public const string RecordingStartFailed = "録画を開始できませんでした: {0}";
     public const string RecordingOutputTooSmall = "出力の大きさが 2 ピクセル未満になるため録画を開始できません。";
@@ -108,7 +108,7 @@ public static class UiLabels
     public const string RecordingSpaceInsufficient = "保存先の空き容量が 1 GB 未満のため、録画を開始できません。";
     public const string RecordingSpaceCheckFailed = "保存先の空き容量を確認できません: {0}";
     public const string RecordingFailed = "録画を完了できませんでした: {0}";
-    public const string RecordingAfterActionFailed = "動画は保存しましたが、撮影後の動作に失敗しました。";
+    public const string RecordingAfterActionFailed = "動画は保存しましたが、撮影後の動作に失敗しました。クリックすると保存先でファイルを選択します。";
     public const string RecordingTemporaryFileRetained = "録画を完了できませんでした。一時ファイルが残っています: {0}";
     public const string RecordingTemporaryFileIncomplete = "保存完了を確認できませんでした。未完了の一時ファイルが残っています: {0}";
     public const string RecordingTemporaryFileNotFound = "録画を完了できませんでした。一時ファイルは残っていません。";
