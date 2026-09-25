@@ -5,6 +5,7 @@ namespace ScreenRecorder.App;
 internal sealed class CaptureCountdownForm : Form
 {
     private readonly Font _messageFont = new("Yu Gothic UI", 13, FontStyle.Bold);
+    private readonly string _countdownLabel;
     private readonly Label _message = new()
     {
         Dock = DockStyle.Fill,
@@ -14,14 +15,17 @@ internal sealed class CaptureCountdownForm : Form
         AccessibleName = "撮影までの残り時間"
     };
 
-    public CaptureCountdownForm(Rectangle displayBounds)
+    public CaptureCountdownForm(Rectangle displayBounds, bool forRecording = false)
     {
+        _countdownLabel = forRecording ? UiLabels.RecordingCountdownPrefix : UiLabels.ScreenshotCountdownPrefix;
         _message.Font = _messageFont;
         FormBorderStyle = FormBorderStyle.None;
         AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.Manual;
         Size = new Size(180, 52);
-        Location = new Point(displayBounds.Right - Width - 20, displayBounds.Top + 20);
+        Location = forRecording
+            ? new Point(displayBounds.Left + (displayBounds.Width - Width) / 2, displayBounds.Top + (displayBounds.Height - Height) / 2)
+            : new Point(displayBounds.Right - Width - 20, displayBounds.Top + 20);
         BackColor = Color.FromArgb(35, 35, 35);
         TopMost = true;
         ShowInTaskbar = false;
@@ -42,7 +46,7 @@ internal sealed class CaptureCountdownForm : Form
 
     public bool ExcludeFromCapture() => NativeMethods.SetWindowDisplayAffinity(Handle, NativeMethods.WindowDisplayAffinityExcludeFromCapture);
 
-    public void SetRemainingSeconds(int seconds) => _message.Text = $"残り {seconds} 秒";
+    public void SetRemainingSeconds(int seconds) => _message.Text = $"{_countdownLabel} {seconds} 秒";
 
     protected override void Dispose(bool disposing)
     {

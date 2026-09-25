@@ -31,6 +31,7 @@ internal sealed class SettingsForm : Form
     private readonly List<Control> _aacControls = [];
     private readonly List<Control> _mp3Controls = [];
     private readonly List<Control> _microphoneControls = [];
+    private readonly List<Control> _audioControls = [];
     private ComboBox _imageFormat = null!;
     private ComboBox _audioFormat = null!;
     private CheckBox _microphoneEnabled = null!;
@@ -163,23 +164,35 @@ internal sealed class SettingsForm : Form
             settings => settings.Encoder, (settings, value) => settings.Encoder = value);
 
         var audio = AddSection(root, UiLabels.AudioOptions);
-        BindCheck(audio, UiLabels.CaptureSystemAudio, settings => settings.CaptureSystemAudio, (settings, value) => settings.CaptureSystemAudio = value);
+        AddFullWidth(audio, new Label
+        {
+            Text = UiLabels.AudioRecordingUnavailable,
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            AccessibleName = UiLabels.AudioRecordingUnavailable
+        });
+        _audioControls.Add(BindCheck(audio, UiLabels.CaptureSystemAudio, settings => settings.CaptureSystemAudio, (settings, value) => settings.CaptureSystemAudio = value));
         _microphoneEnabled = BindCheck(audio, UiLabels.CaptureMicrophone, settings => settings.CaptureMicrophone, (settings, value) => settings.CaptureMicrophone = value);
+        _audioControls.Add(_microphoneEnabled);
         var microphone = BindChoice(audio, UiLabels.MicrophoneDevice,
             MicrophoneChoices(_initialSettings.MicrophoneDeviceId),
             settings => settings.MicrophoneDeviceId, (settings, value) => settings.MicrophoneDeviceId = value);
         _microphoneControls.Add(microphone);
+        _audioControls.Add(microphone);
         _audioFormat = BindChoice(audio, UiLabels.AudioFormat,
             [(UiLabels.Aac, AudioFormat.Aac), (UiLabels.Mp3, AudioFormat.Mp3)],
             settings => settings.AudioFormat, (settings, value) => settings.AudioFormat = value);
+        _audioControls.Add(_audioFormat);
         var aacBitrate = BindChoice(audio, UiLabels.AacBitrate,
             [(UiLabels.KilobitsPerSecond(96), 96), (UiLabels.KilobitsPerSecond(128), 128), (UiLabels.KilobitsPerSecond(160), 160), (UiLabels.KilobitsPerSecond(192), 192)],
             settings => settings.AacBitrateKbps, (settings, value) => settings.AacBitrateKbps = value);
         _aacControls.Add(aacBitrate);
+        _audioControls.Add(aacBitrate);
         var mp3Bitrate = BindChoice(audio, UiLabels.Mp3Bitrate,
             [(UiLabels.KilobitsPerSecond(128), 128), (UiLabels.KilobitsPerSecond(192), 192), (UiLabels.KilobitsPerSecond(256), 256), (UiLabels.KilobitsPerSecond(320), 320)],
             settings => settings.Mp3BitrateKbps, (settings, value) => settings.Mp3BitrateKbps = value);
         _mp3Controls.Add(mp3Bitrate);
+        _audioControls.Add(mp3Bitrate);
         _audioFormat.SelectedValueChanged += (_, _) => UpdateEnablement();
         _microphoneEnabled.CheckedChanged += (_, _) => UpdateEnablement();
         return page;
@@ -608,6 +621,7 @@ internal sealed class SettingsForm : Form
         foreach (var control in _aacControls) control.Enabled = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Aac;
         foreach (var control in _mp3Controls) control.Enabled = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Mp3;
         foreach (var control in _microphoneControls) control.Enabled = _microphoneEnabled.Checked;
+        foreach (var control in _audioControls) control.Enabled = false;
         _videoTab.Enabled = !_isRecording();
     }
 

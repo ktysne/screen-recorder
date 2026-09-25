@@ -496,3 +496,7 @@ tools/deploy.config.json
 # ai-cross-review のローカル状態と生成物 (往復回数、レビュー出力、PR コメント本文)
 .cross-review-state.json
 .cross-review/
+
+# Claude Code のローカル設定と作業ツリー(プロジェクトのスキルだけを追跡する)
+.claude/*
+!.claude/skills/

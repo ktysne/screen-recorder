@@ -11,6 +11,8 @@ public static class UiLabels
     public const string SelectRegion = "範囲を指定";
     public const string SelectWindow = "ウィンドウを指定";
     public const string PauseResume = "録画を一時停止/再開";
+    public const string PauseRecording = "録画を一時停止";
+    public const string ResumeRecording = "録画を再開";
     public const string StopRecording = "録画を停止";
     public const string OpenImageFolder = "静止画の保存先を開く";
     public const string OpenVideoFolder = "動画の保存先を開く";
@@ -57,6 +59,7 @@ public static class UiLabels
     public const string CaptureMicrophone = "マイクを収録";
     public const string MicrophoneDevice = "マイクのデバイス";
     public const string AudioFormat = "音声形式";
+    public const string AudioRecordingUnavailable = "音声収録は現在利用できません。";
     public const string AacBitrate = "AAC のビットレート";
     public const string Mp3Bitrate = "MP3 のビットレート";
     public const string DefaultDevice = "既定のデバイス";
@@ -69,6 +72,8 @@ public static class UiLabels
     public const string CaptureAfterNone = "何もしない";
     public const string CaptureAfterOpenFile = "既定のアプリで開く";
     public const string CaptureAfterOpenFolder = "保存先を開く";
+    public const string ScreenshotCountdownPrefix = "撮影まで";
+    public const string RecordingCountdownPrefix = "録画開始まで";
     public const string Aac = "AAC";
     public const string Mp3 = "MP3";
     public const string EncoderAutomatic = "自動";
@@ -96,6 +101,18 @@ public static class UiLabels
     public const string ScreenshotExitWaiting = "撮影と保存の処理が終わったら ScreenRecorder を終了します。";
     public const string ScreenshotClipboardFailed = "画像は保存しましたが、クリップボードへコピーできませんでした。";
     public const string ScreenshotAfterActionFailed = "画像は保存しましたが、撮影後の動作に失敗しました。";
+    public const string RecordingSavedNotification = "動画を保存しました。クリックすると保存先でファイルを選択します。";
+    public const string RecordingStartFailed = "録画を開始できませんでした: {0}";
+    public const string RecordingOutputTooSmall = "出力の大きさが 2 ピクセル未満になるため録画を開始できません。";
+    public const string RecordingRegionTooSmall = "録画する大きさが 2 ピクセル未満です。範囲を広げてください。";
+    public const string RecordingSpaceInsufficient = "保存先の空き容量が 1 GB 未満のため、録画を開始できません。";
+    public const string RecordingSpaceCheckFailed = "保存先の空き容量を確認できません: {0}";
+    public const string RecordingFailed = "録画を完了できませんでした: {0}";
+    public const string RecordingAfterActionFailed = "動画は保存しましたが、撮影後の動作に失敗しました。";
+    public const string RecordingTemporaryFileRetained = "録画を完了できませんでした。一時ファイルが残っています: {0}";
+    public const string RecordingTemporaryFileNotFound = "録画を完了できませんでした。一時ファイルは残っていません。";
+    public const string RecordingExitWaiting = "録画を保存してから ScreenRecorder を終了します。";
+    public const string IncompleteRecordingsFound = "未完了の録画ファイルが {0} 件残っています。場所: {1}";
     public const string FolderOpenFailed = "フォルダーを開けませんでした: {0}";
     public const string FolderPickerTitle = "保存先のフォルダーを選択";
     public const string SettingsApplyFailed = "設定は保存しましたが、自動起動の登録に失敗しました。";
