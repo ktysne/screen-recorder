@@ -13,6 +13,9 @@ cmd のバッチパーサは UTF-8 の日本語をコマンドとして誤解釈
 
 利用者が目にする日本語の文書(docs 配下、README、UI 文言)を書くときは、`/japanese-tech-writing` スキルの文章規範に従う。
 
+UI に関わる実装(設定画面、トレイメニュー、範囲とウィンドウの選択画面、録画中の操作バー、ダイアログ、通知、マニュアル)では、`/ux-load-review`、`/ux-readability-review`、`/ux-state-review`、`/ux-structure-review` の 4 つのスキルを使い、その規則で設計と実装を点検する。
+スキルを呼び出せない環境では、`~/.claude/skills/<スキル名>/SKILL.md` を読んで同じ規則を適用する。
+
 ## 仕様の正本
 
 - 要件、構成、各機能の仕様、配布と更新の仕組み：[docs/design.md](docs/design.md)
