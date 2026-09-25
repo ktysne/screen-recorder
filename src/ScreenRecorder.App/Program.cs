@@ -9,16 +9,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
-        if (!args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase))
-        {
-            using var mutex = new Mutex(true, "Local\\ScreenRecorder.Singleton", out var created);
-            if (!created) return;
-            Run();
-        }
-        else
-        {
-            Run();
-        }
+        // 更新の適用は常駐アプリとは別の処理で行う。未実装の間は、通常の起動や自動起動の書き換えに進ませない。
+        if (args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase)) return;
+
+        using var mutex = new Mutex(true, "Local\\ScreenRecorder.Singleton", out var created);
+        if (!created) return;
+        Run();
     }
 
     private static void Run()

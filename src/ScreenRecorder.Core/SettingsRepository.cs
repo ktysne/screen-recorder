@@ -74,7 +74,10 @@ public sealed class SettingsRepository(string? baseDirectory = null)
     public void Save(Settings settings)
     {
         Directory.CreateDirectory(_directory);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new JsonStringEnumConverter() } }), new UTF8Encoding(false));
+        // 書き込み途中で失敗しても既存の設定を残すため、一時ファイルに書き終えてから置き換える。
+        var temporaryPath = FilePath + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new JsonStringEnumConverter() } }), new UTF8Encoding(false));
+        File.Move(temporaryPath, FilePath, overwrite: true);
     }
 
     private static JsonElement? Property(JsonElement root, string name) => root.TryGetProperty(JsonNamingPolicy.CamelCase.ConvertName(name), out var value) ? value : null;

@@ -10,10 +10,15 @@ public sealed class DailyLog(string? baseDirectory = null)
 
     public void Prune(DateTime localDate)
     {
-        Directory.CreateDirectory(_directory);
-        foreach (var file in Directory.EnumerateFiles(_directory, "screen-recorder-*.log"))
-            if (File.GetLastWriteTime(file).Date < localDate.Date.AddDays(-7))
-                try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        try
+        {
+            if (!Directory.Exists(_directory)) return;
+            foreach (var file in Directory.EnumerateFiles(_directory, "screen-recorder-*.log"))
+                if (File.GetLastWriteTime(file).Date < localDate.Date.AddDays(-7))
+                    try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     public void Write(string message)

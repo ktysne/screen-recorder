@@ -91,6 +91,18 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(73, loaded.JpegQuality);
     }
 
+    [Fact]
+    public void FailedSaveKeepsPreviousSettings()
+    {
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { JpegQuality = 55 });
+        // 一時ファイルのパスをフォルダで塞いで、書き込みを失敗させる。
+        Directory.CreateDirectory(Path.Combine(_directory, "settings.json.tmp"));
+
+        Assert.ThrowsAny<Exception>(() => repository.Save(new Settings { JpegQuality = 77 }));
+        Assert.Equal(55, repository.Load().JpegQuality);
+    }
+
     [Theory]
     [InlineData(nameof(Settings.CaptureDelaySeconds), new[] { 0, 3, 5, 10 })]
     [InlineData(nameof(Settings.FrameRate), new[] { 15, 24, 30, 60 })]
