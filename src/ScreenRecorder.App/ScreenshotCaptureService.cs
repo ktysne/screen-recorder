@@ -13,9 +13,16 @@ internal sealed class ScreenshotCaptureResult(Bitmap image, string filePath) : I
 
 internal sealed class ScreenshotCaptureService(DailyLog log)
 {
+    private const int WindowCaptureTimeoutMilliseconds = 5000;
+
+    private sealed record WindowCapture(Bitmap Image, Rectangle Bounds);
+
     public async Task<ScreenshotCaptureResult?> CaptureAsync(ScreenshotMode mode, Settings settings)
     {
-        using var selection = mode == ScreenshotMode.Full ? null : await CaptureSelection.SelectAsync(mode);
+        var delayedRegion = mode == ScreenshotMode.Region && settings.CaptureDelaySeconds > 0;
+        using var selection = mode == ScreenshotMode.Full
+            ? null
+            : await CaptureSelection.SelectAsync(mode, freezeDesktop: !delayedRegion);
         if (mode != ScreenshotMode.Full && selection is null) return null;
 
         var captureBounds = mode == ScreenshotMode.Full
@@ -28,14 +35,22 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
         Bitmap? image = null;
         try
         {
-            image = mode switch
+            if (mode == ScreenshotMode.Window)
             {
-                ScreenshotMode.Full => DesktopCapture.Capture(captureBounds),
-                ScreenshotMode.Region => selection!.DetachFrozenImage(),
-                ScreenshotMode.Window => await CaptureWindowAsync(selection!),
-                _ => throw new ArgumentOutOfRangeException(nameof(mode))
-            };
-            if (mode == ScreenshotMode.Window && TryGetExtendedFrameBounds(selection!.Window, out var windowBounds)) captureBounds = windowBounds;
+                var windowCapture = await CaptureWindowAsync(selection!);
+                image = windowCapture.Image;
+                captureBounds = windowCapture.Bounds;
+            }
+            else
+            {
+                image = mode switch
+                {
+                    ScreenshotMode.Full => DesktopCapture.Capture(captureBounds),
+                    ScreenshotMode.Region when delayedRegion => DesktopCapture.Capture(captureBounds),
+                    ScreenshotMode.Region => selection!.DetachFrozenImage(),
+                    _ => throw new ArgumentOutOfRangeException(nameof(mode))
+                };
+            }
             if (settings.CaptureImageCursor) CursorOverlay.Draw(image, captureBounds);
 
             var capturedAt = DateTime.Now;
@@ -67,22 +82,63 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
         countdown.Close();
     }
 
-    private static async Task<Bitmap> CaptureWindowAsync(ScreenshotSelection selection)
+    private static async Task<WindowCapture> CaptureWindowAsync(ScreenshotSelection selection)
+    {
+        var cancellation = new CancellationTokenSource();
+        var captureTask = Task.Run(() => CaptureWindow(selection, cancellation.Token));
+        var completed = await Task.WhenAny(captureTask, Task.Delay(WindowCaptureTimeoutMilliseconds));
+        if (completed != captureTask)
+        {
+            cancellation.Cancel();
+            _ = captureTask.ContinueWith(task =>
+            {
+                if (task.Status == TaskStatus.RanToCompletion) task.Result.Image.Dispose();
+                else _ = task.Exception;
+                cancellation.Dispose();
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            throw new TimeoutException("ウィンドウの応答を 5 秒以内に確認できませんでした。");
+        }
+        cancellation.Dispose();
+        return await captureTask;
+    }
+
+    private static WindowCapture CaptureWindow(ScreenshotSelection selection, CancellationToken cancellationToken)
     {
         if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
-        var bounds = TryGetExtendedFrameBounds(selection.Window, out var currentBounds) ? currentBounds : selection.Bounds;
-        if (bounds.Width <= 0 || bounds.Height <= 0) throw new InvalidOperationException("ウィンドウの撮影範囲を取得できませんでした。");
-        var printed = DesktopCapture.CaptureWindow(selection.Window, bounds, out var succeeded);
-        if (succeeded && !DesktopCapture.IsEntirelyBlack(printed)) return printed;
-        printed.Dispose();
+        if (!TryGetWindowBounds(selection.Window, out var windowBounds)) throw new InvalidOperationException("ウィンドウの撮影範囲を取得できませんでした。");
+        using (var printed = DesktopCapture.CaptureWindow(selection.Window, windowBounds, out var succeeded))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (succeeded && !DesktopCapture.IsEntirelyBlack(printed))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var frameBounds = TryGetExtendedFrameBounds(selection.Window, out var currentBounds) ? currentBounds : windowBounds;
+                var crop = ScreenshotWindowGeometry.CalculateCrop(windowBounds, frameBounds)
+                    ?? throw new InvalidOperationException("ウィンドウの撮影範囲を取得できませんでした。");
+                return new WindowCapture(printed.Clone(crop.BitmapBounds, PixelFormat.Format32bppArgb), crop.ScreenBounds);
+            }
+        }
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
+        cancellationToken.ThrowIfCancellationRequested();
         if (NativeMethods.IsIconic(selection.Window)) NativeMethods.ShowWindow(selection.Window, NativeMethods.SwRestore);
+        cancellationToken.ThrowIfCancellationRequested();
         NativeMethods.SetForegroundWindow(selection.Window);
-        await Task.Delay(120);
-        if (TryGetExtendedFrameBounds(selection.Window, out currentBounds)) bounds = currentBounds;
-        if (bounds.Width <= 0 || bounds.Height <= 0) throw new InvalidOperationException("ウィンドウの撮影範囲を取得できませんでした。");
-        return DesktopCapture.Capture(bounds);
+        Thread.Sleep(120);
+        cancellationToken.ThrowIfCancellationRequested();
+        var fallbackBounds = TryGetExtendedFrameBounds(selection.Window, out var fallbackFrameBounds)
+            ? fallbackFrameBounds
+            : TryGetWindowBounds(selection.Window, out var currentWindowBounds) ? currentWindowBounds : windowBounds;
+        return new WindowCapture(DesktopCapture.Capture(fallbackBounds), fallbackBounds);
+    }
+
+    private static bool TryGetWindowBounds(IntPtr window, out Rectangle bounds)
+    {
+        bounds = Rectangle.Empty;
+        if (!NativeMethods.GetWindowRect(window, out var rectangle)) return false;
+        bounds = Rectangle.FromLTRB(rectangle.Left, rectangle.Top, rectangle.Right, rectangle.Bottom);
+        return bounds.Width > 0 && bounds.Height > 0;
     }
 
     private static bool TryGetExtendedFrameBounds(IntPtr window, out Rectangle bounds)
@@ -110,25 +166,54 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
                 extension,
                 File.Exists);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            var created = false;
-            try
+            var retryWithAvailableFinalPath = false;
+            for (var attempt = 1; ; attempt++)
             {
-                using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                created = true;
-                if (settings.ImageFormat == StillImageFormat.Png) WritePng(stream, image, settings.PngCompression);
-                else WriteJpeg(stream, image, settings.JpegQuality);
-                return path;
+                var temporaryPath = ScreenshotFileNaming.GetTemporaryPath(path, attempt);
+                var temporaryCreated = false;
+                try
+                {
+                    using var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    temporaryCreated = true;
+                    if (settings.ImageFormat == StillImageFormat.Png) WritePng(stream, image, settings.PngCompression);
+                    else WriteJpeg(stream, image, settings.JpegQuality);
+                    stream.Flush(flushToDisk: true);
+                }
+                catch (IOException exception) when (!temporaryCreated && IsAlreadyExists(exception))
+                {
+                    continue;
+                }
+                catch
+                {
+                    TryDeleteTemporaryFile(temporaryPath);
+                    throw;
+                }
+
+                try
+                {
+                    File.Move(temporaryPath, path);
+                    return path;
+                }
+                catch (IOException exception) when (IsAlreadyExists(exception))
+                {
+                    TryDeleteTemporaryFile(temporaryPath);
+                    retryWithAvailableFinalPath = true;
+                    break;
+                }
+                catch
+                {
+                    TryDeleteTemporaryFile(temporaryPath);
+                    throw;
+                }
             }
-            catch (IOException exception) when (!created && IsAlreadyExists(exception))
-            {
-            }
-            catch
-            {
-                if (created)
-                    try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-                throw;
-            }
+
+            if (retryWithAvailableFinalPath) continue;
         }
+    }
+
+    private static void TryDeleteTemporaryFile(string path)
+    {
+        try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
     private static bool IsAlreadyExists(IOException exception)

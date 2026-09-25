@@ -71,4 +71,12 @@ public sealed class ScreenshotFileNamingTests
 
         Assert.Equal(Path.Combine("images", "2026-09", "Shot_20260926_3.png"), path);
     }
+
+    [Theory]
+    [InlineData("images\\shot.png", 1, "images\\shot.png.tmp")]
+    [InlineData("images\\shot.png", 2, "images\\shot.png.tmp_2")]
+    public void GetTemporaryPath_AppendsTheAttemptToTheFinalPath(string finalPath, int attempt, string expected)
+    {
+        Assert.Equal(expected, ScreenshotFileNaming.GetTemporaryPath(finalPath, attempt));
+    }
 }

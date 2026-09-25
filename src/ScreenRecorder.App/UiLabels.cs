@@ -93,6 +93,7 @@ public static class UiLabels
     public const string NotImplemented = "この機能はまだ利用できません。";
     public const string ScreenshotSavedNotification = "画像を保存しました。クリックすると保存先でファイルを選択します。";
     public const string ScreenshotCaptureFailed = "撮影できませんでした: {0}";
+    public const string ScreenshotExitWaiting = "撮影と保存の処理が終わったら ScreenRecorder を終了します。";
     public const string ScreenshotClipboardFailed = "画像は保存しましたが、クリップボードへコピーできませんでした。";
     public const string ScreenshotAfterActionFailed = "画像は保存しましたが、撮影後の動作に失敗しました。";
     public const string FolderOpenFailed = "フォルダーを開けませんでした: {0}";

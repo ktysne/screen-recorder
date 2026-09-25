@@ -21,6 +21,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private SettingsForm? _settingsForm;
     private bool _isRecording;
     private bool _screenshotCaptureInProgress;
+    private bool _exitRequested;
     private string? _pendingScreenshotPath;
     private System.Windows.Forms.Timer? _startupNotificationTimer;
 
@@ -82,7 +83,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem(UiLabels.Manual, null, (_, _) => NotifyNotImplemented()));
         menu.Items.Add(new ToolStripMenuItem(UiLabels.CheckForUpdates, null, (_, _) => NotifyNotImplemented()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.Exit, null, (_, _) => ExitThread()));
+        menu.Items.Add(new ToolStripMenuItem(UiLabels.Exit, null, (_, _) => RequestExit()));
         return menu;
     }
 
@@ -216,10 +217,25 @@ internal sealed class TrayApplicationContext : ApplicationContext
             finally
             {
                 _screenshotCaptureInProgress = false;
+                if (_exitRequested) ExitThread();
             }
             return;
         }
         _tray.ShowBalloonTip(2500, UiLabels.AppName, UiLabels.NotImplemented, ToolTipIcon.Info);
+    }
+
+    private void RequestExit()
+    {
+        if (_screenshotCaptureInProgress)
+        {
+            if (!_exitRequested)
+            {
+                _exitRequested = true;
+                _tray.ShowBalloonTip(3000, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
+            }
+            return;
+        }
+        ExitThread();
     }
 
     private void CompleteScreenshot(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings)

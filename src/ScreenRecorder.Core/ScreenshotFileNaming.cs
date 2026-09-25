@@ -40,6 +40,13 @@ public static class ScreenshotFileNaming
         }
     }
 
+    public static string GetTemporaryPath(string finalPath, int attempt = 1)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(finalPath);
+        ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
+        return attempt == 1 ? $"{finalPath}.tmp" : $"{finalPath}.tmp_{attempt}";
+    }
+
     private static string Expand(string? template, DateTime capturedAt, ScreenshotMode mode, string? windowTitle)
     {
         var value = string.IsNullOrWhiteSpace(template) ? DefaultTemplate : template;
