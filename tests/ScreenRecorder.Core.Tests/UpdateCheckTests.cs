@@ -1,0 +1,126 @@
+using ScreenRecorder.Core;
+using Xunit;
+
+namespace ScreenRecorder.Core.Tests;
+
+public sealed class UpdateCheckTests
+{
+    private static string Manifest(string version) =>
+        $$"""{ "schema": 1, "latest": { "version": "{{version}}", "url": "https://ktysne.info/screen-recorder/archives/a.zip", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""";
+
+    [Theory]
+    [InlineData("1.2.3", "1.2.4", -1)]
+    [InlineData("1.2.3", "1.3.0", -1)]
+    [InlineData("1.9.9", "2.0.0", -1)]
+    [InlineData("0.10.0", "0.9.0", 1)]
+    [InlineData("1.2.3", "1.2.3", 0)]
+    [InlineData("01.2.3", "1.2.3", 0)]
+    public void VersionsCompareNumerically(string left, string right, int expectedSign)
+    {
+        Assert.True(UpdateVersion.TryParse(left, out var l));
+        Assert.True(UpdateVersion.TryParse(right, out var r));
+        Assert.Equal(expectedSign, Math.Sign(l.CompareTo(r)));
+    }
+
+    [Theory]
+    [InlineData("0.1.0", true)]
+    [InlineData("0.1.0+abcdef", true)]
+    [InlineData(" 0.1.0 ", true)]
+    [InlineData("0.1", false)]
+    [InlineData("0.1.0-beta", false)]
+    [InlineData(null, false)]
+    public void ApplicationVersionIgnoresBuildMetadataOnly(string? text, bool expected)
+    {
+        Assert.Equal(expected, UpdateVersion.TryParseApplicationVersion(text, out _));
+    }
+
+    [Fact]
+    public void NewerVersionIsAvailable()
+    {
+        var result = UpdateCheckEvaluator.Evaluate("0.1.0", Manifest("0.2.0"), null, UpdateCheckTrigger.Automatic);
+        Assert.Equal(UpdateCheckKind.Available, result.Kind);
+        Assert.Equal(new UpdateVersion(0, 2, 0), result.Manifest!.Version);
+    }
+
+    [Theory]
+    [InlineData("0.2.0")]
+    [InlineData("0.1.9")]
+    public void SameOrOlderVersionIsUpToDate(string latest)
+    {
+        Assert.Equal(UpdateCheckKind.UpToDate, UpdateCheckEvaluator.Evaluate("0.2.0", Manifest(latest), null, UpdateCheckTrigger.Manual).Kind);
+    }
+
+    [Fact]
+    public void SkippedVersionIsSilencedOnlyForAutomaticCheck()
+    {
+        Assert.Equal(UpdateCheckKind.Skipped, UpdateCheckEvaluator.Evaluate("0.1.0", Manifest("0.2.0"), "0.2.0", UpdateCheckTrigger.Automatic).Kind);
+        Assert.Equal(UpdateCheckKind.Available, UpdateCheckEvaluator.Evaluate("0.1.0", Manifest("0.2.0"), "0.2.0", UpdateCheckTrigger.Manual).Kind);
+    }
+
+    [Fact]
+    public void SkippingOneVersionDoesNotSilenceNewerVersion()
+    {
+        Assert.Equal(UpdateCheckKind.Available, UpdateCheckEvaluator.Evaluate("0.1.0", Manifest("0.3.0"), "0.2.0", UpdateCheckTrigger.Automatic).Kind);
+    }
+
+    [Fact]
+    public void UnreadableSkippedVersionIsIgnored()
+    {
+        Assert.Equal(UpdateCheckKind.Available, UpdateCheckEvaluator.Evaluate("0.1.0", Manifest("0.2.0"), "garbage", UpdateCheckTrigger.Automatic).Kind);
+    }
+
+    [Fact]
+    public void InvalidManifestFailsWithReason()
+    {
+        var result = UpdateCheckEvaluator.Evaluate("0.1.0", "{}", null, UpdateCheckTrigger.Manual);
+        Assert.Equal(UpdateCheckKind.Failed, result.Kind);
+        Assert.Null(result.Manifest);
+        Assert.False(string.IsNullOrWhiteSpace(result.Error));
+    }
+
+    [Fact]
+    public void UnknownCurrentVersionFails()
+    {
+        Assert.Equal(UpdateCheckKind.Failed, UpdateCheckEvaluator.Evaluate("unknown", Manifest("0.2.0"), null, UpdateCheckTrigger.Manual).Kind);
+    }
+
+    [Theory]
+    [InlineData(UpdateCheckKind.Available, UpdateCheckTrigger.Automatic, true)]
+    [InlineData(UpdateCheckKind.UpToDate, UpdateCheckTrigger.Automatic, false)]
+    [InlineData(UpdateCheckKind.Skipped, UpdateCheckTrigger.Automatic, false)]
+    [InlineData(UpdateCheckKind.Failed, UpdateCheckTrigger.Automatic, false)]
+    [InlineData(UpdateCheckKind.Available, UpdateCheckTrigger.Manual, true)]
+    [InlineData(UpdateCheckKind.UpToDate, UpdateCheckTrigger.Manual, true)]
+    [InlineData(UpdateCheckKind.Failed, UpdateCheckTrigger.Manual, true)]
+    public void AutomaticCheckNotifiesOnlyAvailableVersion(UpdateCheckKind kind, UpdateCheckTrigger trigger, bool expected)
+    {
+        Assert.Equal(expected, UpdateCheckEvaluator.ShouldNotify(new UpdateCheckResult(kind, null, null), trigger));
+    }
+
+    [Theory]
+    [InlineData(29, null, false)]
+    [InlineData(30, null, true)]
+    [InlineData(600, null, true)]
+    public void FirstAutomaticCheckIsThirtySecondsAfterStart(int elapsedSeconds, int? lastCheckSeconds, bool expected)
+    {
+        Assert.Equal(expected, UpdateCheckSchedule.IsAutomaticCheckDue(
+            true,
+            TimeSpan.FromSeconds(elapsedSeconds),
+            lastCheckSeconds is { } last ? TimeSpan.FromSeconds(last) : null));
+    }
+
+    [Fact]
+    public void LaterAutomaticChecksAreTwentyFourHoursApart()
+    {
+        var last = TimeSpan.FromSeconds(30);
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(24) - TimeSpan.FromSeconds(1), last));
+        Assert.True(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(24), last));
+    }
+
+    [Fact]
+    public void DisabledSettingStopsAutomaticChecks()
+    {
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), null));
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), TimeSpan.FromSeconds(30)));
+    }
+}

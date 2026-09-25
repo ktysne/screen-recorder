@@ -47,6 +47,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private Stopwatch? _recordingStopwatch;
     private ToolStripMenuItem? _pauseResumeItem;
     private ToolStripMenuItem? _stopRecordingItem;
+    private readonly UpdateController _updateController;
+    private bool _pendingUpdateNotification;
+    private System.Windows.Forms.Timer? _updateCompletedNotificationTimer;
 
     private sealed record ActiveRecording(
         string FinalPath,
@@ -60,7 +63,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         Rectangle TargetBounds,
         Rectangle DisplayBounds);
 
-    public TrayApplicationContext(Settings settings, DailyLog log, SettingsRepository settingsRepository, AutoStartSynchronizer autoStartSynchronizer)
+    public TrayApplicationContext(
+        Settings settings,
+        DailyLog log,
+        SettingsRepository settingsRepository,
+        AutoStartSynchronizer autoStartSynchronizer,
+        string executablePath,
+        bool startedAfterUpdate)
     {
         _settings = settings.Clone();
         _log = log;
@@ -77,19 +86,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _savingTrayIcon = CreateIcon(TrayIconState.Saving);
         _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = _idleTrayIcon, ContextMenuStrip = _menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowSettings();
-        _tray.BalloonTipClicked += (_, _) => OpenPendingCaptureLocation();
+        _tray.BalloonTipClicked += (_, _) => HandleBalloonClicked();
         _hotkeyManager = new HotkeyManager(PerformAction);
         var failures = _hotkeyManager.Replace(_settings);
         UpdateShortcutMenuLabels();
         ReportHotkeyFailures(failures, startup: true);
         ReportIncompleteRecordings();
         SystemEvents.PowerModeChanged += HandlePowerModeChanged;
+
+        var installDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory;
+        _updateController = new UpdateController(
+            log,
+            installDirectory,
+            () => _settings,
+            SaveSkippedUpdateVersion,
+            GetUpdateBlockedReason,
+            ShowUpdateNotification,
+            RequestExit);
+        _ = UpdateCleanup.RunAsync(log, installDirectory);
+        if (startedAfterUpdate) ScheduleUpdateCompletedNotification();
+        _updateController.Start();
     }
 
     protected override void ExitThreadCore()
     {
         SystemEvents.PowerModeChanged -= HandlePowerModeChanged;
         SetSystemSleepInhibition(false);
+        _updateController.Dispose();
+        _updateCompletedNotificationTimer?.Stop();
+        _updateCompletedNotificationTimer?.Dispose();
         _settingsForm?.Close();
         _startupNotificationTimer?.Stop();
         _startupNotificationTimer?.Dispose();
@@ -135,7 +160,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(UiLabels.Settings, null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripMenuItem(UiLabels.Manual, null, (_, _) => NotifyNotImplemented()));
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.CheckForUpdates, null, (_, _) => NotifyNotImplemented()));
+        menu.Items.Add(new ToolStripMenuItem(UiLabels.CheckForUpdates, null, (_, _) => _updateController.CheckManually()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(UiLabels.Exit, null, (_, _) => RequestExit()));
         return menu;
@@ -180,6 +205,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private bool SaveAndApplySettings(Settings settings)
     {
+        // 設定画面は開いた時点の値を持つため、開いている間に選ばれたスキップの版で上書きさせない。
+        settings.SkippedUpdateVersion = _settings.SkippedUpdateVersion;
         _settingsRepository.Save(settings);
         _settings = settings.Clone();
         try
@@ -291,6 +318,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (_recordingState.State == VideoRecordingState.Saving) return;
             if (_screenshotCaptureInProgress) return;
             _screenshotCaptureInProgress = true;
+            _updateController.RefreshBusyState();
             _pendingCapturePath = null;
             var captureSettings = _settings.Clone();
             try
@@ -308,6 +336,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             finally
             {
                 _screenshotCaptureInProgress = false;
+                _updateController.RefreshBusyState();
                 TryExitAfterPendingWork();
             }
             return;
@@ -349,6 +378,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private async Task StartRecordingAsync(ScreenshotMode mode)
     {
         _recordingSelectionInProgress = true;
+        _updateController.RefreshBusyState();
         var captureSettings = _settings.Clone();
         var engineStarted = false;
         try
@@ -508,6 +538,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         finally
         {
             _recordingSelectionInProgress = false;
+            _updateController.RefreshBusyState();
             if (_recordingState.State == VideoRecordingState.Idle && _recordingEngine is null)
                 CleanupRecordingSession();
             TryExitAfterPendingWork();
@@ -714,13 +745,70 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ShowNotification(int timeout, string title, string message, ToolTipIcon icon)
     {
         _pendingCapturePath = null;
+        _pendingUpdateNotification = false;
         _tray.ShowBalloonTip(timeout, title, message, icon);
     }
 
     private void ShowCaptureNotification(int timeout, string title, string message, ToolTipIcon icon, string? path)
     {
         _pendingCapturePath = path;
+        _pendingUpdateNotification = false;
         _tray.ShowBalloonTip(timeout, title, message, icon);
+    }
+
+    private void ShowUpdateNotification(string message, ToolTipIcon icon, bool opensUpdateDialog)
+    {
+        ShowNotification(icon == ToolTipIcon.Info ? 4000 : 6000, UiLabels.AppName, message, icon);
+        _pendingUpdateNotification = opensUpdateDialog;
+    }
+
+    private void HandleBalloonClicked()
+    {
+        if (_pendingUpdateNotification)
+        {
+            _pendingUpdateNotification = false;
+            _updateController.OpenNotifiedUpdate();
+            return;
+        }
+        OpenPendingCaptureLocation();
+    }
+
+    private string? GetUpdateBlockedReason()
+    {
+        if (_recordingSelectionInProgress || _recordingState.State != VideoRecordingState.Idle) return UiLabels.UpdateBlockedByRecording;
+        return _screenshotCaptureInProgress ? UiLabels.UpdateBlockedByCapture : null;
+    }
+
+    private bool SaveSkippedUpdateVersion(string version)
+    {
+        var updated = _settings.Clone();
+        updated.SkippedUpdateVersion = version;
+        try
+        {
+            _settingsRepository.Save(updated);
+        }
+        catch (Exception exception)
+        {
+            _log.Write($"Saving skipped update version failed: {exception}");
+            return false;
+        }
+        _settings = updated;
+        return true;
+    }
+
+    private void ScheduleUpdateCompletedNotification()
+    {
+        var timer = new System.Windows.Forms.Timer { Interval = StartupNotificationDelayMilliseconds * 3 };
+        _updateCompletedNotificationTimer = timer;
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            timer.Dispose();
+            _updateCompletedNotificationTimer = null;
+            _log.Write($"Started after update: version={AppVersion.Current}");
+            ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.UpdateCompleted, AppVersion.Current), ToolTipIcon.Info);
+        };
+        timer.Start();
     }
 
     private void SetSystemSleepInhibition(bool inhibit)
@@ -880,6 +968,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         _recordingToolbar?.UpdateStatus(state, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
         _settingsForm?.RefreshRecordingState();
+        _updateController?.RefreshBusyState();
     }
 
     private void HandlePowerModeChanged(object? sender, PowerModeChangedEventArgs eventArgs)
