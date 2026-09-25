@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ライセンス | ScreenRecorder {{VERSION}}</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f7fa; --panel: #fff; --text: #18212f; --muted: #536174; --link: #075cb8; --line: #d6deea; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #111821; --panel: #1c2733; --text: #edf3fa; --muted: #b2c0d0; --link: #8fc5ff; --line: #394858; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif; line-height: 1.75; }
+    main { width: min(100% - 2rem, 54rem); margin: 4rem auto; }
+    article { padding: clamp(1.5rem, 5vw, 3.5rem); background: var(--panel); border: 1px solid var(--line); border-radius: 1.25rem; }
+    h1 { margin-top: 0; font-size: clamp(2rem, 6vw, 3.25rem); line-height: 1.2; }
+    h2 { margin-top: 2.5rem; font-size: 1.35rem; }
+    p, li { max-width: 68ch; }
+    a { color: var(--link); }
+    .muted { color: var(--muted); }
+    pre { white-space: pre-wrap; padding: 1rem; border: 1px solid var(--line); border-radius: .6rem; font-size: .85rem; line-height: 1.6; overflow-wrap: anywhere; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  </style>
+</head>
+<body><main><article>
+  <p class="muted">バージョン {{VERSION}}</p>
+  <h1>ライセンス情報</h1>
+  <p>ScreenRecorder 本体と、配布の zip に同梱しているソフトウェアのライセンスを示します。</p>
+
+  <h2>一覧</h2>
+  <table>
+    <thead><tr><th>ソフトウェア</th><th>ライセンス</th><th>同梱しているもの</th></tr></thead>
+    <tbody>
+      <tr><td>ScreenRecorder</td><td>MIT License</td><td><code>ScreenRecorder.exe</code></td></tr>
+      <tr><td>ScreenRecorderLib</td><td>MIT License</td><td><code>ScreenRecorderLib.dll</code></td></tr>
+      <tr><td>.NET ランタイム</td><td>MIT License</td><td><code>ScreenRecorder.exe</code> に含む</td></tr>
+      <tr><td>Microsoft Visual C++ ランタイム</td><td>Microsoft ソフトウェア ライセンス条項(再頒布可能なコード)</td><td><code>msvcp140.dll</code>、<code>vcruntime140.dll</code>、<code>vcruntime140_1.dll</code>、<code>concrt140.dll</code></td></tr>
+      <tr><td>FFmpeg</td><td>GNU LGPL 2.1 以降(ビルドの構成に <code>--enable-version3</code> がある場合は LGPL 3)</td><td><code>ffmpeg\</code> フォルダー</td></tr>
+    </tbody>
+  </table>
+
+  <h2>ScreenRecorder</h2>
+  <p>ソースコード: <a href="https://github.com/ktysne/screen-recorder">https://github.com/ktysne/screen-recorder</a></p>
+  <pre>MIT License
+
+Copyright (c) 2026 ktysne
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the &quot;Software&quot;), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+
+  <h2>ScreenRecorderLib</h2>
+  <p>画面の録画、エンコード、音声の取得に使っています。
+  ソースコード: <a href="https://github.com/sskodje/ScreenRecorderLib">https://github.com/sskodje/ScreenRecorderLib</a></p>
+  <pre>MIT License
+
+Copyright (c) 2017 Sverre Skodje
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the &quot;Software&quot;), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+
+  <h2>.NET ランタイム</h2>
+  <p>ScreenRecorder.exe は .NET ランタイムを含む自己完結の形で配布しています。
+  .NET は MIT License で公開されています。
+  ライセンスとサードパーティの通知は <a href="https://github.com/dotnet/runtime/blob/main/LICENSE.TXT">https://github.com/dotnet/runtime/blob/main/LICENSE.TXT</a> と <a href="https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT">https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT</a> にあります。</p>
+
+  <h2>Microsoft Visual C++ ランタイム</h2>
+  <p>ScreenRecorderLib が使う Visual C++ のランタイムを、Visual Studio の再頒布可能なファイルとして、exe と同じフォルダーに置いています。
+  これらのファイルの著作権は Microsoft Corporation にあり、Microsoft ソフトウェア ライセンス条項の再頒布の条件に従って同梱しています。
+  再頒布可能なファイルについては <a href="https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files">https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files</a> を参照してください。</p>
+
+  <h2>FFmpeg</h2>
+  <p>音声を MP3 に変換するときだけ、<code>ffmpeg\ffmpeg.exe</code> を別のプロセスとして起動して使っています。
+  同梱の FFmpeg は、GPL と nonfree の成分を含まない LGPL のビルドで、ライブラリは DLL として動的にリンクされています(利用者が DLL を差し替えられます)。
+  MP3 のエンコードに使う LAME(libmp3lame)も LGPL で公開されています。</p>
+  <p>同梱している FFmpeg の版と構成は次のとおりです。</p>
+  <pre>{{FFMPEG_BUILD_INFO}}</pre>
+  <p>FFmpeg のソースコードは <a href="https://ffmpeg.org/download.html">https://ffmpeg.org/download.html</a> から入手できます。
+  同梱のビルドの構成で作り直すための手順とソースは、ビルドの入手元に置かれています。
+  LGPL の全文は <a href="https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html">https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html</a>(2.1)と <a href="https://www.gnu.org/licenses/lgpl-3.0.html">https://www.gnu.org/licenses/lgpl-3.0.html</a>(3)にあり、<code>ffmpeg\</code> フォルダーにもライセンスの文書を同梱しています。</p>
+</article></main></body>
+</html>

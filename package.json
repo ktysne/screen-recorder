@@ -10,7 +10,11 @@
     "sync:cross-review": "node tools/cross-review.sync.js",
     "sync:cross-review:dry": "node tools/cross-review.sync.js --dry-run",
     "sync:cross-review:check": "node tools/cross-review.sync.js --check",
-    "test:tools": "node --test tests/tools/"
+    "test:tools": "node --test \"tests/tools/*.test.js\"",
+    "release:generate": "node tools/release-site.js generate",
+    "release:upload": "node --use-system-ca tools/release-site.js upload",
+    "release:check-version": "node --use-system-ca tools/release-site.js check-version",
+    "check:manual-labels": "node tools/check-manual-labels.js"
   },
   "devDependencies": {
     "basic-ftp": "^5.0.5"

@@ -477,5 +477,7 @@ UI の文言は `src/ScreenRecorder.App/UiLabels.cs` に集め、マニュアル
 `build-package.bat` はビルドの前にこの検査を行い、食い違いがあれば止まる。
 マニュアルに書いた操作が UI に無いと、利用者は手順どおりに操作できないためである。
 
-ライセンスページには、ScreenRecorder 本体のライセンス(MIT)と、同梱するもの(.NET ランタイム、ScreenRecorderLib、VC++ ランタイム、ffmpeg と、ffmpeg に含まれる libmp3lame などの LGPL の成分)のライセンス全文を載せる。
+ライセンスページには、ScreenRecorder 本体と ScreenRecorderLib のライセンス(どちらも MIT)の全文を載せ、.NET ランタイム、VC++ ランタイム、ffmpeg(と、ffmpeg に含まれる libmp3lame などの LGPL の成分)は、ライセンスの種類と正本へのリンクを載せる。
+ffmpeg については、同梱のビルドの `ffmpeg -version` の出力(版と構成)を `build-package.bat` が差し込み、LGPL の全文は `ffmpeg\` に同梱するライセンスの文書で示す。
+`tools/release-site.js` は、構成に `--enable-gpl` か `--enable-nonfree` を含むビルドを見つけたら生成を止める。
 ffmpeg については、動的リンクで使っていることと、対応するソースの入手先も書く。

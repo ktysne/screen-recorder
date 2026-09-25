@@ -597,10 +597,9 @@ internal sealed class SettingsForm : Form
 
     private void OpenLicense()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "LICENSE");
         try
         {
-            Process.Start(new ProcessStartInfo("notepad.exe") { UseShellExecute = true, ArgumentList = { path } });
+            BundledDocument.Open(BundledDocument.LicenseFileName);
         }
         catch (Exception exception)
         {

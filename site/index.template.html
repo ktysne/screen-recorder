@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ScreenRecorder {{VERSION}}</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f7fa; --panel: #fff; --text: #18212f; --muted: #536174; --link: #075cb8; --line: #d6deea; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #111821; --panel: #1c2733; --text: #edf3fa; --muted: #b2c0d0; --link: #8fc5ff; --line: #394858; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif; line-height: 1.75; }
+    main { width: min(100% - 2rem, 54rem); margin: 4rem auto; }
+    article { padding: clamp(1.5rem, 5vw, 3.5rem); background: var(--panel); border: 1px solid var(--line); border-radius: 1.25rem; }
+    h1 { margin-top: 0; font-size: clamp(2rem, 6vw, 3.25rem); line-height: 1.2; }
+    h2 { margin-top: 2.5rem; font-size: 1.35rem; }
+    p, li { max-width: 68ch; }
+    a { color: var(--link); }
+    .version { color: var(--muted); }
+    .download { display: inline-block; margin: 1rem 0; padding: .8rem 1.3rem; border-radius: .65rem; background: #1769c2; color: white; font-weight: 700; text-decoration: none; }
+    footer { margin-top: 2rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main><article>
+  <p class="version">バージョン {{VERSION}} / 公開日 {{RELEASED_AT}}</p>
+  <h1>ScreenRecorder</h1>
+  <p>タスクトレイからすぐに使える、Windows 向けの画面キャプチャアプリです。画面のスクリーンショットと録画を保存できます。</p>
+  <a class="download" href="{{DOWNLOAD_URL}}">{{ZIP_NAME}} をダウンロード</a>
+  <h2>動作環境</h2>
+  <ul><li>Windows 10 バージョン 2004 以降</li><li>x64 プロセッサ</li></ul>
+  <h2>使い方とライセンス</h2>
+  <p><a href="manual.html">マニュアル</a>と<a href="license.html">ライセンス情報</a>を確認できます。</p>
+  <footer>配布ファイルの SHA-256 は update.json に記載しています。</footer>
+</article></main>
+</body>
+</html>

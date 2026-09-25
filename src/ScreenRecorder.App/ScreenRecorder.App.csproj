@@ -22,9 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="..\ScreenRecorder.Core\ScreenRecorder.Core.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
   <!-- C++/CLI のアセンブリは単一ファイルに埋め込むと起動時に BadImageFormatException になるため、exe の横に置く。 -->
   <Target Name="ExcludeScreenRecorderLibFromSingleFile" BeforeTargets="_ComputeFilesToBundle">
     <ItemGroup>
