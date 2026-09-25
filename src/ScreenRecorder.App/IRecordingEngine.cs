@@ -1,4 +1,5 @@
 using System.Drawing;
+using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
 
@@ -41,10 +42,11 @@ internal sealed class RecordingEngineCompletedEventArgs(string filePath) : Event
     public string FilePath { get; } = filePath;
 }
 
-internal sealed class RecordingEngineFailedEventArgs(string filePath, string error) : EventArgs
+internal sealed class RecordingEngineFailedEventArgs(string filePath, string error, RecordingTerminationOutcome outcome) : EventArgs
 {
     public string FilePath { get; } = filePath;
     public string Error { get; } = error;
+    public RecordingTerminationOutcome Outcome { get; } = outcome;
 }
 
 internal interface IRecordingEngine : IDisposable
@@ -57,4 +59,5 @@ internal interface IRecordingEngine : IDisposable
     void Pause();
     void Resume();
     void Stop();
+    Task<RecordingTerminationOutcome> WaitForTerminationAsync(TimeSpan timeout);
 }

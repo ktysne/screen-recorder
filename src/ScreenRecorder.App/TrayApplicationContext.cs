@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Media;
+using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using ScreenRecorder.Core;
 
@@ -9,6 +10,7 @@ namespace ScreenRecorder.App;
 internal sealed class TrayApplicationContext : ApplicationContext
 {
     private const int StartupNotificationDelayMilliseconds = 600;
+    private static readonly TimeSpan RecordingTerminationTimeout = TimeSpan.FromSeconds(30);
     private readonly DailyLog _log;
     private readonly SettingsRepository _settingsRepository;
     private readonly AutoStartSynchronizer _autoStartSynchronizer;
@@ -29,8 +31,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool _screenshotCaptureInProgress;
     private bool _recordingSelectionInProgress;
     private bool _exitRequested;
-    private string? _pendingScreenshotPath;
-    private string? _pendingRecordingPath;
+    private bool _recordingFailureFinalizationStarted;
+    private bool _systemSleepInhibited;
+    private string? _pendingCapturePath;
     private System.Windows.Forms.Timer? _startupNotificationTimer;
     private System.Windows.Forms.Timer? _leftoverRecordingNotificationTimer;
     private System.Windows.Forms.Timer? _recordingTimer;
@@ -85,6 +88,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     protected override void ExitThreadCore()
     {
         SystemEvents.PowerModeChanged -= HandlePowerModeChanged;
+        SetSystemSleepInhibition(false);
         _settingsForm?.Close();
         _startupNotificationTimer?.Stop();
         _startupNotificationTimer?.Dispose();
@@ -184,7 +188,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             _log.Write($"Auto-start update failed: {exception}");
-            _tray.ShowBalloonTip(3000, UiLabels.AppName, UiLabels.SettingsApplyFailed, ToolTipIcon.Error);
+            ShowNotification(3000, UiLabels.AppName, UiLabels.SettingsApplyFailed, ToolTipIcon.Error);
         }
 
         var failures = _hotkeyManager.Replace(_settings);
@@ -232,7 +236,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var body = printScreenFailure is null
             ? startup ? UiLabels.StartupHotkeyFailureBody : UiLabels.SettingsApplyHotkeyFailed
             : UiLabels.PrintScreenSnippingHint;
-        _tray.ShowBalloonTip(3500, UiLabels.StartupHotkeyFailureTitle, body, ToolTipIcon.Warning);
+        ShowNotification(3500, UiLabels.StartupHotkeyFailureTitle, body, ToolTipIcon.Warning);
     }
 
     private async void PerformAction(RecorderAction action)
@@ -286,7 +290,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (_recordingState.State == VideoRecordingState.Saving) return;
             if (_screenshotCaptureInProgress) return;
             _screenshotCaptureInProgress = true;
-            _pendingScreenshotPath = null;
+            _pendingCapturePath = null;
             var captureSettings = _settings.Clone();
             try
             {
@@ -298,7 +302,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 _log.Write($"Screenshot failed: mode={screenshotMode}; {exception}");
                 var reason = exception.Message.Length > 180 ? exception.Message[..180] : exception.Message;
-                _tray.ShowBalloonTip(4000, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
+                ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
             }
             finally
             {
@@ -321,21 +325,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
         {
             _exitRequested = true;
-            _tray.ShowBalloonTip(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
+            ShowNotification(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
             StopRecording();
             return;
         }
         if (_recordingState.State == VideoRecordingState.Saving)
         {
             _exitRequested = true;
-            _tray.ShowBalloonTip(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
+            ShowNotification(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
             return;
         }
         if (_screenshotCaptureInProgress || _recordingSelectionInProgress)
         {
             _exitRequested = true;
             if (_screenshotCaptureInProgress)
-                _tray.ShowBalloonTip(3000, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
+                ShowNotification(3000, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
             return;
         }
         ExitThread();
@@ -368,7 +372,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 var message = targetBounds.Width < 2 || targetBounds.Height < 2
                     ? UiLabels.RecordingRegionTooSmall
                     : UiLabels.RecordingOutputTooSmall;
-                _tray.ShowBalloonTip(4000, UiLabels.AppName, message, ToolTipIcon.Warning);
+                ShowNotification(4000, UiLabels.AppName, message, ToolTipIcon.Warning);
                 return;
             }
 
@@ -403,6 +407,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (!_recordingState.TryBeginCountdown()) return;
 
             var temporaryPath = VideoRecordingFileNaming.GetTemporaryPath(finalPath);
+            _recordingFailureFinalizationStarted = false;
+            SetSystemSleepInhibition(true);
             _activeRecording = new ActiveRecording(
                 finalPath,
                 temporaryPath,
@@ -486,7 +492,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 _recordingState.TryFail();
                 CleanupRecordingSession();
                 UpdateRecordingUi();
-                _tray.ShowBalloonTip(4000, UiLabels.AppName, string.Format(UiLabels.RecordingStartFailed, ShortError(exception.Message)), ToolTipIcon.Error);
+                ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.RecordingStartFailed, ShortError(exception.Message)), ToolTipIcon.Error);
             }
         }
         finally
@@ -525,30 +531,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (!_recordingState.TryCancelCountdown()) return;
         _recordingCountdownCancellation?.Cancel();
         _recordingCountdownForm?.Close();
+        SetSystemSleepInhibition(false);
         UpdateRecordingUi();
     }
 
     private void TogglePauseResume()
     {
         if (_recordingState.State is not (VideoRecordingState.Recording or VideoRecordingState.Paused)) return;
+        var wasRecording = _recordingState.State == VideoRecordingState.Recording;
+        var command = wasRecording ? _recordingState.RequestPause() : _recordingState.RequestResume();
         try
         {
-            if (_recordingState.State == VideoRecordingState.Recording)
-            {
-                _recordingEngine?.Pause();
-                if (_recordingState.TryPause()) _recordingStopwatch?.Stop();
-            }
-            else
-            {
-                _recordingEngine?.Resume();
-                if (_recordingState.TryResume()) _recordingStopwatch?.Start();
-            }
+            ExecuteRecordingCommand(command);
+            if (wasRecording) _recordingStopwatch?.Stop();
+            else _recordingStopwatch?.Start();
             UpdateRecordingUi();
         }
         catch (Exception exception)
         {
+            if (wasRecording) _recordingState.RequestResume();
+            else _recordingState.RequestPause();
             _log.Write($"Changing video recording pause state failed: {exception}");
-            _tray.ShowBalloonTip(3500, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, ShortError(exception.Message)), ToolTipIcon.Warning);
+            ShowNotification(3500, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, ShortError(exception.Message)), ToolTipIcon.Warning);
+            UpdateRecordingUi();
         }
     }
 
@@ -559,22 +564,60 @@ internal sealed class TrayApplicationContext : ApplicationContext
             CancelRecordingCountdown();
             return;
         }
-        if (!_recordingState.TryBeginSaving()) return;
+        var command = _recordingState.RequestStop();
+        if (_recordingState.State != VideoRecordingState.Saving) return;
         ShowSavingState();
         try
         {
-            _recordingEngine?.Stop();
+            ExecuteRecordingCommand(command);
         }
         catch (Exception exception)
         {
             _log.Write($"Stopping video recording failed: {exception}");
-            FinishRecordingFailure(exception.Message, _activeRecording?.TemporaryPath);
+            if (_recordingEngine is { } engine)
+                _ = FinishRecordingFailureAfterTerminationAsync(engine, exception.Message, _activeRecording?.TemporaryPath);
+            else
+                FinishRecordingFailure(exception.Message, _activeRecording?.TemporaryPath, finalizationConfirmed: false);
+        }
+    }
+
+    private void ExecuteRecordingCommand(RecordingEngineCommand command)
+    {
+        switch (command)
+        {
+            case RecordingEngineCommand.Pause:
+                _recordingEngine?.Pause();
+                break;
+            case RecordingEngineCommand.Resume:
+                _recordingEngine?.Resume();
+                break;
+            case RecordingEngineCommand.Stop:
+                _recordingEngine?.Stop();
+                break;
         }
     }
 
     private void HandleRecordingStatus(IRecordingEngine engine, RecordingEngineStatusChangedEventArgs eventArgs)
     {
         if (!ReferenceEquals(engine, _recordingEngine)) return;
+        if (eventArgs.Status == RecordingEngineStatus.Recording)
+        {
+            var command = _recordingState.OnEngineRecordingStarted();
+            try { ExecuteRecordingCommand(command); }
+            catch (Exception exception)
+            {
+                _log.Write($"Applying a pending recording command failed: {exception}");
+                if (command == RecordingEngineCommand.Stop)
+                    _ = FinishRecordingFailureAfterTerminationAsync(engine, exception.Message, _activeRecording?.TemporaryPath);
+                else
+                {
+                    _recordingState.RequestResume();
+                    StopRecording();
+                }
+            }
+            UpdateRecordingUi();
+            return;
+        }
         if (eventArgs.Status == RecordingEngineStatus.Saving && _recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
         {
             if (_recordingState.TryBeginSaving()) ShowSavingState();
@@ -598,7 +641,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             _log.Write($"Video recording save failed: temporary={active.TemporaryPath}; {exception}");
-            ShowRecordingFailure(exception.Message, _activeRecording?.TemporaryPath ?? active.TemporaryPath);
+            ShowRecordingFailure(exception.Message, _activeRecording?.TemporaryPath ?? active.TemporaryPath, finalizationConfirmed: true);
             _recordingState.TryFail();
         }
         finally
@@ -614,27 +657,70 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (!ReferenceEquals(engine, _recordingEngine)) return;
         if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused) _recordingState.TryBeginSaving();
         ShowSavingState();
-        FinishRecordingFailure(eventArgs.Error, eventArgs.FilePath);
+        var decision = RecordingTerminationRules.Decide(eventArgs.Outcome);
+        if (decision is RecordingTerminationDecision.Wait or RecordingTerminationDecision.ContinueCompletedSave) return;
+        FinishRecordingFailure(
+            eventArgs.Error,
+            eventArgs.FilePath,
+            finalizationConfirmed: false);
     }
 
-    private void FinishRecordingFailure(string error, string? temporaryPath)
+    private async Task FinishRecordingFailureAfterTerminationAsync(IRecordingEngine engine, string error, string? temporaryPath)
     {
+        var termination = await engine.WaitForTerminationAsync(RecordingTerminationTimeout);
+        var decision = RecordingTerminationRules.Decide(termination);
+        if (!ReferenceEquals(engine, _recordingEngine) || decision is RecordingTerminationDecision.Wait or RecordingTerminationDecision.ContinueCompletedSave)
+            return;
+        FinishRecordingFailure(error, temporaryPath, finalizationConfirmed: false);
+    }
+
+    private void FinishRecordingFailure(string error, string? temporaryPath, bool finalizationConfirmed)
+    {
+        if (_recordingFailureFinalizationStarted) return;
+        _recordingFailureFinalizationStarted = true;
         var activePath = string.IsNullOrWhiteSpace(temporaryPath) ? _activeRecording?.TemporaryPath : temporaryPath;
-        ShowRecordingFailure(error, activePath);
+        ShowRecordingFailure(error, activePath, finalizationConfirmed);
         _recordingState.TryFail();
         CleanupRecordingSession();
         UpdateRecordingUi();
         TryExitAfterPendingWork();
     }
 
-    private void ShowRecordingFailure(string error, string? temporaryPath)
+    private void ShowRecordingFailure(string error, string? temporaryPath, bool finalizationConfirmed)
     {
         var retainedPath = !string.IsNullOrWhiteSpace(temporaryPath) && File.Exists(temporaryPath) ? temporaryPath : null;
         var message = retainedPath is null
             ? string.Format(UiLabels.RecordingFailed, ShortError(error))
-            : string.Format(UiLabels.RecordingTemporaryFileRetained, ShortPath(retainedPath, 150));
+            : string.Format(
+                finalizationConfirmed ? UiLabels.RecordingTemporaryFileRetained : UiLabels.RecordingTemporaryFileIncomplete,
+                ShortPath(retainedPath, 150));
         if (retainedPath is not null) _log.Write($"Incomplete recording retained: {retainedPath}; {error}");
-        _tray.ShowBalloonTip(5000, UiLabels.AppName, message, ToolTipIcon.Error);
+        ShowCaptureNotification(5000, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
+    }
+
+    private void ShowNotification(int timeout, string title, string message, ToolTipIcon icon)
+    {
+        _pendingCapturePath = null;
+        _tray.ShowBalloonTip(timeout, title, message, icon);
+    }
+
+    private void ShowCaptureNotification(int timeout, string title, string message, ToolTipIcon icon, string? path)
+    {
+        _pendingCapturePath = path;
+        _tray.ShowBalloonTip(timeout, title, message, icon);
+    }
+
+    private void SetSystemSleepInhibition(bool inhibit)
+    {
+        if (_systemSleepInhibited == inhibit) return;
+        var executionState = NativeMethods.ExecutionStateContinuous;
+        if (inhibit) executionState |= NativeMethods.ExecutionStateSystemRequired;
+        if (NativeMethods.SetThreadExecutionState(executionState) == 0)
+        {
+            _log.Write($"SetThreadExecutionState failed: inhibit={inhibit}; error={Marshal.GetLastWin32Error()}");
+            return;
+        }
+        _systemSleepInhibited = inhibit;
     }
 
     private void CompleteRecordingSave(string finalPath, Settings settings)
@@ -664,9 +750,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             warning = UiLabels.RecordingAfterActionFailed;
         }
 
-        _pendingRecordingPath = settings.NotifyWhenSaved ? finalPath : null;
-        if (warning is not null) _tray.ShowBalloonTip(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
-        else if (settings.NotifyWhenSaved) _tray.ShowBalloonTip(4000, UiLabels.AppName, UiLabels.RecordingSavedNotification, ToolTipIcon.Info);
+        if (warning is not null) ShowNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
+        else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.RecordingSavedNotification, ToolTipIcon.Info, finalPath);
     }
 
     private static string MoveRecordingToFinalPath(ActiveRecording active, string completedPath)
@@ -787,6 +872,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void HandlePowerModeChanged(object? sender, PowerModeChangedEventArgs eventArgs)
     {
         if (eventArgs.Mode != PowerModes.Suspend) return;
+        if (_recordingEngine is { } engine)
+        {
+            try { engine.Stop(); }
+            catch (Exception exception) { _log.Write($"Stopping video recording for system suspend failed: {exception}"); }
+        }
         DispatchToUi(() =>
         {
             if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
@@ -794,7 +884,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 _log.Write("System suspend requested; stopping video recording");
                 StopRecording();
             }
-            else if (_recordingState.State == VideoRecordingState.Countdown)
+            else if (_recordingState.State == VideoRecordingState.Countdown && _recordingEngine is null)
             {
                 CancelRecordingCountdown();
             }
@@ -817,41 +907,58 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (string.IsNullOrWhiteSpace(root)) throw new IOException("保存先のドライブを特定できません。");
             var availableBytes = new DriveInfo(root).AvailableFreeSpace;
             if (VideoRecordingStateMachine.HasMinimumFreeSpace(availableBytes)) return true;
-            _tray.ShowBalloonTip(4000, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
+            ShowNotification(4000, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
             return false;
         }
         catch (Exception exception)
         {
             _log.Write($"Video destination space check failed: directory={videoDirectory}; {exception}");
-            _tray.ShowBalloonTip(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, ShortError(exception.Message)), ToolTipIcon.Error);
+            ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, ShortError(exception.Message)), ToolTipIcon.Error);
             return false;
         }
     }
 
     private void ReportIncompleteRecordings()
     {
-        try
+        var videoDirectory = _settings.VideoDirectory;
+        _ = Task.Run(() =>
         {
-            if (!Directory.Exists(_settings.VideoDirectory)) return;
-            var paths = Directory.EnumerateFiles(_settings.VideoDirectory, "*.recording.mp4", SearchOption.AllDirectories).ToArray();
-            if (paths.Length == 0) return;
-            foreach (var path in paths) _log.Write($"Incomplete recording found at startup: {path}");
-            var folder = Path.GetDirectoryName(paths[0]) ?? _settings.VideoDirectory;
-            var message = string.Format(UiLabels.IncompleteRecordingsFound, paths.Length, ShortPath(folder, 190));
+            try
+            {
+                if (!Directory.Exists(videoDirectory)) return (Count: 0, Folder: (string?)null, Error: (Exception?)null);
+                var count = 0;
+                string? firstFolder = null;
+                foreach (var path in Directory.EnumerateFiles(videoDirectory, "*.recording.mp4", SearchOption.AllDirectories))
+                {
+                    count++;
+                    firstFolder ??= Path.GetDirectoryName(path) ?? videoDirectory;
+                }
+                return (Count: count, Folder: firstFolder, Error: (Exception?)null);
+            }
+            catch (Exception exception)
+            {
+                return (Count: 0, Folder: (string?)null, Error: exception);
+            }
+        }).ContinueWith(task => DispatchToUi(() =>
+        {
+            var result = task.GetAwaiter().GetResult();
+            if (result.Error is { } exception)
+            {
+                _log.Write($"Searching incomplete recordings failed: directory={videoDirectory}; {exception}");
+                return;
+            }
+            if (result.Count == 0 || result.Folder is null) return;
+            var message = string.Format(UiLabels.IncompleteRecordingsFound, result.Count, ShortPath(result.Folder, 190));
             _leftoverRecordingNotificationTimer = new System.Windows.Forms.Timer { Interval = StartupNotificationDelayMilliseconds * 2 };
             _leftoverRecordingNotificationTimer.Tick += (_, _) =>
             {
                 _leftoverRecordingNotificationTimer.Stop();
                 _leftoverRecordingNotificationTimer.Dispose();
                 _leftoverRecordingNotificationTimer = null;
-                _tray.ShowBalloonTip(6000, UiLabels.AppName, message, ToolTipIcon.Warning);
+                ShowNotification(6000, UiLabels.AppName, message, ToolTipIcon.Warning);
             };
             _leftoverRecordingNotificationTimer.Start();
-        }
-        catch (Exception exception)
-        {
-            _log.Write($"Searching incomplete recordings failed: directory={_settings.VideoDirectory}; {exception}");
-        }
+        }), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
 
     private void TryExitAfterPendingWork()
@@ -862,6 +969,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void CleanupRecordingSession()
     {
+        SetSystemSleepInhibition(false);
         _recordingTimer?.Stop();
         _recordingTimer?.Dispose();
         _recordingTimer = null;
@@ -935,19 +1043,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
             warning = UiLabels.ScreenshotAfterActionFailed;
         }
 
-        if (settings.NotifyWhenSaved)
-        {
-            _pendingScreenshotPath = result.FilePath;
-        }
-        if (warning is not null) _tray.ShowBalloonTip(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
-        else if (settings.NotifyWhenSaved) _tray.ShowBalloonTip(4000, UiLabels.AppName, UiLabels.ScreenshotSavedNotification, ToolTipIcon.Info);
+        if (warning is not null) ShowNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning);
+        else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.ScreenshotSavedNotification, ToolTipIcon.Info, result.FilePath);
     }
 
     private void OpenPendingCaptureLocation()
     {
-        var path = _pendingRecordingPath is { } recordingPath && File.Exists(recordingPath)
-            ? recordingPath
-            : _pendingScreenshotPath;
+        var path = _pendingCapturePath;
         if (path is null || !File.Exists(path)) return;
         try
         {
@@ -957,11 +1059,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             _log.Write($"Open capture location failed: file={path}; {exception}");
-            _tray.ShowBalloonTip(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+            ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
         }
     }
 
-    private void NotifyNotImplemented() => _tray.ShowBalloonTip(2500, UiLabels.AppName, UiLabels.NotImplemented, ToolTipIcon.Info);
+    private void NotifyNotImplemented() => ShowNotification(2500, UiLabels.AppName, UiLabels.NotImplemented, ToolTipIcon.Info);
 
     private bool OpenFolder(string path, bool notifyFailure = true)
     {
@@ -975,7 +1077,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             _log.Write($"Open folder failed: {exception}");
-            if (notifyFailure) _tray.ShowBalloonTip(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+            if (notifyFailure) ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
             return false;
         }
     }

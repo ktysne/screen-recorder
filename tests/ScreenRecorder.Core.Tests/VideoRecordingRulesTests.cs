@@ -89,6 +89,63 @@ public sealed class VideoRecordingRulesTests
     }
 
     [Fact]
+    public void RequestStopBeforeEngineIsReady_StopsWhenRecordingStarts()
+    {
+        var machine = CreateRecordingMachine();
+
+        Assert.Equal(RecordingEngineCommand.None, machine.RequestStop());
+        Assert.Equal(VideoRecordingState.Saving, machine.State);
+        Assert.Equal(RecordingEngineCommand.Stop, machine.OnEngineRecordingStarted());
+    }
+
+    [Fact]
+    public void PauseThenResumeBeforeEngineIsReady_DoesNotPauseWhenRecordingStarts()
+    {
+        var machine = CreateRecordingMachine();
+
+        Assert.Equal(RecordingEngineCommand.None, machine.RequestPause());
+        Assert.Equal(VideoRecordingState.Paused, machine.State);
+        Assert.Equal(RecordingEngineCommand.None, machine.RequestResume());
+        Assert.Equal(VideoRecordingState.Recording, machine.State);
+        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
+    }
+
+    [Fact]
+    public void PauseBeforeEngineIsReady_PausesWhenRecordingStarts()
+    {
+        var machine = CreateRecordingMachine();
+
+        Assert.Equal(RecordingEngineCommand.None, machine.RequestPause());
+
+        Assert.Equal(RecordingEngineCommand.Pause, machine.OnEngineRecordingStarted());
+        Assert.Equal(VideoRecordingState.Paused, machine.State);
+    }
+
+    [Fact]
+    public void RecordingCommandsAfterEngineIsReady_AreReturnedForImmediateExecution()
+    {
+        var machine = CreateRecordingMachine();
+        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
+
+        Assert.Equal(RecordingEngineCommand.Pause, machine.RequestPause());
+        Assert.Equal(RecordingEngineCommand.Resume, machine.RequestResume());
+        Assert.Equal(RecordingEngineCommand.Stop, machine.RequestStop());
+    }
+
+    [Theory]
+    [InlineData(RecordingTerminationOutcome.Waiting, RecordingTerminationDecision.Wait)]
+    [InlineData(RecordingTerminationOutcome.Completed, RecordingTerminationDecision.ContinueCompletedSave)]
+    [InlineData(RecordingTerminationOutcome.Failed, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
+    [InlineData(RecordingTerminationOutcome.Idle, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
+    [InlineData(RecordingTerminationOutcome.TimedOut, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
+    public void RecordingTermination_ChoosesCleanupOnlyAfterAValidEndCondition(
+        RecordingTerminationOutcome outcome,
+        RecordingTerminationDecision expectedDecision)
+    {
+        Assert.Equal(expectedDecision, RecordingTerminationRules.Decide(outcome));
+    }
+
+    [Fact]
     public void SavingState_IgnoresRecordingOperations()
     {
         var machine = CreateRecordingMachine();

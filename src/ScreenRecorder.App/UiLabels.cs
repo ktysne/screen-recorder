@@ -110,6 +110,7 @@ public static class UiLabels
     public const string RecordingFailed = "録画を完了できませんでした: {0}";
     public const string RecordingAfterActionFailed = "動画は保存しましたが、撮影後の動作に失敗しました。";
     public const string RecordingTemporaryFileRetained = "録画を完了できませんでした。一時ファイルが残っています: {0}";
+    public const string RecordingTemporaryFileIncomplete = "保存完了を確認できませんでした。未完了の一時ファイルが残っています: {0}";
     public const string RecordingTemporaryFileNotFound = "録画を完了できませんでした。一時ファイルは残っていません。";
     public const string RecordingExitWaiting = "録画を保存してから ScreenRecorder を終了します。";
     public const string IncompleteRecordingsFound = "未完了の録画ファイルが {0} 件残っています。場所: {1}";
