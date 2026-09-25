@@ -82,15 +82,22 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
         countdown.Close();
     }
 
+    // 打ち切った PrintWindow は止められないので、戻るまで次のウィンドウ撮影を受け付けず、スレッドと画像を溜めない。
+    private static Task? _abandonedWindowCapture;
+
     private static async Task<WindowCapture> CaptureWindowAsync(ScreenshotSelection selection)
     {
+        if (_abandonedWindowCapture is { IsCompleted: false })
+            throw new InvalidOperationException("前に撮影しようとしたウィンドウがまだ応答していません。しばらく待ってから撮り直してください。");
+        _abandonedWindowCapture = null;
+
         var cancellation = new CancellationTokenSource();
         var captureTask = Task.Run(() => CaptureWindow(selection, cancellation.Token));
         var completed = await Task.WhenAny(captureTask, Task.Delay(WindowCaptureTimeoutMilliseconds));
         if (completed != captureTask)
         {
             cancellation.Cancel();
-            _ = captureTask.ContinueWith(task =>
+            _abandonedWindowCapture = captureTask.ContinueWith(task =>
             {
                 if (task.Status == TaskStatus.RanToCompletion) task.Result.Image.Dispose();
                 else _ = task.Exception;
