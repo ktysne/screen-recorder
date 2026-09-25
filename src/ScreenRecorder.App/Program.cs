@@ -28,12 +28,13 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) => log.Write($"Unhandled exception: {eventArgs.ExceptionObject}");
         TaskScheduler.UnobservedTaskException += (_, eventArgs) => { log.Write($"Unobserved task exception: {eventArgs.Exception}"); eventArgs.SetObserved(); };
 
-        var settings = new SettingsRepository().Load();
+        var settingsRepository = new SettingsRepository();
+        var settings = settingsRepository.Load();
         var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
         var sync = new AutoStartSynchronizer(new RunRegistry(), exePath);
         try { sync.Apply(settings.StartWithWindows); }
         catch (Exception exception) { log.Write($"Auto-start update failed: {exception}"); }
-        Application.Run(new TrayApplicationContext(settings, log));
+        Application.Run(new TrayApplicationContext(settings, log, settingsRepository, sync));
         log.Write("Application stopped");
     }
 

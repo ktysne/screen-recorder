@@ -49,4 +49,44 @@ public sealed class Settings
     public string PauseRecordingShortcut { get; set; } = "";
 
     public string? SkippedUpdateVersion { get; set; }
+
+    public Settings Clone() => new()
+    {
+        StartWithWindows = StartWithWindows,
+        CheckForUpdatesAutomatically = CheckForUpdatesAutomatically,
+        NotifyWhenSaved = NotifyWhenSaved,
+        PlayCaptureSound = PlayCaptureSound,
+        FileNameTemplate = FileNameTemplate,
+        OrganizeByMonth = OrganizeByMonth,
+        StillImageDirectory = StillImageDirectory,
+        ImageFormat = ImageFormat,
+        JpegQuality = JpegQuality,
+        PngCompression = PngCompression,
+        CopyImageToClipboard = CopyImageToClipboard,
+        CaptureImageCursor = CaptureImageCursor,
+        CaptureDelaySeconds = CaptureDelaySeconds,
+        AfterCaptureAction = AfterCaptureAction,
+        VideoDirectory = VideoDirectory,
+        FrameRate = FrameRate,
+        VideoBitrateMbps = VideoBitrateMbps,
+        CaptureVideoCursor = CaptureVideoCursor,
+        CountdownSeconds = CountdownSeconds,
+        OutputScalePercent = OutputScalePercent,
+        HighlightClicks = HighlightClicks,
+        Encoder = Encoder,
+        CaptureSystemAudio = CaptureSystemAudio,
+        CaptureMicrophone = CaptureMicrophone,
+        MicrophoneDeviceId = MicrophoneDeviceId,
+        AudioFormat = AudioFormat,
+        AacBitrateKbps = AacBitrateKbps,
+        Mp3BitrateKbps = Mp3BitrateKbps,
+        ScreenshotRegionShortcut = ScreenshotRegionShortcut,
+        ScreenshotFullScreenShortcut = ScreenshotFullScreenShortcut,
+        ScreenshotWindowShortcut = ScreenshotWindowShortcut,
+        RecordingRegionShortcut = RecordingRegionShortcut,
+        RecordingFullScreenShortcut = RecordingFullScreenShortcut,
+        RecordingWindowShortcut = RecordingWindowShortcut,
+        PauseRecordingShortcut = PauseRecordingShortcut,
+        SkippedUpdateVersion = SkippedUpdateVersion
+    };
 }

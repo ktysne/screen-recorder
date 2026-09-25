@@ -92,6 +92,15 @@ public sealed class SettingsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void EmptyFilenameTemplateCanBeSavedForCaptureFallback()
+    {
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { FileNameTemplate = string.Empty });
+
+        Assert.Equal(string.Empty, repository.Load().FileNameTemplate);
+    }
+
+    [Fact]
     public void FailedSaveKeepsPreviousSettings()
     {
         var repository = new SettingsRepository(_directory);

@@ -28,7 +28,7 @@ public sealed class SettingsRepository(string? baseDirectory = null)
             result.CheckForUpdatesAutomatically = Bool(root, nameof(result.CheckForUpdatesAutomatically), defaults.CheckForUpdatesAutomatically);
             result.NotifyWhenSaved = Bool(root, nameof(result.NotifyWhenSaved), defaults.NotifyWhenSaved);
             result.PlayCaptureSound = Bool(root, nameof(result.PlayCaptureSound), defaults.PlayCaptureSound);
-            result.FileNameTemplate = String(root, nameof(result.FileNameTemplate), defaults.FileNameTemplate);
+            result.FileNameTemplate = Text(root, nameof(result.FileNameTemplate), defaults.FileNameTemplate);
             result.OrganizeByMonth = Bool(root, nameof(result.OrganizeByMonth), defaults.OrganizeByMonth);
             result.StillImageDirectory = String(root, nameof(result.StillImageDirectory), defaults.StillImageDirectory);
             result.ImageFormat = EnumValue(root, nameof(result.ImageFormat), defaults.ImageFormat);
@@ -83,6 +83,7 @@ public sealed class SettingsRepository(string? baseDirectory = null)
     private static JsonElement? Property(JsonElement root, string name) => root.TryGetProperty(JsonNamingPolicy.CamelCase.ConvertName(name), out var value) ? value : null;
     private static bool Bool(JsonElement root, string name, bool fallback) => Property(root, name) is { ValueKind: JsonValueKind.True } ? true : Property(root, name) is { ValueKind: JsonValueKind.False } ? false : fallback;
     private static string String(JsonElement root, string name, string fallback) => Property(root, name) is { ValueKind: JsonValueKind.String } value && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()! : fallback;
+    private static string Text(JsonElement root, string name, string fallback) => Property(root, name) is { ValueKind: JsonValueKind.String } value ? value.GetString()! : fallback;
     private static string? NullableString(JsonElement root, string name, string? fallback) => Property(root, name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : fallback;
     private static int Ranged(JsonElement root, string name, int fallback, int min, int max) => Property(root, name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt32(out var number) && number >= min && number <= max ? number : fallback;
     private static int Choice(JsonElement root, string name, int fallback, params int[] choices) => Property(root, name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt32(out var number) && choices.Contains(number) ? number : fallback;
