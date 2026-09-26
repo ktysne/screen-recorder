@@ -107,21 +107,36 @@ public sealed class UpdateCheckTests
         Assert.Equal(expected, UpdateCheckSchedule.IsAutomaticCheckDue(
             true,
             TimeSpan.FromSeconds(elapsedSeconds),
-            lastCheckSeconds is { } last ? TimeSpan.FromSeconds(last) : null));
+            lastCheckSeconds is { } last ? TimeSpan.FromSeconds(last) : null,
+            false));
     }
 
     [Fact]
     public void LaterAutomaticChecksAreTwentyFourHoursApart()
     {
         var last = TimeSpan.FromSeconds(30);
-        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(24) - TimeSpan.FromSeconds(1), last));
-        Assert.True(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(24), last));
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(24) - TimeSpan.FromSeconds(1), last, false));
+        Assert.True(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(24), last, false));
+    }
+
+    [Fact]
+    public void AutomaticCheckThatFailedIsRetriedOneHourLater()
+    {
+        var last = TimeSpan.FromSeconds(30);
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(1) - TimeSpan.FromSeconds(1), last, true));
+        Assert.True(UpdateCheckSchedule.IsAutomaticCheckDue(true, last + TimeSpan.FromHours(1), last, true));
+    }
+
+    [Fact]
+    public void RetryAfterFailureStillRespectsTheDisabledSetting()
+    {
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), TimeSpan.FromSeconds(30), true));
     }
 
     [Fact]
     public void DisabledSettingStopsAutomaticChecks()
     {
-        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), null));
-        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), TimeSpan.FromSeconds(30)));
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), null, false));
+        Assert.False(UpdateCheckSchedule.IsAutomaticCheckDue(false, TimeSpan.FromDays(3), TimeSpan.FromSeconds(30), false));
     }
 }
