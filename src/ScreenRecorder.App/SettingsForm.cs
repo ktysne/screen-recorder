@@ -541,7 +541,7 @@ internal sealed class SettingsForm : Form
         _shortcutStatus.Text = hasShortcutProblem ? UiLabels.ShortcutRegistrationProblem : UiLabels.NoShortcutFailures;
         _shortcutFailureDetails.Text = string.Join(Environment.NewLine, shortcutDetails);
         _shortcutFailureDetails.Visible = shortcutDetails.Count > 0;
-        var printScreenFailure = _hotkeyFailures.Values.Any(failure => failure.PrintScreenSettingsEnabled && GetCurrentFailure(failure.Action, _shortcutInputs[failure.Action].Text) is not null);
+        var printScreenFailure = _hotkeyFailures.Values.Any(failure => failure.PrintScreenSettingsEnabled && _shortcutEnabled[failure.Action].Checked && GetCurrentFailure(failure.Action, _shortcutInputs[failure.Action].Text) is not null);
         _printScreenHint.Text = UiLabels.PrintScreenSnippingHint;
         _printScreenPanel.Visible = printScreenFailure;
         _openKeyboardSettings.Visible = printScreenFailure;
