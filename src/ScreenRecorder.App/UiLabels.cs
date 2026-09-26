@@ -126,6 +126,9 @@ public static class UiLabels
     public const string ScreenshotAfterActionFailed = "画像は保存しましたが、撮影後の動作に失敗しました。クリックすると保存先でファイルを選択します。";
     public const string RecordingSavedNotification = "動画を保存しました。クリックすると保存先でファイルを選択します。";
     public const string RecordingStartFailed = "録画を開始できませんでした: {0}";
+    public const string RecordingStartTimedOut = "録画ライブラリの準備が終わりませんでした";
+    public const string RecordingStartTemporaryFileRetained = "録画を開始できませんでした。一時ファイルが残っています: {0}";
+    public const string RecordingFinalizationTimedOut = "録画の停止後、保存完了を確認できませんでした";
     public const string RecordingOutputTooSmall = "出力の大きさが 2 ピクセル未満になるため録画を開始できません。";
     public const string RecordingRegionTooSmall = "録画する大きさが 2 ピクセル未満です。範囲を広げてください。";
     public const string RecordingSpaceInsufficient = "保存先の空き容量が 1 GB 未満のため、録画を開始できません。";

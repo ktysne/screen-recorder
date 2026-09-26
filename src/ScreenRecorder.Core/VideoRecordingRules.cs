@@ -59,6 +59,9 @@ public sealed class VideoRecordingStateMachine
 
     public bool CanPause => State is VideoRecordingState.Recording or VideoRecordingState.Paused;
 
+    public bool IsWaitingForEngineStart => !_engineReady
+        && (State == VideoRecordingState.Preparing || (_stopRequested && State == VideoRecordingState.Saving));
+
     public bool TryBeginCountdown() => Move(VideoRecordingState.Idle, VideoRecordingState.Countdown);
 
     public bool TryCancelCountdown() => Move(VideoRecordingState.Countdown, VideoRecordingState.Idle);

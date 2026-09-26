@@ -419,6 +419,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
 
+    public Task RecordingEngineDisposal => _recording.EngineDisposal;
+
     private void TryExitAfterPendingWork()
     {
         if (_exitRequested && !_screenshotCaptureInProgress && !_recording.SelectionInProgress && _recording.State == VideoRecordingState.Idle)
