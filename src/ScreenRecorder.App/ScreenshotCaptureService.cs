@@ -117,7 +117,7 @@ internal sealed class ScreenshotCaptureService
 
     private static WindowCapture CaptureWindow(ScreenshotSelection selection, CancellationToken cancellationToken)
     {
-        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
+        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("撮影するウィンドウはすでに閉じられています。");
         if (!TryGetWindowBounds(selection.Window, out var windowBounds)) throw new InvalidOperationException("ウィンドウの撮影範囲を取得できませんでした。");
         using (var printed = DesktopCapture.CaptureWindow(selection.Window, windowBounds, out var succeeded))
         {
@@ -134,7 +134,7 @@ internal sealed class ScreenshotCaptureService
 
         DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"ウィンドウ撮影で代替のキャプチャ方法を使用します: hwnd={selection.Window}。");
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
+        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("撮影するウィンドウはすでに閉じられています。");
         cancellationToken.ThrowIfCancellationRequested();
         if (NativeMethods.IsIconic(selection.Window)) NativeMethods.ShowWindow(selection.Window, NativeMethods.SwRestore);
         cancellationToken.ThrowIfCancellationRequested();
