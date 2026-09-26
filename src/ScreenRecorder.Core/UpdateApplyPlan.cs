@@ -2,12 +2,9 @@ namespace ScreenRecorder.Core;
 
 /// <summary>配布物の 1 ファイルをインストール先へ置く手順。</summary>
 /// <param name="RelativePath">インストール先からの相対パス。区切りは <c>\</c> にそろえてある。</param>
-/// <param name="ReplacesExistingFile">インストール先に同名のファイルがあり、<c>.old</c> へ退避してから置く。</param>
-/// <param name="RemovesStaleBackup">前回の更新で残った <c>.old</c> があり、退避の前に消す。</param>
-public sealed record UpdateFileStep(string RelativePath, bool ReplacesExistingFile, bool RemovesStaleBackup)
-{
-    public string BackupRelativePath => RelativePath + UpdateApplyPlanner.BackupSuffix;
-}
+/// <param name="ReplacesExistingFile">インストール先に同名のファイルがあり、バックアップへ退避してから置く。</param>
+/// <param name="BackupRelativePath">この更新だけが使うバックアップの相対パス。</param>
+public sealed record UpdateFileStep(string RelativePath, bool ReplacesExistingFile, string BackupRelativePath);
 
 public sealed record UpdateApplyPlan(IReadOnlyList<UpdateFileStep> Steps)
 {
@@ -37,7 +34,7 @@ public sealed record UpdateStepProgress(bool BackedUp, bool CopyStarted)
 
 public enum UpdateRollbackActionKind { DeleteInstalledFile, RestoreBackup }
 
-public sealed record UpdateRollbackAction(UpdateRollbackActionKind Kind, string RelativePath);
+public sealed record UpdateRollbackAction(UpdateRollbackActionKind Kind, string RelativePath, string? BackupRelativePath = null);
 
 /// <summary>更新の適用とロールバックの計画を立てる。手順の正本は docs/design.md「更新の手順」。</summary>
 public static class UpdateApplyPlanner
@@ -64,10 +61,16 @@ public static class UpdateApplyPlanner
         if (!seen.Contains(ExecutableName))
             return new UpdateApplyPlanResult(null, $"更新ファイルに {ExecutableName} がありません。");
 
-        var steps = normalized
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .Select(path => new UpdateFileStep(path, installedFileExists(path), installedFileExists(path + BackupSuffix)))
-            .ToArray();
+        var updateId = Guid.NewGuid().ToString("N");
+        var steps = new List<UpdateFileStep>();
+        foreach (var path in normalized.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var replacesExistingFile = installedFileExists(path);
+            var backupPath = $"{path}.{updateId}{BackupSuffix}";
+            if (replacesExistingFile && installedFileExists(backupPath))
+                return new UpdateApplyPlanResult(null, $"更新用バックアップが既に存在します: {backupPath}");
+            steps.Add(new UpdateFileStep(path, replacesExistingFile, backupPath));
+        }
         return new UpdateApplyPlanResult(new UpdateApplyPlan(steps), null);
     }
 
@@ -80,7 +83,7 @@ public static class UpdateApplyPlanner
         {
             var step = plan.Steps[index];
             if (progress[index].CopyStarted) actions.Add(new UpdateRollbackAction(UpdateRollbackActionKind.DeleteInstalledFile, step.RelativePath));
-            if (progress[index].BackedUp) actions.Add(new UpdateRollbackAction(UpdateRollbackActionKind.RestoreBackup, step.RelativePath));
+            if (progress[index].BackedUp) actions.Add(new UpdateRollbackAction(UpdateRollbackActionKind.RestoreBackup, step.RelativePath, step.BackupRelativePath));
         }
         return actions;
     }

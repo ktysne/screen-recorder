@@ -128,13 +128,12 @@ internal sealed class UpdateService(DailyLog log)
 
     private static async Task<string> FetchManifestAsync(CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(UpdateManifestParser.ManifestUrl);
         // ResponseHeadersRead では HttpClient.Timeout が本文の読み取りに効かないため、読み切りまでを自前で打ち切る。
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ManifestTimeout);
         try
         {
-            using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            using var response = await SendWithAllowedRedirectsAsync(UpdateManifestParser.ManifestUrl, timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
             await using var streamScope = stream.ConfigureAwait(false);
@@ -156,12 +155,11 @@ internal sealed class UpdateService(DailyLog log)
 
     private async Task DownloadAsync(string url, string zipPath, IProgress<UpdateDownloadProgress> progress, CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(url);
         using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         stall.CancelAfter(DownloadStallTimeout);
         try
         {
-            using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token).ConfigureAwait(false);
+            using var response = await SendWithAllowedRedirectsAsync(url, stall.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;
             if (total > MaxPackageBytes) throw new UpdatePackageException("ダウンロードするファイルが大きすぎるため、中止しました。");
@@ -212,8 +210,37 @@ internal sealed class UpdateService(DailyLog log)
         return request;
     }
 
+    private static async Task<HttpResponseMessage> SendWithAllowedRedirectsAsync(string url, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var currentUri))
+            throw new UpdatePackageException("更新サーバーの URL が正しくありません。");
+
+        for (var redirectsFollowed = 0; ; redirectsFollowed++)
+        {
+            using var request = CreateRequest(currentUri.AbsoluteUri);
+            var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            if ((int)response.StatusCode is < 300 or > 399) return response;
+
+            Uri? location;
+            try { location = response.Headers.Location; }
+            catch (FormatException exception)
+            {
+                response.Dispose();
+                throw new UpdatePackageException("配布サーバーの転送先を確認できませんでした。", exception);
+            }
+            if (!UpdateRedirectPolicy.TryResolve(currentUri, location, redirectsFollowed, out var target, out var error))
+            {
+                response.Dispose();
+                throw new UpdatePackageException(error ?? "配布サーバーの転送先を確認できませんでした。");
+            }
+            response.Dispose();
+            currentUri = target!;
+        }
+    }
+
     private static HttpClient CreateClient() => new(new SocketsHttpHandler
     {
+        AllowAutoRedirect = false,
         AutomaticDecompression = DecompressionMethods.All,
         PooledConnectionLifetime = TimeSpan.FromMinutes(10)
     })

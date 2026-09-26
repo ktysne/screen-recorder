@@ -90,6 +90,7 @@ public sealed class UpdateCheckTests
     [InlineData(UpdateCheckKind.Skipped, UpdateCheckTrigger.Automatic, false)]
     [InlineData(UpdateCheckKind.Failed, UpdateCheckTrigger.Automatic, false)]
     [InlineData(UpdateCheckKind.Available, UpdateCheckTrigger.Manual, true)]
+    [InlineData(UpdateCheckKind.Skipped, UpdateCheckTrigger.Manual, true)]
     [InlineData(UpdateCheckKind.UpToDate, UpdateCheckTrigger.Manual, true)]
     [InlineData(UpdateCheckKind.Failed, UpdateCheckTrigger.Manual, true)]
     public void AutomaticCheckNotifiesOnlyAvailableVersion(UpdateCheckKind kind, UpdateCheckTrigger trigger, bool expected)
