@@ -19,24 +19,24 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal("ScreenRecorder_{date}_{time}", settings.FileNameTemplate);
         Assert.False(settings.OrganizeByMonth);
         Assert.Equal(StillImageFormat.Jpeg, settings.ImageFormat);
-        Assert.Equal(SettingsSchema.JpegQuality.Default, settings.JpegQuality);
+        Assert.Equal(98, settings.JpegQuality);
         Assert.Equal(PngCompression.Standard, settings.PngCompression);
         Assert.True(settings.CopyImageToClipboard);
         Assert.False(settings.CaptureImageCursor);
-        Assert.Equal(SettingsSchema.CaptureDelaySeconds.Default, settings.CaptureDelaySeconds);
+        Assert.Equal(0, settings.CaptureDelaySeconds);
         Assert.Equal(CaptureAfterAction.None, settings.AfterCaptureAction);
-        Assert.Equal(SettingsSchema.FrameRate.Default, settings.FrameRate);
-        Assert.Equal(SettingsSchema.VideoBitrateMbps.Default, settings.VideoBitrateMbps);
+        Assert.Equal(30, settings.FrameRate);
+        Assert.Equal(12, settings.VideoBitrateMbps);
         Assert.True(settings.CaptureVideoCursor);
-        Assert.Equal(SettingsSchema.CountdownSeconds.Default, settings.CountdownSeconds);
-        Assert.Equal(SettingsSchema.OutputScalePercent.Default, settings.OutputScalePercent);
+        Assert.Equal(3, settings.CountdownSeconds);
+        Assert.Equal(100, settings.OutputScalePercent);
         Assert.False(settings.HighlightClicks);
         Assert.Equal(EncoderMode.Automatic, settings.Encoder);
         Assert.True(settings.CaptureSystemAudio);
         Assert.False(settings.CaptureMicrophone);
         Assert.Equal(AudioFormat.Aac, settings.AudioFormat);
-        Assert.Equal(SettingsSchema.AacBitrateKbps.Default, settings.AacBitrateKbps);
-        Assert.Equal(SettingsSchema.Mp3BitrateKbps.Default, settings.Mp3BitrateKbps);
+        Assert.Equal(192, settings.AacBitrateKbps);
+        Assert.Equal(192, settings.Mp3BitrateKbps);
         Assert.Equal(new[] { "PrtSc", "Ctrl+PrtSc", "Alt+PrtSc", "Shift+PrtSc", "Ctrl+Shift+PrtSc", "Alt+Shift+PrtSc", "" }, new[]
         {
             settings.ScreenshotRegionShortcut, settings.ScreenshotFullScreenShortcut, settings.ScreenshotWindowShortcut,
@@ -220,6 +220,27 @@ public sealed class SettingsRepositoryTests : IDisposable
             Assert.True(setting.IsValid(setting.Default), setting.Name);
             Assert.Equal(setting.Default, setting.Get(settings));
         }
+    }
+
+    [Theory]
+    [InlineData(nameof(Settings.CaptureDelaySeconds), new[] { 0, 3, 5, 10 })]
+    [InlineData(nameof(Settings.FrameRate), new[] { 15, 24, 30, 60 })]
+    [InlineData(nameof(Settings.CountdownSeconds), new[] { 0, 3, 5 })]
+    [InlineData(nameof(Settings.OutputScalePercent), new[] { 100, 75, 50 })]
+    [InlineData(nameof(Settings.Mp3BitrateKbps), new[] { 128, 192, 256, 320 })]
+    public void ChoicesMatchDesign(string settingName, int[] expected)
+    {
+        var setting = SettingsSchema.IntSettings.OfType<IntChoiceSetting>().Single(item => item.Name == settingName);
+        Assert.Equal(expected, setting.Choices);
+    }
+
+    [Theory]
+    [InlineData(nameof(Settings.JpegQuality), 1, 100)]
+    [InlineData(nameof(Settings.VideoBitrateMbps), 1, 100)]
+    public void RangesMatchDesign(string settingName, int min, int max)
+    {
+        var setting = SettingsSchema.IntSettings.OfType<IntRangeSetting>().Single(item => item.Name == settingName);
+        Assert.Equal((min, max), (setting.Min, setting.Max));
     }
 
     [Fact]
