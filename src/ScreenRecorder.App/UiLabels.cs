@@ -224,4 +224,31 @@ public static class UiLabels
     };
 
     public static string ShortcutEnabledAccessibleName(RecorderAction action) => $"{ShortcutActionName(action)}を有効にする";
+
+    public static string RecordingStateName(VideoRecordingState state) => state switch
+    {
+        VideoRecordingState.Idle => string.Empty,
+        VideoRecordingState.Countdown => "録画開始前",
+        VideoRecordingState.Preparing => RecordingPreparing,
+        VideoRecordingState.Recording => "録画中",
+        VideoRecordingState.Paused => "一時停止中",
+        VideoRecordingState.Saving => "保存中",
+        _ => throw new ArgumentOutOfRangeException(nameof(state))
+    };
+
+    public static string TrayRecordingStatus(VideoRecordingState state) => state == VideoRecordingState.Idle
+        ? AppName
+        : $"{AppName} ({RecordingStateName(state)})";
+
+    public static string RecordingToolbarStatus(VideoRecordingState state, TimeSpan elapsed)
+    {
+        var duration = $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+        return state switch
+        {
+            VideoRecordingState.Recording or VideoRecordingState.Paused => $"{RecordingStateName(state)}  {duration}",
+            VideoRecordingState.Preparing or VideoRecordingState.Saving or VideoRecordingState.Countdown => RecordingStateName(state),
+            VideoRecordingState.Idle => $"{RecordingStateName(VideoRecordingState.Recording)}  {duration}",
+            _ => throw new ArgumentOutOfRangeException(nameof(state))
+        };
+    }
 }

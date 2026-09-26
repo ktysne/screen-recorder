@@ -236,6 +236,29 @@ public sealed class VideoRecordingRulesTests
     }
 
     [Fact]
+    public void RecordingUiActions_ReflectEachState()
+    {
+        var expected = new Dictionary<VideoRecordingState, (bool CanPauseOrResume, bool CanStop, bool ShowsResume)>
+        {
+            [VideoRecordingState.Idle] = (false, false, false),
+            [VideoRecordingState.Countdown] = (false, true, false),
+            [VideoRecordingState.Preparing] = (false, true, false),
+            [VideoRecordingState.Recording] = (true, true, false),
+            [VideoRecordingState.Paused] = (true, true, true),
+            [VideoRecordingState.Saving] = (false, false, false)
+        };
+
+        Assert.Equal(Enum.GetValues<VideoRecordingState>(), expected.Keys);
+        foreach (var state in Enum.GetValues<VideoRecordingState>())
+        {
+            var actions = expected[state];
+            Assert.Equal(actions.CanPauseOrResume, RecordingUiActions.CanRequestPauseOrResume(state));
+            Assert.Equal(actions.CanStop, RecordingUiActions.CanRequestStop(state));
+            Assert.Equal(actions.ShowsResume, RecordingUiActions.ShowsResume(state));
+        }
+    }
+
+    [Fact]
     public void RecordingCommandsAfterEngineIsReady_AreReturnedForImmediateExecution()
     {
         var machine = CreateRecordingMachine();
