@@ -561,7 +561,7 @@ internal sealed class SettingsForm : Form
         enumerationFailed = false;
         try
         {
-            choices.AddRange(Recorder.GetSystemAudioCaptureDevices()
+            choices.AddRange(AudioEndpoints.GetCaptureDevices()
                 .Select(device => ($"{device.FriendlyName} ({device.ID})", (string?)device.ID)));
         }
         catch (Exception exception)

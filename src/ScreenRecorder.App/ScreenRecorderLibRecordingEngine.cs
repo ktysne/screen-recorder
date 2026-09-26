@@ -60,13 +60,13 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         var loopbackAvailable = false;
         if (request.CaptureSystemAudio)
         {
-            try { loopbackAvailable = Recorder.GetSystemAudioLoopbackDevices().Any(device => device.IsDefaultDevice); }
+            try { loopbackAvailable = AudioEndpoints.GetLoopbackDevices().Any(device => device.IsDefaultDevice); }
             catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"PC の音声デバイスを列挙できませんでした: {exception}"); }
         }
         var microphoneDevices = new List<RecordableAudioCaptureDevice>();
         if (request.CaptureMicrophone)
         {
-            try { microphoneDevices = Recorder.GetSystemAudioCaptureDevices(); }
+            try { microphoneDevices = AudioEndpoints.GetCaptureDevices(); }
             catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"マイクを列挙できませんでした: {exception}"); }
         }
         var microphoneAvailable = !request.CaptureMicrophone || (request.MicrophoneDeviceId is null
