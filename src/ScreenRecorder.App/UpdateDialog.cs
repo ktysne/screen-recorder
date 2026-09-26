@@ -18,6 +18,7 @@ internal sealed class UpdateDialog : Form
     private readonly Button _distributionPageButton = new() { Text = UiLabels.OpenDistributionPage, AutoSize = true, MinimumSize = new Size(96, 30), Visible = false };
     private readonly Button _skipButton = new() { Text = UiLabels.UpdateSkipVersion, AutoSize = true, MinimumSize = new Size(96, 30) };
     private readonly Font _headingFont;
+    private readonly Icon _appIcon = AppIcon.Create(SystemInformation.IconSize);
     private readonly bool _installWritable;
     private Phase _phase = Phase.Ready;
     private string? _busyReason;
@@ -39,10 +40,12 @@ internal sealed class UpdateDialog : Form
         _headingFont = new Font(Font.FontFamily, 12f, FontStyle.Bold);
         Text = UiLabels.UpdateDialogTitle;
         AutoScaleMode = AutoScaleMode.Dpi;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        // FixedDialog ではタイトルバーにアイコンが出ないため、固定サイズの通常の枠にする。
+        FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = true;
+        Icon = _appIcon;
         StartPosition = FormStartPosition.CenterScreen;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -102,6 +105,8 @@ internal sealed class UpdateDialog : Form
             _statusIcon.Image?.Dispose();
         }
         base.Dispose(disposing);
+        // ウィンドウはタイトルバーのアイコンを破棄まで使うため、ウィンドウの後に破棄する。
+        if (disposing) _appIcon.Dispose();
     }
 
     private void BuildLayout(string currentVersion, string installDirectory)

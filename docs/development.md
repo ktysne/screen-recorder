@@ -16,6 +16,15 @@ dotnet test ScreenRecorder.slnx
 
 `tests/ScreenRecorder.Capture.Tests` は GPU と Media Foundation を使うため、Windows の実機で実行してください。
 
+## アプリのアイコン
+
+`src/ScreenRecorder.App/app.ico` は `assets/screen-recorder-a1-transparent.png` から作ります。
+素材を差し替えたときは、Pillow を入れた Python で次のコマンドを実行し、できた `app.ico` をコミットします。
+
+```powershell
+python tools/make-app-icon.py
+```
+
 ## 配布前の準備
 
 Node.js 22.15 以降をインストールし、リポジトリのルートで依存をインストールします。
