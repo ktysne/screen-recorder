@@ -78,6 +78,57 @@ public sealed class UpdateCheckTests
         Assert.False(string.IsNullOrWhiteSpace(result.Error));
     }
 
+    [Theory]
+    [InlineData(UpdateCheckTrigger.Manual, "手動", DiagnosticLogLevel.Error)]
+    [InlineData(UpdateCheckTrigger.Automatic, "自動", DiagnosticLogLevel.Warn)]
+    public void UpdateCheckLogUsesTriggerSpecificNameAndFailureLevel(
+        UpdateCheckTrigger trigger,
+        string expectedName,
+        DiagnosticLogLevel expectedLevel)
+    {
+        Assert.Equal(expectedName, UpdateCheckLog.TriggerName(trigger));
+        Assert.Equal(expectedLevel, UpdateCheckLog.FailureLevel(trigger));
+    }
+
+    [Theory]
+    [InlineData(UpdateCheckTrigger.Manual, "詳細", "更新の確認に失敗しました: きっかけ=手動; 詳細")]
+    [InlineData(UpdateCheckTrigger.Automatic, "詳細", "更新の確認に失敗しました: きっかけ=自動; 詳細")]
+    public void UpdateCheckLogFormatsFailureMessage(UpdateCheckTrigger trigger, string detail, string expected)
+    {
+        Assert.Equal(expected, UpdateCheckLog.FailureMessage(trigger, detail));
+    }
+
+    [Theory]
+    [InlineData(UpdateCheckKind.Available, "あり")]
+    [InlineData(UpdateCheckKind.Skipped, "あり")]
+    [InlineData(UpdateCheckKind.UpToDate, "なし")]
+    public void UpdateCheckLogFormatsCompletedMessage(UpdateCheckKind kind, string expectedAvailability)
+    {
+        var result = new UpdateCheckResult(kind, new UpdateManifest(new UpdateVersion(0, 2, 0), "https://ktysne.info/screen-recorder/a.zip", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", null), null);
+
+        Assert.Equal(
+            $"更新の確認が完了しました: きっかけ=自動、新しい版={expectedAvailability}、現在の版=0.1.0、最新の版=0.2.0。",
+            UpdateCheckLog.CompletedMessage(UpdateCheckTrigger.Automatic, result, "0.1.0"));
+    }
+
+    [Fact]
+    public void FailedResultKeepsDiagnosticDetailSeparateFromUserError()
+    {
+        var result = UpdateCheckResult.Failed("利用者向けの説明", "例外の詳細");
+
+        Assert.Equal("利用者向けの説明", result.Error);
+        Assert.Equal("例外の詳細", result.DiagnosticDetail);
+    }
+
+    [Fact]
+    public void FailedResultDiagnosticDetailIsOptional()
+    {
+        var result = UpdateCheckResult.Failed("利用者向けの説明");
+
+        Assert.Equal("利用者向けの説明", result.Error);
+        Assert.Null(result.DiagnosticDetail);
+    }
+
     [Fact]
     public void UnknownCurrentVersionFails()
     {

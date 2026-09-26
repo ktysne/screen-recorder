@@ -104,9 +104,10 @@ internal sealed class UpdateController : IDisposable
         try
         {
             var result = await _service.CheckAsync(_getSettings().SkippedUpdateVersion, trigger, _lifetime.Token);
-            if (_disposed) return;
             if (trigger == UpdateCheckTrigger.Automatic) _lastAutomaticCheckFailed = result.Kind == UpdateCheckKind.Failed;
             trigger = ConsumeManualCheckRequest(trigger);
+            UpdateCheckLog.Log(trigger, result, AppVersion.Current);
+            if (_disposed) return;
             HandleCheckResult(result, trigger);
         }
         catch (OperationCanceledException) when (_disposed)
@@ -116,9 +117,7 @@ internal sealed class UpdateController : IDisposable
         {
             if (trigger == UpdateCheckTrigger.Automatic) _lastAutomaticCheckFailed = true;
             trigger = ConsumeManualCheckRequest(trigger);
-            var message = $"更新の確認に失敗しました: きっかけ={TriggerName(trigger)}; {exception}";
-            if (trigger == UpdateCheckTrigger.Manual) DiagnosticLog.Error(DiagnosticLogTags.Update, message);
-            else DiagnosticLog.Warn(DiagnosticLogTags.Update, message);
+            UpdateCheckLog.LogFailure(trigger, exception.ToString());
             if (!_disposed && trigger == UpdateCheckTrigger.Manual)
                 _notify(string.Format(UiLabels.UpdateCheckFailed, "予期しないエラーが発生しました。"), ToolTipIcon.Warning, false);
         }
@@ -317,6 +316,4 @@ internal sealed class UpdateController : IDisposable
             return false;
         }
     }
-
-    private static string TriggerName(UpdateCheckTrigger trigger) => trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
 }

@@ -55,22 +55,9 @@ internal sealed class UpdateService
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            var triggerName = trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
-            LogCheckFailure(trigger, $"更新の確認に失敗しました: きっかけ={triggerName}; {exception}");
-            return UpdateCheckResult.Failed(DescribeNetworkFailure(exception));
+            return UpdateCheckResult.Failed(DescribeNetworkFailure(exception), exception.ToString());
         }
-        var result = UpdateCheckEvaluator.Evaluate(AppVersion.Current, json, skippedVersion, trigger);
-        var checkTrigger = trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
-        if (result.Kind == UpdateCheckKind.Failed)
-        {
-            LogCheckFailure(trigger, $"更新の確認に失敗しました: きっかけ={checkTrigger}; {result.Error}");
-        }
-        else
-        {
-            var hasNewVersion = result.Kind is UpdateCheckKind.Available or UpdateCheckKind.Skipped;
-            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新の確認が完了しました: きっかけ={checkTrigger}、新しい版={(hasNewVersion ? "あり" : "なし")}、現在の版={AppVersion.Current}、最新の版={result.Manifest?.Version}。");
-        }
-        return result;
+        return UpdateCheckEvaluator.Evaluate(AppVersion.Current, json, skippedVersion, trigger);
     }
 
     /// <summary>ダウンロード、SHA-256 の照合、展開を行う。失敗の理由は <see cref="UpdatePackageException"/> で返す。</summary>
@@ -291,9 +278,4 @@ internal sealed class UpdateService
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新用フォルダーを削除できませんでした: フォルダー={path}; {exception.Message}"); }
     }
 
-    private static void LogCheckFailure(UpdateCheckTrigger trigger, string message)
-    {
-        if (trigger == UpdateCheckTrigger.Manual) DiagnosticLog.Error(DiagnosticLogTags.Update, message);
-        else DiagnosticLog.Warn(DiagnosticLogTags.Update, message);
-    }
 }
