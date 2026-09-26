@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Drawing.Drawing2D;
 using System.Media;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -14,18 +13,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly SettingsRepository _settingsRepository;
     private readonly AutoStartSynchronizer _autoStartSynchronizer;
     private readonly NotifyIcon _tray;
-    private readonly ContextMenuStrip _menu;
+    private readonly TrayMenu _menu;
     private readonly HotkeyManager _hotkeyManager;
     private readonly ScreenshotCaptureService _screenshotCaptureService;
-    private readonly Icon _idleTrayIcon;
-    private readonly Icon _recordingTrayIcon;
-    private readonly Icon _pausedTrayIcon;
-    private readonly Icon _savingTrayIcon;
-    private readonly Control _uiDispatcher;
+    private readonly UiDispatcher _uiDispatcher;
+    private readonly TrayIcons _trayIcons;
+    private readonly CaptureNotifier _captureNotifier;
     private readonly VideoRecordingStateMachine _recordingState = new();
     private readonly IVideoRecordingPostProcessor _videoPostProcessor;
-    private readonly Dictionary<RecorderAction, ToolStripMenuItem> _shortcutMenuItems = [];
-    private readonly Dictionary<RecorderAction, ToolStripMenuItem> _captureMenuParents = [];
     private Settings _settings;
     private SettingsForm? _settingsForm;
     private bool _screenshotCaptureInProgress;
@@ -33,7 +28,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool _exitRequested;
     private bool _recordingFailureFinalizationStarted;
     private bool _systemSleepInhibited;
-    private string? _pendingCapturePath;
     private System.Windows.Forms.Timer? _startupNotificationTimer;
     private System.Windows.Forms.Timer? _leftoverRecordingNotificationTimer;
     private System.Windows.Forms.Timer? _recordingTimer;
@@ -45,10 +39,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private IRecordingEngine? _recordingEngine;
     private ActiveRecording? _activeRecording;
     private Stopwatch? _recordingStopwatch;
-    private ToolStripMenuItem? _pauseResumeItem;
-    private ToolStripMenuItem? _stopRecordingItem;
     private readonly UpdateController _updateController;
-    private bool _pendingUpdateNotification;
     private System.Windows.Forms.Timer? _updateCompletedNotificationTimer;
 
     private sealed record ActiveRecording(
@@ -70,24 +61,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
         string executablePath,
         bool startedAfterUpdate)
     {
+        _uiDispatcher = new UiDispatcher();
         _settings = settings.Clone();
         _videoPostProcessor = new FfmpegVideoRecordingPostProcessor();
         _settingsRepository = settingsRepository;
         _autoStartSynchronizer = autoStartSynchronizer;
-        _uiDispatcher = new Control();
-        _ = _uiDispatcher.Handle;
         _screenshotCaptureService = new ScreenshotCaptureService();
-        _menu = CreateMenu();
-        _idleTrayIcon = CreateIcon(TrayIconState.Idle);
-        _recordingTrayIcon = CreateIcon(TrayIconState.Recording);
-        _pausedTrayIcon = CreateIcon(TrayIconState.Paused);
-        _savingTrayIcon = CreateIcon(TrayIconState.Saving);
-        _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = _idleTrayIcon, ContextMenuStrip = _menu, Visible = true };
+        _menu = new TrayMenu(PerformAction, PerformMenuCommand);
+        _trayIcons = new TrayIcons();
+        _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = _trayIcons.Idle, ContextMenuStrip = _menu.Strip, Visible = true };
+        _captureNotifier = new CaptureNotifier(_tray, OpenNotifiedUpdate);
         _tray.DoubleClick += (_, _) => ShowSettings();
-        _tray.BalloonTipClicked += (_, _) => HandleBalloonClicked();
+        _tray.BalloonTipClicked += (_, _) => _captureNotifier.HandleBalloonClicked();
         _hotkeyManager = new HotkeyManager(PerformHotkeyAction);
         var failures = _hotkeyManager.Replace(_settings);
-        UpdateShortcutMenuLabels();
+        _menu.ApplyShortcutAssignments(_settings);
         ReportHotkeyFailures(failures, startup: true);
         ReportIncompleteRecordings();
         SystemEvents.PowerModeChanged += HandlePowerModeChanged;
@@ -98,7 +86,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             () => _settings,
             SaveSkippedUpdateVersion,
             GetUpdateBlockedReason,
-            ShowUpdateNotification,
+            _captureNotifier.ShowForUpdate,
             RequestExit);
         _ = UpdateCleanup.RunAsync(installDirectory);
         if (startedAfterUpdate) ScheduleUpdateCompletedNotification();
@@ -129,55 +117,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _hotkeyManager.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
-        _idleTrayIcon.Dispose();
-        _recordingTrayIcon.Dispose();
-        _pausedTrayIcon.Dispose();
-        _savingTrayIcon.Dispose();
-        _uiDispatcher.Dispose();
+        _trayIcons.Dispose();
         _menu.Dispose();
+        _uiDispatcher.Dispose();
         base.ExitThreadCore();
-    }
-
-    private ContextMenuStrip CreateMenu()
-    {
-        var menu = new ContextMenuStrip { ShowItemToolTips = true };
-        menu.Items.Add(CreateCaptureMenu(UiLabels.Screenshot,
-            RecorderAction.ScreenshotFullScreen, RecorderAction.ScreenshotRegion, RecorderAction.ScreenshotWindow));
-        menu.Items.Add(CreateCaptureMenu(UiLabels.Record,
-            RecorderAction.RecordingFullScreen, RecorderAction.RecordingRegion, RecorderAction.RecordingWindow));
-        _pauseResumeItem = CreateActionItem(UiLabels.PauseResume, RecorderAction.PauseResume);
-        _pauseResumeItem.Enabled = false;
-        menu.Items.Add(_pauseResumeItem);
-        _stopRecordingItem = CreateActionItem(UiLabels.StopRecording, RecorderAction.StopRecording);
-        _stopRecordingItem.Enabled = false;
-        menu.Items.Add(_stopRecordingItem);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.OpenImageFolder, null, (_, _) => OpenFolder(_settings.StillImageDirectory)));
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.OpenVideoFolder, null, (_, _) => OpenFolder(_settings.VideoDirectory)));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.Settings, null, (_, _) => ShowSettings()));
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.Manual, null, (_, _) => OpenManual()));
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.CheckForUpdates, null, (_, _) => _updateController.CheckManually()));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.Exit, null, (_, _) => RequestExit()));
-        return menu;
-    }
-
-    private ToolStripMenuItem CreateCaptureMenu(string label, RecorderAction full, RecorderAction region, RecorderAction window)
-    {
-        var item = new ToolStripMenuItem(label);
-        foreach (var action in new[] { full, region, window }) _captureMenuParents[action] = item;
-        item.DropDownItems.Add(CreateActionItem(UiLabels.FullDisplay, full));
-        item.DropDownItems.Add(CreateActionItem(UiLabels.SelectRegion, region));
-        item.DropDownItems.Add(CreateActionItem(UiLabels.SelectWindow, window));
-        return item;
-    }
-
-    private ToolStripMenuItem CreateActionItem(string label, RecorderAction action)
-    {
-        var item = new ToolStripMenuItem(label, null, (_, _) => PerformAction(action));
-        _shortcutMenuItems[action] = item;
-        return item;
     }
 
     private void ShowSettings()
@@ -220,27 +163,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         var failures = _hotkeyManager.Replace(_settings);
-        UpdateShortcutMenuLabels();
+        _menu.ApplyShortcutAssignments(_settings);
         ReportHotkeyFailures(failures, startup: false);
         return true;
-    }
-
-    private void UpdateShortcutMenuLabels()
-    {
-        foreach (var assignment in ShortcutSettingsValidator.GetAssignments(_settings))
-        {
-            if (!_shortcutMenuItems.TryGetValue(assignment.Action, out var item)) continue;
-            if (assignment.Action != RecorderAction.PauseResume)
-            {
-                item.Enabled = assignment.Enabled;
-                item.ToolTipText = assignment.Enabled ? string.Empty : UiLabels.ShortcutDisabledToolTip;
-            }
-            item.ShortcutKeyDisplayString = HotkeyShortcut.TryParse(assignment.Notation, out var shortcut) && shortcut is not null
-                ? shortcut.ToDisplayString()
-                : string.Empty;
-        }
-        foreach (var parent in _captureMenuParents.Values.Distinct())
-            parent.Enabled = parent.DropDownItems.Cast<ToolStripMenuItem>().Any(item => item.Enabled);
     }
 
     private void PerformHotkeyAction(RecorderAction action)
@@ -249,6 +174,33 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (assignment is null || !assignment.Enabled) return;
         PerformAction(action);
     }
+
+    private void PerformMenuCommand(TrayMenuCommand command)
+    {
+        switch (command)
+        {
+            case TrayMenuCommand.OpenImageFolder:
+                OpenFolder(_settings.StillImageDirectory);
+                break;
+            case TrayMenuCommand.OpenVideoFolder:
+                OpenFolder(_settings.VideoDirectory);
+                break;
+            case TrayMenuCommand.Settings:
+                ShowSettings();
+                break;
+            case TrayMenuCommand.Manual:
+                OpenManual();
+                break;
+            case TrayMenuCommand.CheckForUpdates:
+                _updateController.CheckManually();
+                break;
+            case TrayMenuCommand.Exit:
+                RequestExit();
+                break;
+        }
+    }
+
+    private void OpenNotifiedUpdate() => _updateController.OpenNotifiedUpdate();
 
     private void ReportHotkeyFailures(IReadOnlyList<HotkeyFailure> failures, bool startup)
     {
@@ -333,7 +285,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (_screenshotCaptureInProgress) return;
             _screenshotCaptureInProgress = true;
             _updateController.RefreshBusyState();
-            _pendingCapturePath = null;
+            _captureNotifier.ClearPendingCapture();
             var captureSettings = _settings.Clone();
             try
             {
@@ -770,36 +722,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ShowCaptureNotification(5000, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
     }
 
-    private void ShowNotification(int timeout, string title, string message, ToolTipIcon icon)
-    {
-        _pendingCapturePath = null;
-        _pendingUpdateNotification = false;
-        _tray.ShowBalloonTip(timeout, title, message, icon);
-    }
+    private void ShowNotification(int timeout, string title, string message, ToolTipIcon icon) =>
+        _captureNotifier.Show(timeout, title, message, icon);
 
-    private void ShowCaptureNotification(int timeout, string title, string message, ToolTipIcon icon, string? path)
-    {
-        _pendingCapturePath = path;
-        _pendingUpdateNotification = false;
-        _tray.ShowBalloonTip(timeout, title, message, icon);
-    }
-
-    private void ShowUpdateNotification(string message, ToolTipIcon icon, bool opensUpdateDialog)
-    {
-        ShowNotification(icon == ToolTipIcon.Info ? 4000 : 6000, UiLabels.AppName, message, icon);
-        _pendingUpdateNotification = opensUpdateDialog;
-    }
-
-    private void HandleBalloonClicked()
-    {
-        if (_pendingUpdateNotification)
-        {
-            _pendingUpdateNotification = false;
-            _updateController.OpenNotifiedUpdate();
-            return;
-        }
-        OpenPendingCaptureLocation();
-    }
+    private void ShowCaptureNotification(int timeout, string title, string message, ToolTipIcon icon, string? path) =>
+        _captureNotifier.ShowForCapture(timeout, title, message, icon, path);
 
     private string? GetUpdateBlockedReason()
     {
@@ -977,21 +904,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void UpdateRecordingUi()
     {
         var state = _recordingState.State;
-        if (_pauseResumeItem is not null)
-        {
-            _pauseResumeItem.Text = state == VideoRecordingState.Paused ? UiLabels.ResumeRecording : UiLabels.PauseRecording;
-            _pauseResumeItem.Enabled = state is VideoRecordingState.Recording or VideoRecordingState.Paused;
-        }
-        if (_stopRecordingItem is not null)
-            _stopRecordingItem.Enabled = state is VideoRecordingState.Countdown or VideoRecordingState.Recording or VideoRecordingState.Paused;
-
-        _tray.Icon = state switch
-        {
-            VideoRecordingState.Recording => _recordingTrayIcon,
-            VideoRecordingState.Paused => _pausedTrayIcon,
-            VideoRecordingState.Saving => _savingTrayIcon,
-            _ => _idleTrayIcon
-        };
+        _menu.ApplyRecordingState(state);
+        _tray.Icon = _trayIcons.For(state);
         _tray.Text = state switch
         {
             VideoRecordingState.Recording => "ScreenRecorder (録画中)",
@@ -1027,12 +941,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         });
     }
 
-    private void DispatchToUi(Action action)
-    {
-        if (_uiDispatcher.IsDisposed || !_uiDispatcher.IsHandleCreated) return;
-        try { _uiDispatcher.BeginInvoke(action); }
-        catch (InvalidOperationException) { }
-    }
+    private void DispatchToUi(Action action) => _uiDispatcher.Post(action);
 
     private bool CheckRecordingSpace(string videoDirectory)
     {
@@ -1199,23 +1108,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.ScreenshotSavedNotification, ToolTipIcon.Info, result.FilePath);
     }
 
-    private void OpenPendingCaptureLocation()
-    {
-        var path = _pendingCapturePath;
-        if (path is null || !File.Exists(path)) return;
-        try
-        {
-            var start = new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true };
-            using (Process.Start(start)) { }
-        }
-        catch (Exception exception)
-        {
-            DiagnosticLog.Error(DiagnosticLogTags.App, $"撮影したファイルの場所を開けませんでした: ファイル={path}; {exception}");
-            ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
-        }
-    }
-
-
     private void OpenManual()
     {
         try { BundledDocument.Open(BundledDocument.ManualFileName); }
@@ -1246,90 +1138,4 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private enum TrayIconState
-    {
-        Idle,
-        Recording,
-        Paused,
-        Saving
-    }
-
-    private static Icon CreateIcon(TrayIconState state)
-    {
-        // 待機中だけアプリの図柄にする。図柄にも赤い丸があるため、録画中などに印を重ねると小さいトレイでは見分けにくい。
-        if (state == TrayIconState.Idle) return AppIcon.Create(SystemInformation.SmallIconSize);
-        var color = state switch
-        {
-            TrayIconState.Recording => Color.Firebrick,
-            TrayIconState.Paused => Color.DarkOrange,
-            TrayIconState.Saving => Color.DimGray,
-            _ => Color.FromArgb(35, 110, 190)
-        };
-        using var bitmap = new Bitmap(32, 32);
-        using var indicator = new Pen(Color.White, 2);
-        using (var graphics = Graphics.FromImage(bitmap))
-        using (var brush = new SolidBrush(color))
-        using (var border = new Pen(Color.White, 2))
-        {
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.Clear(Color.Transparent);
-            graphics.FillRoundedRectangle(brush, new Rectangle(2, 2, 28, 28), 6);
-            graphics.DrawRoundedRectangle(border, new Rectangle(2, 2, 28, 28), 6);
-            switch (state)
-            {
-                case TrayIconState.Recording:
-                    graphics.FillEllipse(Brushes.White, 11, 11, 10, 10);
-                    break;
-                case TrayIconState.Paused:
-                    graphics.FillRectangle(Brushes.White, 9, 9, 5, 14);
-                    graphics.FillRectangle(Brushes.White, 18, 9, 5, 14);
-                    break;
-                case TrayIconState.Saving:
-                    graphics.DrawRectangle(indicator, 9, 9, 14, 14);
-                    graphics.DrawLine(Pens.White, 16, 12, 16, 16);
-                    graphics.DrawLine(Pens.White, 16, 16, 20, 18);
-                    break;
-                default:
-                    graphics.DrawRectangle(Pens.White, 9, 9, 14, 14);
-                    break;
-            }
-        }
-        var iconHandle = bitmap.GetHicon();
-        try
-        {
-            using var icon = Icon.FromHandle(iconHandle);
-            return (Icon)icon.Clone();
-        }
-        finally
-        {
-            NativeMethods.DestroyIcon(iconHandle);
-        }
-    }
-}
-
-internal static class GraphicsExtensions
-{
-    public static void FillRoundedRectangle(this Graphics graphics, Brush brush, Rectangle bounds, int radius)
-    {
-        using var path = RoundedRectangle(bounds, radius);
-        graphics.FillPath(brush, path);
-    }
-
-    public static void DrawRoundedRectangle(this Graphics graphics, Pen pen, Rectangle bounds, int radius)
-    {
-        using var path = RoundedRectangle(bounds, radius);
-        graphics.DrawPath(pen, path);
-    }
-
-    private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
-    {
-        var diameter = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
 }
