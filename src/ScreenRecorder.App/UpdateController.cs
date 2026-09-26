@@ -20,6 +20,7 @@ internal sealed class UpdateController : IDisposable
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = (int)PollInterval.TotalMilliseconds };
     private readonly CancellationTokenSource _lifetime = new();
     private TimeSpan? _lastAutomaticCheck;
+    private bool _lastAutomaticCheckFailed;
     private bool _checking;
     private bool _manualCheckRequested;
     private UpdateDialog? _dialog;
@@ -91,8 +92,9 @@ internal sealed class UpdateController : IDisposable
     {
         if (_disposed || _checking || _dialog is { IsDisposed: false }) return;
         var elapsed = TimeSpan.FromMilliseconds(Environment.TickCount64 - _startedAtTickCount);
-        if (!UpdateCheckSchedule.IsAutomaticCheckDue(_getSettings().CheckForUpdatesAutomatically, elapsed, _lastAutomaticCheck)) return;
+        if (!UpdateCheckSchedule.IsAutomaticCheckDue(_getSettings().CheckForUpdatesAutomatically, elapsed, _lastAutomaticCheck, _lastAutomaticCheckFailed)) return;
         _lastAutomaticCheck = elapsed;
+        _lastAutomaticCheckFailed = false;
         _ = CheckAsync(UpdateCheckTrigger.Automatic);
     }
 
@@ -103,6 +105,7 @@ internal sealed class UpdateController : IDisposable
         {
             var result = await _service.CheckAsync(_getSettings().SkippedUpdateVersion, trigger, _lifetime.Token);
             if (_disposed) return;
+            if (trigger == UpdateCheckTrigger.Automatic) _lastAutomaticCheckFailed = result.Kind == UpdateCheckKind.Failed;
             trigger = ConsumeManualCheckRequest(trigger);
             HandleCheckResult(result, trigger);
         }
@@ -111,6 +114,7 @@ internal sealed class UpdateController : IDisposable
         }
         catch (Exception exception)
         {
+            if (trigger == UpdateCheckTrigger.Automatic) _lastAutomaticCheckFailed = true;
             trigger = ConsumeManualCheckRequest(trigger);
             var message = $"更新の確認に失敗しました: きっかけ={TriggerName(trigger)}; {exception}";
             if (trigger == UpdateCheckTrigger.Manual) DiagnosticLog.Error(DiagnosticLogTags.Update, message);

@@ -39,10 +39,16 @@ public static class UpdateCheckSchedule
     public static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
 
-    public static bool IsAutomaticCheckDue(bool enabled, TimeSpan elapsedSinceStart, TimeSpan? lastAutomaticCheckAt)
+    /// <summary>失敗の多くは起動直後の未接続のような一時的なものなので、失敗したときだけ短い間隔で試し直す。</summary>
+    public static readonly TimeSpan RetryIntervalAfterFailure = TimeSpan.FromHours(1);
+
+    /// <param name="lastAutomaticCheckFailed">直前の自動の確認が「確認できなかった」で終わったか。確認中は false として渡す。</param>
+    public static bool IsAutomaticCheckDue(bool enabled, TimeSpan elapsedSinceStart, TimeSpan? lastAutomaticCheckAt, bool lastAutomaticCheckFailed)
     {
         if (!enabled) return false;
-        var due = lastAutomaticCheckAt is { } last ? last + Interval : InitialDelay;
+        var due = lastAutomaticCheckAt is { } last
+            ? last + (lastAutomaticCheckFailed ? RetryIntervalAfterFailure : Interval)
+            : InitialDelay;
         return elapsedSinceStart >= due;
     }
 }
