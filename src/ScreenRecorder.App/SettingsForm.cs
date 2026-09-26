@@ -639,13 +639,14 @@ internal sealed class SettingsForm : Form
     private void UpdateEnablement()
     {
         if (_imageFormat is null || _audioFormat is null || _microphoneEnabled is null) return;
+        // 欄ごとの条件で無効にしたものを戻さないよう、音声の欄全体の有効化は先に行う。
+        foreach (var control in _audioControls) control.Enabled = true;
         foreach (var control in _jpegControls) control.Enabled = (StillImageFormat?)SelectedValue<StillImageFormat>(_imageFormat) == StillImageFormat.Jpeg;
         foreach (var control in _pngControls) control.Enabled = (StillImageFormat?)SelectedValue<StillImageFormat>(_imageFormat) == StillImageFormat.Png;
         foreach (var control in _aacControls) control.Enabled = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Aac;
         foreach (var control in _mp3Controls) control.Enabled = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Mp3;
         foreach (var control in _microphoneControls) control.Enabled = _microphoneEnabled.Checked && !_microphoneEnumerationFailed;
         _mp3Hint.Visible = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Mp3;
-        foreach (var control in _audioControls) control.Enabled = true;
         _videoTab.Enabled = !_isRecording();
     }
 
