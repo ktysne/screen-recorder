@@ -211,24 +211,83 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(55, repository.Load().JpegQuality);
     }
 
+    [Fact]
+    public void IntSettingDefaultsAreValidAndUsedBySettings()
+    {
+        var settings = new Settings();
+        foreach (var setting in SettingsSchema.IntSettings)
+        {
+            Assert.True(setting.IsValid(setting.Default), setting.Name);
+            Assert.Equal(setting.Default, setting.Get(settings));
+        }
+    }
+
     [Theory]
     [InlineData(nameof(Settings.CaptureDelaySeconds), new[] { 0, 3, 5, 10 })]
     [InlineData(nameof(Settings.FrameRate), new[] { 15, 24, 30, 60 })]
     [InlineData(nameof(Settings.CountdownSeconds), new[] { 0, 3, 5 })]
     [InlineData(nameof(Settings.OutputScalePercent), new[] { 100, 75, 50 })]
-    [InlineData(nameof(Settings.AacBitrateKbps), new[] { 96, 128, 160, 192 })]
     [InlineData(nameof(Settings.Mp3BitrateKbps), new[] { 128, 192, 256, 320 })]
-    public void EveryAllowedChoiceSurvivesSaveAndLoad(string propertyName, int[] allowedValues)
+    public void ChoicesMatchDesign(string settingName, int[] expected)
     {
-        var property = typeof(Settings).GetProperty(propertyName)!;
+        var setting = SettingsSchema.IntSettings.OfType<IntChoiceSetting>().Single(item => item.Name == settingName);
+        Assert.Equal(expected, setting.Choices);
+    }
+
+    [Theory]
+    [InlineData(nameof(Settings.JpegQuality), 1, 100)]
+    [InlineData(nameof(Settings.VideoBitrateMbps), 1, 100)]
+    public void RangesMatchDesign(string settingName, int min, int max)
+    {
+        var setting = SettingsSchema.IntSettings.OfType<IntRangeSetting>().Single(item => item.Name == settingName);
+        Assert.Equal((min, max), (setting.Min, setting.Max));
+    }
+
+    [Fact]
+    public void AacBitrateChoicesMatchRecordingLibraryValues()
+    {
+        // 録画ライブラリの音声ビットレート列挙はこの 4 値だけを持つ。
+        Assert.Equal(new[] { 96, 128, 160, 192 }, SettingsSchema.AacBitrateKbps.Choices);
+    }
+
+    [Fact]
+    public void EveryAllowedIntSettingValueSurvivesSaveAndLoad()
+    {
         var repository = new SettingsRepository(_directory);
-        foreach (var value in allowedValues)
+        foreach (var setting in SettingsSchema.IntSettings)
         {
-            var settings = new Settings();
-            property.SetValue(settings, value);
-            repository.Save(settings);
-            Assert.Equal(value, property.GetValue(repository.Load()));
+            var values = setting switch
+            {
+                IntChoiceSetting choice => choice.Choices,
+                IntRangeSetting range => Enumerable.Range(range.Min, range.Max - range.Min + 1),
+                _ => throw new InvalidOperationException($"未知の整数設定です: {setting.Name}")
+            };
+            foreach (var value in values)
+            {
+                var settings = new Settings();
+                setting.Set(settings, value);
+                repository.Save(settings);
+                Assert.Equal(value, setting.Get(repository.Load()));
+            }
         }
+    }
+
+    [Fact]
+    public void InvalidIntegerSettingDoesNotChangeExistingFileOrLeaveTemporaryFile()
+    {
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        var temporaryPath = settingsPath + ".tmp";
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { FrameRate = SettingsSchema.FrameRate.Default });
+        var originalContents = File.ReadAllText(settingsPath);
+        var invalidSettings = new Settings { OutputScalePercent = 60 };
+
+        var exception = Assert.Throws<ArgumentException>(() => repository.Save(invalidSettings));
+
+        Assert.Contains(nameof(Settings.OutputScalePercent), exception.Message);
+        Assert.Equal(originalContents, File.ReadAllText(settingsPath));
+        Assert.False(File.Exists(temporaryPath));
     }
 
     public void Dispose()

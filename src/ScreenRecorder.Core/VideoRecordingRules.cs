@@ -157,7 +157,7 @@ public sealed class VideoRecordingStateMachine
 
     public static RecordingDimensions? CalculateDimensions(int width, int height, int scalePercent)
     {
-        if (scalePercent is not (50 or 75 or 100)) throw new ArgumentOutOfRangeException(nameof(scalePercent));
+        if (!SettingsSchema.OutputScalePercent.IsValid(scalePercent)) throw new ArgumentOutOfRangeException(nameof(scalePercent));
 
         var sourceWidth = RoundDownToEven(width);
         var sourceHeight = RoundDownToEven(height);
