@@ -68,6 +68,10 @@ public static class UiLabels
     public const string PngCompression = "PNG の圧縮";
     public const string CopyImageToClipboard = "クリップボードへコピー";
     public const string CaptureImageCursor = "カーソルを写す";
+    public const string WindowScreenshotShortcutTarget = "ウィンドウ撮影のショートカット";
+    public const string WindowScreenshotActiveWindow = "アクティブなウィンドウを撮影";
+    public const string WindowScreenshotSelectWindow = "ウィンドウを選択して撮影";
+    public const string WindowScreenshotShortcutTargetHelp = "「スクリーンショット: ウィンドウを指定」のショートカットキーで撮るときの動作です。トレイのメニューから撮る場合は、常にウィンドウを選択します。";
     public const string CaptureDelay = "撮影までの遅延";
     public const string AfterCaptureAction = "撮影後の動作";
     public const string VideoDirectory = "保存先";

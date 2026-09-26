@@ -24,6 +24,7 @@ public static class SettingsValidator
         Require(Enum.IsDefined(settings.ImageFormat), nameof(settings.ImageFormat));
         Require(Enum.IsDefined(settings.PngCompression), nameof(settings.PngCompression));
         Require(Enum.IsDefined(settings.AfterCaptureAction), nameof(settings.AfterCaptureAction));
+        Require(Enum.IsDefined(settings.WindowScreenshotShortcutTarget), nameof(settings.WindowScreenshotShortcutTarget));
         Require(Enum.IsDefined(settings.Encoder), nameof(settings.Encoder));
         Require(Enum.IsDefined(settings.AudioFormat), nameof(settings.AudioFormat));
         foreach (var setting in SettingsSchema.IntSettings)
