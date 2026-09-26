@@ -13,6 +13,8 @@ internal static class NativeMethods
     internal const uint CursorShowing = 0x00000001;
     internal const uint DrawIconNormal = 0x00000003;
     internal const uint WindowDisplayAffinityExcludeFromCapture = 0x00000011;
+    internal const uint ExecutionStateSystemRequired = 0x00000001;
+    internal const uint ExecutionStateContinuous = 0x80000000;
     internal const int SwRestore = 9;
 
     internal delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
@@ -54,6 +56,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr GetDC(IntPtr window);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint SetThreadExecutionState(uint executionState);
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern int ReleaseDC(IntPtr window, IntPtr deviceContext);
