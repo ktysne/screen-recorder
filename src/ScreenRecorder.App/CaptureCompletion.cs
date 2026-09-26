@@ -30,14 +30,14 @@ internal sealed record CaptureCompletionKind(
 internal static class CaptureCompletion
 {
     // warning は、保存後の動作より前に起きた失敗の警告。保存後の動作が失敗すれば、そちらで上書きする。
-    public static void Execute(
+    public static async Task ExecuteAsync(
         CaptureCompletionKind kind,
         Settings settings,
         string filePath,
         string defaultDirectory,
         string actionFailureDetails,
         string? warning,
-        Func<string, bool> openFolder,
+        Func<string, Task<bool>> openFolder,
         Action<int, string, string, ToolTipIcon, string?> showNotification)
     {
         if (settings.PlayCaptureSound)
@@ -51,10 +51,13 @@ internal static class CaptureCompletion
             switch (settings.AfterCaptureAction)
             {
                 case CaptureAfterAction.OpenFile:
-                    using (Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true })) { }
+                    await Task.Run(() =>
+                    {
+                        using (Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true })) { }
+                    });
                     break;
                 case CaptureAfterAction.OpenFolder:
-                    if (!openFolder(Path.GetDirectoryName(filePath) ?? defaultDirectory))
+                    if (!await openFolder(Path.GetDirectoryName(filePath) ?? defaultDirectory))
                         warning = kind.ActionFailureNotification;
                     break;
             }

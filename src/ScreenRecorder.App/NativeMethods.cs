@@ -60,6 +60,10 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern uint SetThreadExecutionState(uint executionState);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetDiskFreeSpaceExW(string directoryName, out long freeBytesAvailableToCaller, out long totalNumberOfBytes, out long totalNumberOfFreeBytes);
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern int ReleaseDC(IntPtr window, IntPtr deviceContext);
 

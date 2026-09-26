@@ -17,7 +17,7 @@ internal sealed class VideoRecordingController : IDisposable
     private readonly Action _tryExitAfterPendingWork;
     private readonly CaptureNotifier _notifier;
     private readonly UiDispatcher _dispatcher;
-    private readonly Func<string, bool> _openFolderQuietly;
+    private readonly Func<string, Task<bool>> _openFolderQuietly;
     private readonly VideoRecordingStateMachine _recordingState = new();
     private readonly IVideoRecordingPostProcessor _videoPostProcessor = new FfmpegVideoRecordingPostProcessor();
     private bool _recordingSelectionInProgress;
@@ -48,6 +48,8 @@ internal sealed class VideoRecordingController : IDisposable
         Rectangle TargetBounds,
         Rectangle DisplayBounds);
 
+    private sealed record RecordingSpaceAvailability(long? AvailableBytes, Exception? Error);
+
     public VideoRecordingController(
         Func<Settings> currentSettings,
         Func<bool> exitRequested,
@@ -56,7 +58,7 @@ internal sealed class VideoRecordingController : IDisposable
         Action tryExitAfterPendingWork,
         CaptureNotifier notifier,
         UiDispatcher dispatcher,
-        Func<string, bool> openFolderQuietly)
+        Func<string, Task<bool>> openFolderQuietly)
     {
         _currentSettings = currentSettings;
         _exitRequested = exitRequested;
@@ -120,7 +122,9 @@ internal sealed class VideoRecordingController : IDisposable
         var engineStarted = false;
         try
         {
-            if (!CheckRecordingSpace(captureSettings.VideoDirectory)) return;
+            var initialSpaceAvailability = await Task.Run(() => GetRecordingSpaceAvailability(captureSettings.VideoDirectory));
+            if (_exitRequested()) return;
+            if (!CheckRecordingSpace(captureSettings.VideoDirectory, initialSpaceAvailability)) return;
 
             var fullDisplay = mode == ScreenshotMode.Full ? Screen.FromPoint(Cursor.Position) : null;
             using var selection = mode == ScreenshotMode.Full
@@ -162,16 +166,22 @@ internal sealed class VideoRecordingController : IDisposable
                 _ => (Rectangle?)null
             };
             var capturedAt = DateTime.Now;
-            var finalPath = VideoRecordingFileNaming.GetAvailablePath(
-                captureSettings.VideoDirectory,
-                captureSettings.OrganizeByMonth,
-                capturedAt,
-                mode,
-                selection?.WindowTitle,
-                captureSettings.FileNameTemplate,
-                candidate => File.Exists(candidate) || File.Exists(VideoRecordingFileNaming.GetTemporaryPath(candidate)));
-            Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
-            if (!CheckRecordingSpace(captureSettings.VideoDirectory)) return;
+            var preparation = await Task.Run(() =>
+            {
+                var finalPath = VideoRecordingFileNaming.GetAvailablePath(
+                    captureSettings.VideoDirectory,
+                    captureSettings.OrganizeByMonth,
+                    capturedAt,
+                    mode,
+                    selection?.WindowTitle,
+                    captureSettings.FileNameTemplate,
+                    candidate => File.Exists(candidate) || File.Exists(VideoRecordingFileNaming.GetTemporaryPath(candidate)));
+                Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
+                return (FinalPath: finalPath, SpaceAvailability: GetRecordingSpaceAvailability(captureSettings.VideoDirectory));
+            });
+            if (_exitRequested()) return;
+            var finalPath = preparation.FinalPath;
+            if (!CheckRecordingSpace(captureSettings.VideoDirectory, preparation.SpaceAvailability)) return;
             if (!_recordingState.TryBeginCountdown()) return;
 
             var temporaryPath = VideoRecordingFileNaming.GetTemporaryPath(finalPath);
@@ -200,7 +210,10 @@ internal sealed class VideoRecordingController : IDisposable
                     await WaitForRecordingCountdownAsync(captureSettings.CountdownSeconds, display.Bounds, countdownCancellation.Token);
                 countdownCancellation.Token.ThrowIfCancellationRequested();
                 if (_recordingState.State != VideoRecordingState.Countdown || _exitRequested()) return;
-                if (!CheckRecordingSpace(captureSettings.VideoDirectory))
+                var spaceAvailability = await Task.Run(() => GetRecordingSpaceAvailability(captureSettings.VideoDirectory));
+                countdownCancellation.Token.ThrowIfCancellationRequested();
+                if (_exitRequested()) return;
+                if (!CheckRecordingSpace(captureSettings.VideoDirectory, spaceAvailability))
                 {
                     _recordingState.TryCancelCountdown();
                     UpdateRecordingUi();
@@ -444,12 +457,15 @@ internal sealed class VideoRecordingController : IDisposable
             var completedPath = string.IsNullOrWhiteSpace(eventArgs.FilePath) ? active.TemporaryPath : eventArgs.FilePath;
             var processResult = await _videoPostProcessor.ProcessAsync(completedPath, active.Settings, CancellationToken.None);
             processedPath = processResult.FilePath;
-            if (!File.Exists(processedPath)) throw new FileNotFoundException("録画ライブラリが完了を通知しましたが、一時ファイルが見つかりません。", processedPath);
             var pathToMove = processedPath;
-            var finalPath = await Task.Run(() => MoveRecordingToFinalPath(active, pathToMove));
+            var finalPath = await Task.Run(() =>
+            {
+                if (!File.Exists(pathToMove)) throw new FileNotFoundException("録画ライブラリが完了を通知しましたが、一時ファイルが見つかりません。", pathToMove);
+                return MoveRecordingToFinalPath(active, pathToMove);
+            });
             DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画を保存しました: {finalPath}");
             if (processResult.SupersededPath is { } supersededPath) DeleteSupersededRecording(supersededPath);
-            CompleteRecordingSave(finalPath, active.Settings);
+            await CompleteRecordingSave(finalPath, active.Settings);
             if (processResult.Warning is not null)
                 _notifier.ShowForCapture(5000, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
             _recordingState.TryCompleteSaving();
@@ -580,9 +596,9 @@ internal sealed class VideoRecordingController : IDisposable
         _systemSleepInhibited = inhibit;
     }
 
-    private void CompleteRecordingSave(string finalPath, Settings settings)
+    private Task CompleteRecordingSave(string finalPath, Settings settings)
     {
-        CaptureCompletion.Execute(
+        return CaptureCompletion.ExecuteAsync(
             CaptureCompletionKind.Recording,
             settings,
             finalPath,
@@ -595,8 +611,11 @@ internal sealed class VideoRecordingController : IDisposable
 
     private void DeleteSupersededRecording(string path)
     {
-        try { File.Delete(path); }
-        catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Convert, $"変換前の録画ファイルを削除できませんでした: {path}; {exception}"); }
+        _ = Task.Run(() =>
+        {
+            try { File.Delete(path); }
+            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Convert, $"変換前の録画ファイルを削除できませんでした: {path}; {exception}"); }
+        });
     }
 
     private static string MoveRecordingToFinalPath(ActiveRecording active, string completedPath)
@@ -712,25 +731,30 @@ internal sealed class VideoRecordingController : IDisposable
         });
     }
 
-    private bool CheckRecordingSpace(string videoDirectory)
+    private static RecordingSpaceAvailability GetRecordingSpaceAvailability(string videoDirectory)
     {
         try
         {
-            var fullPath = Path.GetFullPath(videoDirectory);
-            var root = Path.GetPathRoot(fullPath);
-            if (string.IsNullOrWhiteSpace(root)) throw new IOException("保存先のドライブを特定できません。");
-            var availableBytes = new DriveInfo(root).AvailableFreeSpace;
-            if (VideoRecordingStateMachine.HasMinimumFreeSpace(availableBytes)) return true;
-            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量が不足しています: {videoDirectory}");
-            _notifier.Show(4000, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
-            return false;
+            return new RecordingSpaceAvailability(DiskSpace.GetAvailableFreeBytes(videoDirectory), null);
         }
         catch (Exception exception)
+        {
+            return new RecordingSpaceAvailability(null, exception);
+        }
+    }
+
+    private bool CheckRecordingSpace(string videoDirectory, RecordingSpaceAvailability availability)
+    {
+        if (availability.Error is { } exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量を確認できませんでした: フォルダー={videoDirectory}; {exception}");
             _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Error);
             return false;
         }
+        if (VideoRecordingStateMachine.HasMinimumFreeSpace(availability.AvailableBytes!.Value)) return true;
+        DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量が不足しています: {videoDirectory}");
+        _notifier.Show(4000, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
+        return false;
     }
 
     private void CleanupRecordingSession()
