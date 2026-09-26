@@ -25,21 +25,38 @@ internal static class Program
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         ApplicationConfiguration.Initialize();
-        var log = new DailyLog();
-        log.Prune(DateTime.Now);
-        log.Write("Application started");
-        Application.ThreadException += (_, eventArgs) => log.Write($"UI exception: {eventArgs.Exception}");
-        AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) => log.Write($"Unhandled exception: {eventArgs.ExceptionObject}");
-        TaskScheduler.UnobservedTaskException += (_, eventArgs) => { log.Write($"Unobserved task exception: {eventArgs.Exception}"); eventArgs.SetObserved(); };
-
         var settingsRepository = new SettingsRepository();
         var settings = settingsRepository.Load();
+        DiagnosticLog.Start(settings.DiagnosticLogLevel, AppVersion.Current);
+        Application.ThreadException += (_, eventArgs) => DiagnosticLog.Error(DiagnosticLogTags.App, $"UI スレッドで未処理の例外が発生しました: {eventArgs.Exception}");
+        AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+        {
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"未処理の例外が発生しました: {eventArgs.ExceptionObject}");
+            DiagnosticLog.Stop();
+        };
+        TaskScheduler.UnobservedTaskException += (_, eventArgs) =>
+        {
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"未観測のタスク例外が発生しました: {eventArgs.Exception}");
+        };
+        DiagnosticLog.Info(DiagnosticLogTags.App, "アプリを起動しました。");
         var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
         var sync = new AutoStartSynchronizer(new RunRegistry(), exePath);
         try { sync.Apply(settings.StartWithWindows); }
-        catch (Exception exception) { log.Write($"Auto-start update failed: {exception}"); }
-        Application.Run(new TrayApplicationContext(settings, log, settingsRepository, sync, exePath, startedAfterUpdate));
-        log.Write("Application stopped");
+        catch (Exception exception) { DiagnosticLog.Error(DiagnosticLogTags.App, $"自動起動の設定に失敗しました: {exception}"); }
+        var applicationReturnedNormally = false;
+        try
+        {
+            Application.Run(new TrayApplicationContext(settings, settingsRepository, sync, exePath, startedAfterUpdate));
+            applicationReturnedNormally = true;
+        }
+        finally
+        {
+            if (applicationReturnedNormally)
+            {
+                DiagnosticLog.Info(DiagnosticLogTags.App, "アプリを終了します。");
+                DiagnosticLog.Stop();
+            }
+        }
     }
 
     private sealed class RunRegistry : IAutoStartRegistry

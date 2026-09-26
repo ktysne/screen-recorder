@@ -24,6 +24,7 @@ public sealed class SettingsRepository(string? baseDirectory = null)
             var defaults = new Settings();
             var result = new Settings();
             var root = document.RootElement;
+            result.DiagnosticLogLevel = DiagnosticLogLevels.FromSettingName(Property(root, nameof(result.DiagnosticLogLevel)) is { ValueKind: JsonValueKind.String } logLevel ? logLevel.GetString() : null);
             result.StartWithWindows = Bool(root, nameof(result.StartWithWindows), defaults.StartWithWindows);
             result.CheckForUpdatesAutomatically = Bool(root, nameof(result.CheckForUpdatesAutomatically), defaults.CheckForUpdatesAutomatically);
             result.NotifyWhenSaved = Bool(root, nameof(result.NotifyWhenSaved), defaults.NotifyWhenSaved);
@@ -76,7 +77,7 @@ public sealed class SettingsRepository(string? baseDirectory = null)
         Directory.CreateDirectory(_directory);
         // 書き込み途中で失敗しても既存の設定を残すため、一時ファイルに書き終えてから置き換える。
         var temporaryPath = FilePath + ".tmp";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new JsonStringEnumConverter() } }), new UTF8Encoding(false));
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new DiagnosticLogLevelJsonConverter(), new JsonStringEnumConverter() } }), new UTF8Encoding(false));
         File.Move(temporaryPath, FilePath, overwrite: true);
     }
 
@@ -90,4 +91,11 @@ public sealed class SettingsRepository(string? baseDirectory = null)
     private static int Ranged(JsonElement root, string name, int fallback, int min, int max) => Property(root, name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt32(out var number) && number >= min && number <= max ? number : fallback;
     private static int Choice(JsonElement root, string name, int fallback, params int[] choices) => Property(root, name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt32(out var number) && choices.Contains(number) ? number : fallback;
     private static T EnumValue<T>(JsonElement root, string name, T fallback) where T : struct, Enum => Property(root, name) is { ValueKind: JsonValueKind.String } value && Enum.TryParse<T>(value.GetString(), true, out var parsed) && Enum.IsDefined(parsed) ? parsed : fallback;
+
+    private sealed class DiagnosticLogLevelJsonConverter : JsonConverter<DiagnosticLogLevel>
+    {
+        public override DiagnosticLogLevel Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => DiagnosticLogLevels.FromSettingName(reader.TokenType == JsonTokenType.String ? reader.GetString() : null);
+
+        public override void Write(Utf8JsonWriter writer, DiagnosticLogLevel value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToSettingName());
+    }
 }

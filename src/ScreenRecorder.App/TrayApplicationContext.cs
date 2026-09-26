@@ -11,7 +11,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
 {
     private const int StartupNotificationDelayMilliseconds = 600;
     private static readonly TimeSpan RecordingTerminationTimeout = TimeSpan.FromSeconds(30);
-    private readonly DailyLog _log;
     private readonly SettingsRepository _settingsRepository;
     private readonly AutoStartSynchronizer _autoStartSynchronizer;
     private readonly NotifyIcon _tray;
@@ -65,20 +64,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     public TrayApplicationContext(
         Settings settings,
-        DailyLog log,
         SettingsRepository settingsRepository,
         AutoStartSynchronizer autoStartSynchronizer,
         string executablePath,
         bool startedAfterUpdate)
     {
         _settings = settings.Clone();
-        _log = log;
-        _videoPostProcessor = new FfmpegVideoRecordingPostProcessor(log);
+        _videoPostProcessor = new FfmpegVideoRecordingPostProcessor();
         _settingsRepository = settingsRepository;
         _autoStartSynchronizer = autoStartSynchronizer;
         _uiDispatcher = new Control();
         _ = _uiDispatcher.Handle;
-        _screenshotCaptureService = new ScreenshotCaptureService(log);
+        _screenshotCaptureService = new ScreenshotCaptureService();
         _menu = CreateMenu();
         _idleTrayIcon = CreateIcon(TrayIconState.Idle);
         _recordingTrayIcon = CreateIcon(TrayIconState.Recording);
@@ -96,14 +93,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var installDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory;
         _updateController = new UpdateController(
-            log,
             installDirectory,
             () => _settings,
             SaveSkippedUpdateVersion,
             GetUpdateBlockedReason,
             ShowUpdateNotification,
             RequestExit);
-        _ = UpdateCleanup.RunAsync(log, installDirectory);
+        _ = UpdateCleanup.RunAsync(installDirectory);
         if (startedAfterUpdate) ScheduleUpdateCompletedNotification();
         _updateController.Start();
     }
@@ -192,7 +188,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        var form = new SettingsForm(_settings, _hotkeyManager.Failures, _log, SaveAndApplySettings, () => _recordingState.State != VideoRecordingState.Idle);
+        var form = new SettingsForm(_settings, _hotkeyManager.Failures, SaveAndApplySettings, () => _recordingState.State != VideoRecordingState.Idle);
         _settingsForm = form;
         form.FormClosed += (_, _) =>
         {
@@ -209,13 +205,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
         settings.SkippedUpdateVersion = _settings.SkippedUpdateVersion;
         _settingsRepository.Save(settings);
         _settings = settings.Clone();
+        DiagnosticLog.Info(DiagnosticLogTags.App, "設定を保存しました。");
+        DiagnosticLog.SetLevel(_settings.DiagnosticLogLevel);
         try
         {
             _autoStartSynchronizer.Apply(_settings.StartWithWindows);
         }
         catch (Exception exception)
         {
-            _log.Write($"Auto-start update failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"自動起動の設定に失敗しました: {exception}");
             ShowNotification(3000, UiLabels.AppName, UiLabels.SettingsApplyFailed, ToolTipIcon.Error);
         }
 
@@ -239,7 +237,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ReportHotkeyFailures(IReadOnlyList<HotkeyFailure> failures, bool startup)
     {
         foreach (var failure in failures)
-            _log.Write($"Hotkey registration failed: action={failure.Action}, shortcut={failure.Notation}, reason={failure.Reason}, error={failure.ErrorCode}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Hotkey, $"ショートカットを登録できませんでした: 操作={UiLabels.ShortcutActionName(failure.Action)}、キー={failure.Notation}、理由={HotkeyFailureReasonName(failure.Reason)}、エラーコード={failure.ErrorCode}");
         if (failures.Count == 0) return;
         if (startup)
         {
@@ -269,7 +267,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async void PerformAction(RecorderAction action)
     {
-        _log.Write($"Action requested: {action}");
+        DiagnosticLog.Info(DiagnosticLogTags.App, $"操作を受け付けました: {UiLabels.ShortcutActionName(action)}。");
         var recordingMode = action switch
         {
             RecorderAction.RecordingFullScreen => ScreenshotMode.Full,
@@ -329,7 +327,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
             catch (Exception exception)
             {
-                _log.Write($"Screenshot failed: mode={screenshotMode}; {exception}");
+                DiagnosticLog.Error(DiagnosticLogTags.Capture, $"静止画の撮影に失敗しました: 方法={CaptureMethodName(screenshotMode)}; {exception}");
                 var reason = exception.Message.Length > 180 ? exception.Message[..180] : exception.Message;
                 ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
             }
@@ -492,13 +490,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 captureSettings.CaptureMicrophone,
                 captureSettings.MicrophoneDeviceId,
                 captureSettings.AudioFormat == AudioFormat.Mp3 ? 192 : captureSettings.AacBitrateKbps);
-            var engine = new ScreenRecorderLibRecordingEngine(_log);
+            var engine = new ScreenRecorderLibRecordingEngine();
             engine.StatusChanged += (_, eventArgs) => DispatchToUi(() => HandleRecordingStatus(engine, eventArgs));
             engine.RecordingCompleted += (_, eventArgs) => DispatchToUi(() => HandleRecordingCompleted(engine, eventArgs));
             engine.RecordingFailed += (_, eventArgs) => DispatchToUi(() => HandleRecordingFailed(engine, eventArgs));
             engine.RecordingWarning += (_, eventArgs) => DispatchToUi(() =>
             {
-                _log.Write($"Recording audio source unavailable: {eventArgs.Message}");
                 ShowNotification(5000, UiLabels.AppName, eventArgs.Message, ToolTipIcon.Warning);
             });
             _recordingEngine = engine;
@@ -510,6 +507,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 return;
             }
 
+            var audioFormat = !captureSettings.CaptureSystemAudio && !captureSettings.CaptureMicrophone
+                ? "なし"
+                : $"{(captureSettings.AudioFormat == AudioFormat.Mp3 ? "MP3" : "AAC")} ({(captureSettings.AudioFormat == AudioFormat.Mp3 ? captureSettings.Mp3BitrateKbps : captureSettings.AacBitrateKbps)} kbps)";
+            DiagnosticLog.Info(DiagnosticLogTags.Record,
+                $"録画を開始しました: 方法={CaptureMethodName(mode)}、範囲=({targetBounds.X},{targetBounds.Y}) {targetBounds.Width}x{targetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
             _recordingStopwatch = Stopwatch.StartNew();
             ShowRecordingOverlays();
             StartRecordingTimers(_activeRecording);
@@ -522,7 +524,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Video recording start failed: mode={mode}; {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画を開始できませんでした: 方法={CaptureMethodName(mode)}; {exception}");
             if (engineStarted)
             {
                 StopRecording();
@@ -550,7 +552,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         using var countdown = new CaptureCountdownForm(displayBounds, forRecording: true);
         _recordingCountdownForm = countdown;
         countdown.Show();
-        if (!countdown.ExcludeFromCapture()) _log.Write("SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) failed for recording countdown");
+        if (!countdown.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "録画カウントダウンを撮影対象から除外できませんでした。");
         try
         {
             for (var remaining = seconds; remaining > 0; remaining--)
@@ -584,6 +586,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try
         {
             ExecuteRecordingCommand(command);
+            DiagnosticLog.Info(DiagnosticLogTags.Record, wasRecording ? "録画を一時停止しました。" : "録画を再開しました。");
             if (wasRecording) _recordingStopwatch?.Stop();
             else _recordingStopwatch?.Start();
             UpdateRecordingUi();
@@ -592,7 +595,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (wasRecording) _recordingState.RequestResume();
             else _recordingState.RequestPause();
-            _log.Write($"Changing video recording pause state failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画の一時停止または再開に失敗しました: {exception}");
             ShowNotification(3500, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, ShortError(exception.Message)), ToolTipIcon.Warning);
             UpdateRecordingUi();
         }
@@ -611,10 +614,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try
         {
             ExecuteRecordingCommand(command);
+            DiagnosticLog.Info(DiagnosticLogTags.Record, "録画の停止を開始しました。");
         }
         catch (Exception exception)
         {
-            _log.Write($"Stopping video recording failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画を停止できませんでした: {exception}");
             if (_recordingEngine is { } engine)
                 _ = FinishRecordingFailureAfterTerminationAsync(engine, exception.Message, _activeRecording?.TemporaryPath);
             else
@@ -647,7 +651,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             try { ExecuteRecordingCommand(command); }
             catch (Exception exception)
             {
-                _log.Write($"Applying a pending recording command failed: {exception}");
+                DiagnosticLog.Error(DiagnosticLogTags.Record, $"保留中の録画操作に失敗しました: {exception}");
                 if (command == RecordingEngineCommand.Stop)
                     _ = FinishRecordingFailureAfterTerminationAsync(engine, exception.Message, _activeRecording?.TemporaryPath);
                 else
@@ -679,6 +683,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (!File.Exists(processedPath)) throw new FileNotFoundException("録画ライブラリが完了を通知しましたが、一時ファイルが見つかりません。", processedPath);
             var pathToMove = processedPath;
             var finalPath = await Task.Run(() => MoveRecordingToFinalPath(active, pathToMove));
+            DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画を保存しました: {finalPath}");
             if (processResult.SupersededPath is { } supersededPath) DeleteSupersededRecording(supersededPath);
             CompleteRecordingSave(finalPath, active.Settings);
             if (processResult.Warning is not null)
@@ -687,7 +692,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Video recording save failed: temporary={active.TemporaryPath}; {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画を保存できませんでした: 一時ファイル={active.TemporaryPath}; {exception}");
             var retainedPath = processedPath is not null && File.Exists(processedPath) ? processedPath : _activeRecording?.TemporaryPath ?? active.TemporaryPath;
             ShowRecordingFailure(exception.Message, retainedPath, finalizationConfirmed: true);
             _recordingState.TryFail();
@@ -727,6 +732,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_recordingFailureFinalizationStarted) return;
         _recordingFailureFinalizationStarted = true;
         var activePath = string.IsNullOrWhiteSpace(temporaryPath) ? _activeRecording?.TemporaryPath : temporaryPath;
+        var retainedPath = !string.IsNullOrWhiteSpace(activePath) && File.Exists(activePath) ? activePath : null;
+        DiagnosticLog.Error(DiagnosticLogTags.Record, retainedPath is null
+            ? $"録画に失敗しました: {error}"
+            : $"録画に失敗し、未完了のファイルを保持しました: {retainedPath}; {error}");
         ShowRecordingFailure(error, activePath, finalizationConfirmed);
         _recordingState.TryFail();
         CleanupRecordingSession();
@@ -742,7 +751,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             : string.Format(
                 finalizationConfirmed ? UiLabels.RecordingTemporaryFileRetained : UiLabels.RecordingTemporaryFileIncomplete,
                 ShortPath(retainedPath, 150));
-        if (retainedPath is not null) _log.Write($"Incomplete recording retained: {retainedPath}; {error}");
         ShowCaptureNotification(5000, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
     }
 
@@ -793,7 +801,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Saving skipped update version failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新をスキップする設定を保存できませんでした: {exception}");
             return false;
         }
         _settings = updated;
@@ -809,7 +817,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             timer.Stop();
             timer.Dispose();
             _updateCompletedNotificationTimer = null;
-            _log.Write($"Started after update: version={AppVersion.Current}");
+            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新後の版を起動しました: 版={AppVersion.Current}。");
             ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.UpdateCompleted, AppVersion.Current), ToolTipIcon.Info);
         };
         timer.Start();
@@ -822,7 +830,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (inhibit) executionState |= NativeMethods.ExecutionStateSystemRequired;
         if (NativeMethods.SetThreadExecutionState(executionState) == 0)
         {
-            _log.Write($"SetThreadExecutionState failed: inhibit={inhibit}; error={Marshal.GetLastWin32Error()}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"スリープを抑止できませんでした: 抑止={inhibit}; Windows エラー={Marshal.GetLastWin32Error()}");
             return;
         }
         _systemSleepInhibited = inhibit;
@@ -834,7 +842,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (settings.PlayCaptureSound)
         {
             try { SystemSounds.Asterisk.Play(); }
-            catch (Exception exception) { _log.Write($"Video recording sound failed: {exception}"); }
+            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画完了時の効果音を再生できませんでした: {exception}"); }
         }
         try
         {
@@ -851,7 +859,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Video recording after-action failed: action={settings.AfterCaptureAction}, file={finalPath}; {exception}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画後の動作に失敗しました: 動作={settings.AfterCaptureAction}、ファイル={finalPath}; {exception}");
             warning = UiLabels.RecordingAfterActionFailed;
         }
 
@@ -862,7 +870,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void DeleteSupersededRecording(string path)
     {
         try { File.Delete(path); }
-        catch (Exception exception) { _log.Write($"Deleting the recording before MP3 conversion failed: file={path}; {exception}"); }
+        catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Convert, $"変換前の録画ファイルを削除できませんでした: {path}; {exception}"); }
     }
 
     private static string MoveRecordingToFinalPath(ActiveRecording active, string completedPath)
@@ -911,12 +919,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
             toolbar.StopRequested += (_, _) => StopRecording();
             _recordingToolbar = toolbar;
             toolbar.Show();
-            if (!toolbar.ExcludeFromCapture()) _log.Write("SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) failed for recording toolbar");
+            if (!toolbar.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "録画操作バーを撮影対象から除外できませんでした。");
             toolbar.UpdateStatus(VideoRecordingState.Recording, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
         }
         catch (Exception exception)
         {
-            _log.Write($"Recording toolbar could not be shown: {exception}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画操作バーを表示できませんでした: {exception}");
         }
 
         if (active.SourceKind != RecordingSourceKind.Region) return;
@@ -925,11 +933,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var frame = new RecordingRegionFrameForm(active.TargetBounds);
             _recordingRegionFrame = frame;
             frame.Show();
-            if (!frame.ExcludeFromCapture()) _log.Write("SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) failed for recording region frame");
+            if (!frame.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "範囲枠を撮影対象から除外できませんでした。");
         }
         catch (Exception exception)
         {
-            _log.Write($"Recording region frame could not be shown: {exception}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画範囲の枠を表示できませんでした: {exception}");
         }
     }
 
@@ -944,7 +952,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (_recordingState.State is not (VideoRecordingState.Recording or VideoRecordingState.Paused)) return;
             if (NativeMethods.IsWindow(windowRecording.WindowHandle)) return;
-            _log.Write($"Recorded window closed: hwnd={windowRecording.WindowHandle}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画対象のウィンドウが閉じられました: hwnd={windowRecording.WindowHandle}");
             StopRecording();
         };
         _windowMonitorTimer.Start();
@@ -987,13 +995,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_recordingEngine is { } engine)
         {
             try { engine.Stop(); }
-            catch (Exception exception) { _log.Write($"Stopping video recording for system suspend failed: {exception}"); }
+            catch (Exception exception) { DiagnosticLog.Error(DiagnosticLogTags.Record, $"スリープに伴う録画の停止に失敗しました: {exception}"); }
         }
         DispatchToUi(() =>
         {
             if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
             {
-                _log.Write("System suspend requested; stopping video recording");
+                DiagnosticLog.Info(DiagnosticLogTags.Record, "スリープに入るため録画を停止します。");
                 StopRecording();
             }
             else if (_recordingState.State == VideoRecordingState.Countdown && _recordingEngine is null)
@@ -1019,12 +1027,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (string.IsNullOrWhiteSpace(root)) throw new IOException("保存先のドライブを特定できません。");
             var availableBytes = new DriveInfo(root).AvailableFreeSpace;
             if (VideoRecordingStateMachine.HasMinimumFreeSpace(availableBytes)) return true;
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量が不足しています: {videoDirectory}");
             ShowNotification(4000, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
             return false;
         }
         catch (Exception exception)
         {
-            _log.Write($"Video destination space check failed: directory={videoDirectory}; {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量を確認できませんでした: フォルダー={videoDirectory}; {exception}");
             ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, ShortError(exception.Message)), ToolTipIcon.Error);
             return false;
         }
@@ -1056,7 +1065,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var result = task.GetAwaiter().GetResult();
             if (result.Error is { } exception)
             {
-                _log.Write($"Searching incomplete recordings failed: directory={videoDirectory}; {exception}");
+                DiagnosticLog.Warn(DiagnosticLogTags.Record, $"未完了の録画を検索できませんでした: フォルダー={videoDirectory}; {exception}");
                 return;
             }
             if (result.Count == 0 || result.Folder is null) return;
@@ -1112,6 +1121,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private static string ShortError(string value) => value.Length > 180 ? value[..180] : value;
 
+    private static string CaptureMethodName(ScreenshotMode mode) => mode switch
+    {
+        ScreenshotMode.Full => "ディスプレイ全体",
+        ScreenshotMode.Region => "範囲指定",
+        ScreenshotMode.Window => "ウィンドウ指定",
+        _ => mode.ToString()
+    };
+
+    private static string HotkeyFailureReasonName(HotkeyFailureReason reason) => reason switch
+    {
+        HotkeyFailureReason.InvalidNotation => "キーの指定が正しくありません",
+        HotkeyFailureReason.Duplicate => "同じキーが重複しています",
+        _ => "Windows へ登録できませんでした"
+    };
+
     private static string ShortPath(string value, int maximumLength) => value.Length > maximumLength
         ? $"…{value[^maximumLength..]}"
         : value;
@@ -1126,7 +1150,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             try { Clipboard.SetImage(result.Image); }
             catch (Exception exception)
             {
-                _log.Write($"Screenshot clipboard copy failed: {exception}");
+                DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"静止画をクリップボードへコピーできませんでした: {exception}");
                 warning = UiLabels.ScreenshotClipboardFailed;
             }
         }
@@ -1134,7 +1158,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (settings.PlayCaptureSound)
         {
             try { SystemSounds.Asterisk.Play(); }
-            catch (Exception exception) { _log.Write($"Screenshot sound failed: {exception}"); }
+            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"撮影時の効果音を再生できませんでした: {exception}"); }
         }
         try
         {
@@ -1151,7 +1175,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Screenshot after-action failed: mode={mode}, action={settings.AfterCaptureAction}, file={result.FilePath}; {exception}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"撮影後の動作に失敗しました: 方法={CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={result.FilePath}; {exception}");
             warning = UiLabels.ScreenshotAfterActionFailed;
         }
 
@@ -1170,7 +1194,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Open capture location failed: file={path}; {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"撮影したファイルの場所を開けませんでした: ファイル={path}; {exception}");
             ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
         }
     }
@@ -1181,7 +1205,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try { BundledDocument.Open(BundledDocument.ManualFileName); }
         catch (Exception exception)
         {
-            _log.Write($"Open manual failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"マニュアルを開けませんでした: {exception}");
             ShowNotification(3000, UiLabels.AppName, UiLabels.ManualOpenFailed, ToolTipIcon.Error);
         }
     }
@@ -1197,7 +1221,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception exception)
         {
-            _log.Write($"Open folder failed: {exception}");
+            if (notifyFailure)
+                DiagnosticLog.Error(DiagnosticLogTags.App, $"フォルダーを開けませんでした: フォルダー={path}; {exception}");
+            else
+                DiagnosticLog.Warn(DiagnosticLogTags.App, $"保存後にフォルダーを開けませんでした: フォルダー={path}; {exception}");
             if (notifyFailure) ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
             return false;
         }

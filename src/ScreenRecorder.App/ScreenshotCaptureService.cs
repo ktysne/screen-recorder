@@ -11,7 +11,7 @@ internal sealed class ScreenshotCaptureResult(Bitmap image, string filePath) : I
     public void Dispose() => Image.Dispose();
 }
 
-internal sealed class ScreenshotCaptureService(DailyLog log)
+internal sealed class ScreenshotCaptureService
 {
     private const int WindowCaptureTimeoutMilliseconds = 5000;
 
@@ -28,6 +28,7 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
         var captureBounds = mode == ScreenshotMode.Full
             ? Screen.FromPoint(Cursor.Position).Bounds
             : selection!.Bounds;
+        DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画の撮影を開始しました: 方法={CaptureMethodName(mode)}, 範囲=({captureBounds.X},{captureBounds.Y}) {captureBounds.Width}x{captureBounds.Height}。");
         var displayBounds = mode == ScreenshotMode.Full ? captureBounds : Screen.FromRectangle(captureBounds).Bounds;
         if (settings.CaptureDelaySeconds > 0)
             await WaitWithCountdownAsync(settings.CaptureDelaySeconds, displayBounds);
@@ -59,6 +60,7 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
                 DesktopCapture.MakeOpaque(image);
                 return SaveImage(image, settings, mode, selection?.WindowTitle, capturedAt);
             });
+            DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画を保存しました: {filePath}");
             var result = new ScreenshotCaptureResult(image, filePath);
             image = null;
             return result;
@@ -73,7 +75,7 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
     {
         using var countdown = new CaptureCountdownForm(displayBounds);
         countdown.Show();
-        if (!countdown.ExcludeFromCapture()) log.Write("SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) failed for screenshot countdown");
+        if (!countdown.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Capture, "撮影カウントダウンを撮影対象から除外できませんでした。");
         for (var remaining = seconds; remaining > 0; remaining--)
         {
             countdown.SetRemainingSeconds(remaining);
@@ -126,6 +128,7 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
             }
         }
 
+        DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"ウィンドウ撮影で代替のキャプチャ方法を使用します: hwnd={selection.Window}。");
         cancellationToken.ThrowIfCancellationRequested();
         if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
         cancellationToken.ThrowIfCancellationRequested();
@@ -228,6 +231,14 @@ internal sealed class ScreenshotCaptureService(DailyLog log)
         var errorCode = exception.HResult & 0xffff;
         return errorCode is 80 or 183;
     }
+
+    private static string CaptureMethodName(ScreenshotMode mode) => mode switch
+    {
+        ScreenshotMode.Full => "ディスプレイ全体",
+        ScreenshotMode.Region => "範囲指定",
+        ScreenshotMode.Window => "ウィンドウ指定",
+        _ => mode.ToString()
+    };
 
     private static void WritePng(Stream stream, Bitmap image, PngCompression compression)
     {

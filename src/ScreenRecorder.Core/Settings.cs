@@ -8,6 +8,7 @@ public enum EncoderMode { Automatic, SoftwareOnly }
 
 public sealed class Settings
 {
+    public DiagnosticLogLevel DiagnosticLogLevel { get; set; } = global::ScreenRecorder.Core.DiagnosticLogLevel.Info;
     public bool StartWithWindows { get; set; } = true;
     public bool CheckForUpdatesAutomatically { get; set; } = true;
     public bool NotifyWhenSaved { get; set; } = true;
@@ -52,6 +53,7 @@ public sealed class Settings
 
     public Settings Clone() => new()
     {
+        DiagnosticLogLevel = DiagnosticLogLevel,
         StartWithWindows = StartWithWindows,
         CheckForUpdatesAutomatically = CheckForUpdatesAutomatically,
         NotifyWhenSaved = NotifyWhenSaved,
