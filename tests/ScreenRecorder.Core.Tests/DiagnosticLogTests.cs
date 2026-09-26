@@ -128,12 +128,22 @@ public sealed class DiagnosticLogTests
     }
 
     [Fact]
-    public void NewLogNameFallsBackToTheCurrentTimeWhenTheLatestNameIsNotADate()
+    public void NameThatIsNotADateIsNeitherTheLatestLogNorDeleted()
     {
-        // 数字だけで構成されていれば名前の形には一致するが、13 月は日付として読めない。
-        var existing = new[] { "screen-recorder-20261399-000000-000.log" };
+        // 数字と区切りの並びは形に合うが、13 月 99 日は日付として読めない。
+        const string notADate = "screen-recorder-20261399-000000-000.log";
+        var existing = Enumerable.Range(1, DiagnosticLogFormatting.MaximumFiles)
+            .Select(minute => DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 15, minute, 0)))
+            .Append(notADate)
+            .ToArray();
 
-        Assert.Equal("screen-recorder-20260926-150000-000.log", DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 15, 0, 0), existing));
+        var name = DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 13, 0, 0), existing);
+        var deleted = DiagnosticLogFormatting.SelectFilesToDelete(existing.Append(name), DiagnosticLogFormatting.MaximumFiles);
+
+        Assert.False(DiagnosticLogFormatting.IsLogFileName(notADate));
+        Assert.Equal("screen-recorder-20260926-151000-001.log", name);
+        Assert.DoesNotContain(name, deleted);
+        Assert.DoesNotContain(notADate, deleted);
     }
 
     [Fact]

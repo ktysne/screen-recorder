@@ -47,32 +47,22 @@ public static class DiagnosticLogFormatting
         var latest = existingNames.Where(IsLogFileName).Max(StringComparer.Ordinal);
         if (latest is null || StringComparer.Ordinal.Compare(candidate, latest) > 0) return candidate;
 
-        var latestTimestamp = latest.Substring(FilePrefix.Length, TimestampFormat.Length);
-        return DateTime.TryParseExact(latestTimestamp, TimestampFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
-            ? MakeFileName(parsed.AddMilliseconds(1))
-            : candidate;
+        TryParseTimestamp(latest, out var latestTimestamp);
+        return MakeFileName(latestTimestamp.AddMilliseconds(1));
     }
 
-    public static bool IsLogFileName(string? name)
+    // 日時として読めない名前は、次のログの名前を決める基準にも削除の対象にもしない。
+    public static bool IsLogFileName(string? name) => TryParseTimestamp(name, out _);
+
+    private static bool TryParseTimestamp(string? name, out DateTime timestamp)
     {
-        if (name is null) return false;
-        var expectedLength = FilePrefix.Length + 8 + 1 + 6 + 1 + 3 + FileSuffix.Length;
-        if (name.Length != expectedLength || !name.StartsWith(FilePrefix, StringComparison.Ordinal) || !name.EndsWith(FileSuffix, StringComparison.Ordinal)) return false;
+        timestamp = default;
+        if (name is null || name.Length != FilePrefix.Length + TimestampFormat.Length + FileSuffix.Length) return false;
+        if (!name.StartsWith(FilePrefix, StringComparison.Ordinal) || !name.EndsWith(FileSuffix, StringComparison.Ordinal)) return false;
 
-        var body = name.AsSpan(FilePrefix.Length, name.Length - FilePrefix.Length - FileSuffix.Length);
-        for (var index = 0; index < body.Length; index++)
-        {
-            if (index is 8 or 15)
-            {
-                if (body[index] != '-') return false;
-            }
-            else if (body[index] is < '0' or > '9')
-            {
-                return false;
-            }
-        }
-
-        return true;
+        var body = name.Substring(FilePrefix.Length, TimestampFormat.Length);
+        return body.All(character => character is '-' or (>= '0' and <= '9'))
+            && DateTime.TryParseExact(body, TimestampFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out timestamp);
     }
 
     public static IReadOnlyList<string> SelectFilesToDelete(IEnumerable<string> names, int keepCount)
