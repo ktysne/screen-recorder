@@ -43,6 +43,7 @@
     nav a { color: var(--muted); font-size: 13.5px; padding: 8px 12px; border-radius: 6px; display: inline-flex; align-items: center; white-space: nowrap; }
     nav a:hover { color: var(--text); background: var(--lift); text-decoration: none; }
     @media (max-width: 560px) { nav a { padding-inline: 8px; } nav a.hide-sm { display: none; } }
+    @media (max-width: 400px) { .bar { flex-wrap: wrap; height: auto; padding-block: 8px 2px; row-gap: 0; } nav { margin-inline-start: -8px; flex-basis: 100%; } }
 
     .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
     section { padding-block: clamp(56px, 8vw, 96px); }
