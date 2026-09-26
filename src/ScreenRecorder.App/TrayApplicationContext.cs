@@ -284,16 +284,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     var selectedDirectory = await ConfirmSaveDirectoryAsync(SaveDirectoryKind.StillImage, captureSettings.StillImageDirectory);
                     if (selectedDirectory is null)
                     {
-                        var clipboardResult = await CopyScreenshotToClipboardAsync(result.Image, captureSettings.CopyImageToClipboard);
-                        ShowNotification(
-                            NotificationDuration.Standard,
-                            UiLabels.AppName,
-                            clipboardResult.Copied
-                                ? UiLabels.ScreenshotNotSavedClipboardNotification
-                                : clipboardResult.Warning is not null
-                                    ? UiLabels.ScreenshotNotSavedClipboardFailedNotification
-                                    : UiLabels.ScreenshotNotSavedNotification,
-                            clipboardResult.Warning is not null ? ToolTipIcon.Warning : ToolTipIcon.Info);
+                        await NotifyScreenshotNotSavedAsync(result.Image, captureSettings.CopyImageToClipboard);
                         return;
                     }
                     RememberConfirmedDirectory(SaveDirectoryKind.StillImage, selectedDirectory);
@@ -315,9 +306,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         var selectedDirectory = await ConfirmSaveDirectoryAsync(SaveDirectoryKind.StillImage, captureSettings.StillImageDirectory, exception);
                         if (selectedDirectory is null)
                         {
-                            await CopyScreenshotToClipboardAsync(result.Image, captureSettings.CopyImageToClipboard);
-                            var reason = CaptureText.ErrorDetail(exception.Message);
-                            ShowNotification(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
+                            await NotifyScreenshotNotSavedAsync(result.Image, captureSettings.CopyImageToClipboard);
                             return;
                         }
                         RememberConfirmedDirectory(SaveDirectoryKind.StillImage, selectedDirectory);
@@ -345,6 +334,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void RequestExit()
     {
+        // 録画中にも静止画の保存先ダイアログは開けるため、録画の分岐より先に閉じる。
+        _saveDirectoryDialog?.CancelFromExit();
         if (_recording.State == VideoRecordingState.Countdown)
         {
             _recording.CancelRecordingCountdown();
@@ -368,7 +359,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_screenshotCaptureInProgress || _recording.SelectionInProgress)
         {
             _exitRequested = true;
-            _saveDirectoryDialog?.CancelFromExit();
             if (_screenshotCaptureInProgress)
                 ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
             return;
@@ -517,6 +507,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
             clipboardResult.Warning,
             path => OpenFolderAsync(path, notifyFailure: false),
             ShowCaptureNotification);
+    }
+
+    private async Task NotifyScreenshotNotSavedAsync(Bitmap image, bool copyToClipboard)
+    {
+        var clipboardResult = await CopyScreenshotToClipboardAsync(image, copyToClipboard);
+        ShowNotification(
+            NotificationDuration.Standard,
+            UiLabels.AppName,
+            clipboardResult.Copied
+                ? UiLabels.ScreenshotNotSavedClipboardNotification
+                : clipboardResult.Warning is not null
+                    ? UiLabels.ScreenshotNotSavedClipboardFailedNotification
+                    : UiLabels.ScreenshotNotSavedNotification,
+            clipboardResult.Warning is not null ? ToolTipIcon.Warning : ToolTipIcon.Info);
     }
 
     private async Task<(string? Warning, bool Copied)> CopyScreenshotToClipboardAsync(Bitmap image, bool enabled)
