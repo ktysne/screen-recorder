@@ -91,6 +91,11 @@ public static class UiLabels
     public const string RestoreDefaultsConfirmation = "すべての設定を既定値に戻します。変更は OK を押すまで保存されません。続けますか？";
     public const string RestoreDefaultsTitle = "設定を既定に戻す";
     public const string NotImplemented = "この機能はまだ利用できません。";
+    public const string ScreenshotSavedNotification = "画像を保存しました。クリックすると保存先でファイルを選択します。";
+    public const string ScreenshotCaptureFailed = "撮影できませんでした: {0}";
+    public const string ScreenshotExitWaiting = "撮影と保存の処理が終わったら ScreenRecorder を終了します。";
+    public const string ScreenshotClipboardFailed = "画像は保存しましたが、クリップボードへコピーできませんでした。";
+    public const string ScreenshotAfterActionFailed = "画像は保存しましたが、撮影後の動作に失敗しました。";
     public const string FolderOpenFailed = "フォルダーを開けませんでした: {0}";
     public const string FolderPickerTitle = "保存先のフォルダーを選択";
     public const string SettingsApplyFailed = "設定は保存しましたが、自動起動の登録に失敗しました。";
