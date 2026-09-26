@@ -43,6 +43,7 @@ internal sealed class UpdateDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = true;
+        Icon = AppIcon.Create(SystemInformation.IconSize);
         StartPosition = FormStartPosition.CenterScreen;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

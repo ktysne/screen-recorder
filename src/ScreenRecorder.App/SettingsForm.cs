@@ -63,6 +63,7 @@ internal sealed class SettingsForm : Form
         ClientSize = new Size(960, 760);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = false;
+        Icon = AppIcon.Create(SystemInformation.IconSize);
         BuildLayout();
         LoadSettings(_initialSettings);
         Activated += (_, _) => UpdateEnablement();

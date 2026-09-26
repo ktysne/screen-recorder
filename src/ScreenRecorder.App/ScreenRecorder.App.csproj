@@ -11,6 +11,7 @@
     <Product>ScreenRecorder</Product>
     <Version Condition="'$(Version)' == ''">0.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- ScreenRecorderLib は x64 の C++/CLI アセンブリなので、Any CPU では参照を解決できない。 -->
     <PlatformTarget>x64</PlatformTarget>
@@ -18,6 +19,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ScreenRecorderLib" Version="7.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="app.ico" LogicalName="ScreenRecorder.App.app.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ScreenRecorder.Core\ScreenRecorder.Core.csproj" />

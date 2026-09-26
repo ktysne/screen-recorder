@@ -1213,6 +1213,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private static Icon CreateIcon(TrayIconState state)
     {
+        // 待機中だけアプリの図柄にする。図柄にも赤い丸があるため、録画中などに印を重ねると小さいトレイでは見分けにくい。
+        if (state == TrayIconState.Idle) return AppIcon.Create(SystemInformation.SmallIconSize);
         var color = state switch
         {
             TrayIconState.Recording => Color.Firebrick,
