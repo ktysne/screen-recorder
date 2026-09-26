@@ -8,6 +8,10 @@ public enum Mp3TranscodeOutcome
 
 public static class Mp3TranscodeRules
 {
+    public static TimeSpan OutputStallTimeout { get; } = TimeSpan.FromSeconds(60);
+
+    public static bool IsStalled(TimeSpan sinceLastOutput) => sinceLastOutput > OutputStallTimeout;
+
     public static IReadOnlyList<string> BuildArguments(string inputPath, string outputPath, int bitrateKbps) =>
     [
         "-y",
