@@ -8,7 +8,8 @@ internal interface IVideoRecordingPostProcessor
     Task<VideoPostProcessResult> ProcessAsync(string temporaryPath, Settings settings, CancellationToken cancellationToken);
 }
 
-internal sealed record VideoPostProcessResult(string FilePath, string? Warning);
+// SupersededPath は、FilePath を最終名へ移し終えてから消すファイル(MP3 へ変換する前の AAC の録画)。
+internal sealed record VideoPostProcessResult(string FilePath, string? Warning, string? SupersededPath = null);
 
 internal sealed class FfmpegVideoRecordingPostProcessor(DailyLog log) : IVideoRecordingPostProcessor
 {
@@ -53,8 +54,7 @@ internal sealed class FfmpegVideoRecordingPostProcessor(DailyLog log) : IVideoRe
             if (outcome != Mp3TranscodeOutcome.UseConvertedFile)
                 return KeepAac(temporaryPath, outputPath, "MP3 への変換に失敗したため、音声は AAC のまま保存しました。", $"ffmpeg exit code={process.ExitCode}; stderr tail={Tail(standardError)}");
 
-            File.Delete(temporaryPath);
-            return new VideoPostProcessResult(outputPath, null);
+            return new VideoPostProcessResult(outputPath, null, temporaryPath);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

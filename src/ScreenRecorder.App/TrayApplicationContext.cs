@@ -670,13 +670,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (!ReferenceEquals(engine, _recordingEngine) || _activeRecording is not { } active) return;
         if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused) _recordingState.TryBeginSaving();
         ShowSavingState();
+        string? processedPath = null;
         try
         {
             var completedPath = string.IsNullOrWhiteSpace(eventArgs.FilePath) ? active.TemporaryPath : eventArgs.FilePath;
             var processResult = await _videoPostProcessor.ProcessAsync(completedPath, active.Settings, CancellationToken.None);
-            var processedPath = processResult.FilePath;
+            processedPath = processResult.FilePath;
             if (!File.Exists(processedPath)) throw new FileNotFoundException("録画ライブラリが完了を通知しましたが、一時ファイルが見つかりません。", processedPath);
-            var finalPath = await Task.Run(() => MoveRecordingToFinalPath(active, processedPath));
+            var pathToMove = processedPath;
+            var finalPath = await Task.Run(() => MoveRecordingToFinalPath(active, pathToMove));
+            if (processResult.SupersededPath is { } supersededPath) DeleteSupersededRecording(supersededPath);
             CompleteRecordingSave(finalPath, active.Settings);
             if (processResult.Warning is not null)
                 ShowCaptureNotification(5000, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
@@ -685,7 +688,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             _log.Write($"Video recording save failed: temporary={active.TemporaryPath}; {exception}");
-            ShowRecordingFailure(exception.Message, _activeRecording?.TemporaryPath ?? active.TemporaryPath, finalizationConfirmed: true);
+            var retainedPath = processedPath is not null && File.Exists(processedPath) ? processedPath : _activeRecording?.TemporaryPath ?? active.TemporaryPath;
+            ShowRecordingFailure(exception.Message, retainedPath, finalizationConfirmed: true);
             _recordingState.TryFail();
         }
         finally
@@ -853,6 +857,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         if (warning is not null) ShowCaptureNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning, finalPath);
         else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.RecordingSavedNotification, ToolTipIcon.Info, finalPath);
+    }
+
+    private void DeleteSupersededRecording(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception exception) { _log.Write($"Deleting the recording before MP3 conversion failed: file={path}; {exception}"); }
     }
 
     private static string MoveRecordingToFinalPath(ActiveRecording active, string completedPath)
