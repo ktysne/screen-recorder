@@ -5,6 +5,8 @@ namespace ScreenRecorder.App;
 internal sealed class DiagnosticLogPolicyDialog : Form
 {
     private readonly Font _boldFont;
+    // Form はタイトルバーに設定したアイコンを破棄しないため、自分で破棄する。
+    private readonly Icon _appIcon = AppIcon.Create(SystemInformation.IconSize);
     private readonly Button _closeButton = new() { Text = UiLabels.Close, AutoSize = true, MinimumSize = new Size(96, 0), DialogResult = DialogResult.Cancel };
     private readonly RichTextBox _policyText = new()
     {
@@ -27,6 +29,7 @@ internal sealed class DiagnosticLogPolicyDialog : Form
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
+        Icon = _appIcon;
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(480, 400);
         ClientSize = new Size(640, 540);
@@ -67,6 +70,12 @@ internal sealed class DiagnosticLogPolicyDialog : Form
         AddHeading(UiLabels.DiagnosticLogPolicyPathHeading);
         AddParagraph(UiLabels.DiagnosticLogPolicyPath);
         _policyText.Select(0, 0);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _appIcon.Dispose();
     }
 
     private void AddHeading(string heading)
