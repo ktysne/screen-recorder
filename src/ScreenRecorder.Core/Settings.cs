@@ -18,6 +18,7 @@ public sealed class Settings
     public bool OrganizeByMonth { get; set; }
 
     public string StillImageDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "ScreenRecorder");
+    public string? ConfirmedStillImageDirectory { get; set; }
     public StillImageFormat ImageFormat { get; set; } = StillImageFormat.Jpeg;
     public int JpegQuality { get; set; } = SettingsSchema.JpegQuality.Default;
     public PngCompression PngCompression { get; set; } = PngCompression.Standard;
@@ -28,6 +29,7 @@ public sealed class Settings
     public CaptureAfterAction AfterCaptureAction { get; set; } = CaptureAfterAction.None;
 
     public string VideoDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "ScreenRecorder");
+    public string? ConfirmedVideoDirectory { get; set; }
     public int FrameRate { get; set; } = SettingsSchema.FrameRate.Default;
     public int VideoBitrateMbps { get; set; } = SettingsSchema.VideoBitrateMbps.Default;
     public bool CaptureVideoCursor { get; set; } = true;
@@ -70,6 +72,7 @@ public sealed class Settings
         FileNameTemplate = FileNameTemplate,
         OrganizeByMonth = OrganizeByMonth,
         StillImageDirectory = StillImageDirectory,
+        ConfirmedStillImageDirectory = ConfirmedStillImageDirectory,
         ImageFormat = ImageFormat,
         JpegQuality = JpegQuality,
         PngCompression = PngCompression,
@@ -79,6 +82,7 @@ public sealed class Settings
         CaptureDelaySeconds = CaptureDelaySeconds,
         AfterCaptureAction = AfterCaptureAction,
         VideoDirectory = VideoDirectory,
+        ConfirmedVideoDirectory = ConfirmedVideoDirectory,
         FrameRate = FrameRate,
         VideoBitrateMbps = VideoBitrateMbps,
         CaptureVideoCursor = CaptureVideoCursor,
