@@ -153,7 +153,7 @@ internal sealed class SettingsForm : Form
         _imageFormat = BindChoice(capture, UiLabels.ImageFormat,
             [(UiLabels.Jpeg, StillImageFormat.Jpeg), (UiLabels.Png, StillImageFormat.Png)],
             settings => settings.ImageFormat, (settings, value) => settings.ImageFormat = value);
-        var jpegQuality = BindNumber(capture, UiLabels.JpegQuality, 1, 100, settings => settings.JpegQuality, (settings, value) => settings.JpegQuality = value, UiLabels.JpegQualityRange);
+        var jpegQuality = BindNumber(capture, UiLabels.JpegQuality, SettingsSchema.JpegQuality.Min, SettingsSchema.JpegQuality.Max, settings => settings.JpegQuality, (settings, value) => settings.JpegQuality = value, UiLabels.NumericRange(SettingsSchema.JpegQuality.Min, SettingsSchema.JpegQuality.Max));
         _jpegControls.Add(jpegQuality);
         var pngCompression = BindChoice(capture, UiLabels.PngCompression,
             [(UiLabels.PngFast, PngCompression.Fast), (UiLabels.PngStandard, PngCompression.Standard), (UiLabels.PngSmallest, PngCompression.Smallest)],
@@ -162,7 +162,7 @@ internal sealed class SettingsForm : Form
         BindCheck(capture, UiLabels.CopyImageToClipboard, settings => settings.CopyImageToClipboard, (settings, value) => settings.CopyImageToClipboard = value);
         BindCheck(capture, UiLabels.CaptureImageCursor, settings => settings.CaptureImageCursor, (settings, value) => settings.CaptureImageCursor = value);
         BindChoice(capture, UiLabels.CaptureDelay,
-            [(UiLabels.None, 0), (UiLabels.Seconds3, 3), (UiLabels.Seconds5, 5), (UiLabels.Seconds10, 10)],
+            SettingsSchema.CaptureDelaySeconds.Choices.Select(value => (UiLabels.Seconds(value), value)).ToArray(),
             settings => settings.CaptureDelaySeconds, (settings, value) => settings.CaptureDelaySeconds = value, UiLabels.CaptureDelayHelp);
         BindChoice(capture, UiLabels.AfterCaptureAction,
             [(UiLabels.CaptureAfterNone, CaptureAfterAction.None), (UiLabels.CaptureAfterOpenFile, CaptureAfterAction.OpenFile), (UiLabels.CaptureAfterOpenFolder, CaptureAfterAction.OpenFolder)],
@@ -177,15 +177,15 @@ internal sealed class SettingsForm : Form
         var video = AddSection(root, UiLabels.VideoImageOptions);
         BindDirectory(video, UiLabels.VideoDirectory, nameof(Settings.VideoDirectory), settings => settings.VideoDirectory, (settings, value) => settings.VideoDirectory = value);
         BindChoice(video, UiLabels.FrameRate,
-            [(UiLabels.FifteenFramesPerSecond, 15), (UiLabels.TwentyFourFramesPerSecond, 24), (UiLabels.ThirtyFramesPerSecond, 30), (UiLabels.SixtyFramesPerSecond, 60)],
+            SettingsSchema.FrameRate.Choices.Select(value => (UiLabels.FramesPerSecond(value), value)).ToArray(),
             settings => settings.FrameRate, (settings, value) => settings.FrameRate = value);
-        BindNumber(video, UiLabels.VideoBitrate, 1, 100, settings => settings.VideoBitrateMbps, (settings, value) => settings.VideoBitrateMbps = value, UiLabels.MegabitsPerSecond);
+        BindNumber(video, UiLabels.VideoBitrate, SettingsSchema.VideoBitrateMbps.Min, SettingsSchema.VideoBitrateMbps.Max, settings => settings.VideoBitrateMbps, (settings, value) => settings.VideoBitrateMbps = value, UiLabels.MegabitsPerSecond);
         BindCheck(video, UiLabels.CaptureVideoCursor, settings => settings.CaptureVideoCursor, (settings, value) => settings.CaptureVideoCursor = value);
         BindChoice(video, UiLabels.Countdown,
-            [(UiLabels.None, 0), (UiLabels.Seconds3, 3), (UiLabels.Seconds5, 5)],
+            SettingsSchema.CountdownSeconds.Choices.Select(value => (UiLabels.Seconds(value), value)).ToArray(),
             settings => settings.CountdownSeconds, (settings, value) => settings.CountdownSeconds = value);
         BindChoice(video, UiLabels.OutputScale,
-            [("100%", 100), ("75%", 75), ("50%", 50)],
+            SettingsSchema.OutputScalePercent.Choices.Select(value => (UiLabels.Percentage(value), value)).ToArray(),
             settings => settings.OutputScalePercent, (settings, value) => settings.OutputScalePercent = value);
         BindCheck(video, UiLabels.HighlightClicks, settings => settings.HighlightClicks, (settings, value) => settings.HighlightClicks = value);
         BindChoice(video, UiLabels.Encoder,
@@ -217,12 +217,12 @@ internal sealed class SettingsForm : Form
         AddFullWidth(audio, _mp3Hint);
         _audioControls.Add(_audioFormat);
         var aacBitrate = BindChoice(audio, UiLabels.AacBitrate,
-            [(UiLabels.KilobitsPerSecond(96), 96), (UiLabels.KilobitsPerSecond(128), 128), (UiLabels.KilobitsPerSecond(160), 160), (UiLabels.KilobitsPerSecond(192), 192)],
+            SettingsSchema.AacBitrateKbps.Choices.Select(value => (UiLabels.KilobitsPerSecond(value), value)).ToArray(),
             settings => settings.AacBitrateKbps, (settings, value) => settings.AacBitrateKbps = value);
         _aacControls.Add(aacBitrate);
         _audioControls.Add(aacBitrate);
         var mp3Bitrate = BindChoice(audio, UiLabels.Mp3Bitrate,
-            [(UiLabels.KilobitsPerSecond(128), 128), (UiLabels.KilobitsPerSecond(192), 192), (UiLabels.KilobitsPerSecond(256), 256), (UiLabels.KilobitsPerSecond(320), 320)],
+            SettingsSchema.Mp3BitrateKbps.Choices.Select(value => (UiLabels.KilobitsPerSecond(value), value)).ToArray(),
             settings => settings.Mp3BitrateKbps, (settings, value) => settings.Mp3BitrateKbps = value);
         _mp3Controls.Add(mp3Bitrate);
         _audioControls.Add(mp3Bitrate);

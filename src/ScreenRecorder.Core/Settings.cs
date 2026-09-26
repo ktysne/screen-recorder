@@ -18,19 +18,19 @@ public sealed class Settings
 
     public string StillImageDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "ScreenRecorder");
     public StillImageFormat ImageFormat { get; set; } = StillImageFormat.Jpeg;
-    public int JpegQuality { get; set; } = 98;
+    public int JpegQuality { get; set; } = SettingsSchema.JpegQuality.Default;
     public PngCompression PngCompression { get; set; } = PngCompression.Standard;
     public bool CopyImageToClipboard { get; set; } = true;
     public bool CaptureImageCursor { get; set; }
-    public int CaptureDelaySeconds { get; set; }
+    public int CaptureDelaySeconds { get; set; } = SettingsSchema.CaptureDelaySeconds.Default;
     public CaptureAfterAction AfterCaptureAction { get; set; } = CaptureAfterAction.None;
 
     public string VideoDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "ScreenRecorder");
-    public int FrameRate { get; set; } = 30;
-    public int VideoBitrateMbps { get; set; } = 12;
+    public int FrameRate { get; set; } = SettingsSchema.FrameRate.Default;
+    public int VideoBitrateMbps { get; set; } = SettingsSchema.VideoBitrateMbps.Default;
     public bool CaptureVideoCursor { get; set; } = true;
-    public int CountdownSeconds { get; set; } = 3;
-    public int OutputScalePercent { get; set; } = 100;
+    public int CountdownSeconds { get; set; } = SettingsSchema.CountdownSeconds.Default;
+    public int OutputScalePercent { get; set; } = SettingsSchema.OutputScalePercent.Default;
     public bool HighlightClicks { get; set; }
     public EncoderMode Encoder { get; set; } = EncoderMode.Automatic;
 
@@ -38,8 +38,8 @@ public sealed class Settings
     public bool CaptureMicrophone { get; set; }
     public string? MicrophoneDeviceId { get; set; }
     public AudioFormat AudioFormat { get; set; } = AudioFormat.Aac;
-    public int AacBitrateKbps { get; set; } = 192;
-    public int Mp3BitrateKbps { get; set; } = 192;
+    public int AacBitrateKbps { get; set; } = SettingsSchema.AacBitrateKbps.Default;
+    public int Mp3BitrateKbps { get; set; } = SettingsSchema.Mp3BitrateKbps.Default;
 
     public string ScreenshotRegionShortcut { get; set; } = "PrtSc";
     public string ScreenshotFullScreenShortcut { get; set; } = "Ctrl+PrtSc";

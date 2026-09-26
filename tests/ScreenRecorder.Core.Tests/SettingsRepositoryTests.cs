@@ -19,24 +19,24 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal("ScreenRecorder_{date}_{time}", settings.FileNameTemplate);
         Assert.False(settings.OrganizeByMonth);
         Assert.Equal(StillImageFormat.Jpeg, settings.ImageFormat);
-        Assert.Equal(98, settings.JpegQuality);
+        Assert.Equal(SettingsSchema.JpegQuality.Default, settings.JpegQuality);
         Assert.Equal(PngCompression.Standard, settings.PngCompression);
         Assert.True(settings.CopyImageToClipboard);
         Assert.False(settings.CaptureImageCursor);
-        Assert.Equal(0, settings.CaptureDelaySeconds);
+        Assert.Equal(SettingsSchema.CaptureDelaySeconds.Default, settings.CaptureDelaySeconds);
         Assert.Equal(CaptureAfterAction.None, settings.AfterCaptureAction);
-        Assert.Equal(30, settings.FrameRate);
-        Assert.Equal(12, settings.VideoBitrateMbps);
+        Assert.Equal(SettingsSchema.FrameRate.Default, settings.FrameRate);
+        Assert.Equal(SettingsSchema.VideoBitrateMbps.Default, settings.VideoBitrateMbps);
         Assert.True(settings.CaptureVideoCursor);
-        Assert.Equal(3, settings.CountdownSeconds);
-        Assert.Equal(100, settings.OutputScalePercent);
+        Assert.Equal(SettingsSchema.CountdownSeconds.Default, settings.CountdownSeconds);
+        Assert.Equal(SettingsSchema.OutputScalePercent.Default, settings.OutputScalePercent);
         Assert.False(settings.HighlightClicks);
         Assert.Equal(EncoderMode.Automatic, settings.Encoder);
         Assert.True(settings.CaptureSystemAudio);
         Assert.False(settings.CaptureMicrophone);
         Assert.Equal(AudioFormat.Aac, settings.AudioFormat);
-        Assert.Equal(192, settings.AacBitrateKbps);
-        Assert.Equal(192, settings.Mp3BitrateKbps);
+        Assert.Equal(SettingsSchema.AacBitrateKbps.Default, settings.AacBitrateKbps);
+        Assert.Equal(SettingsSchema.Mp3BitrateKbps.Default, settings.Mp3BitrateKbps);
         Assert.Equal(new[] { "PrtSc", "Ctrl+PrtSc", "Alt+PrtSc", "Shift+PrtSc", "Ctrl+Shift+PrtSc", "Alt+Shift+PrtSc", "" }, new[]
         {
             settings.ScreenshotRegionShortcut, settings.ScreenshotFullScreenShortcut, settings.ScreenshotWindowShortcut,
@@ -211,24 +211,62 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(55, repository.Load().JpegQuality);
     }
 
-    [Theory]
-    [InlineData(nameof(Settings.CaptureDelaySeconds), new[] { 0, 3, 5, 10 })]
-    [InlineData(nameof(Settings.FrameRate), new[] { 15, 24, 30, 60 })]
-    [InlineData(nameof(Settings.CountdownSeconds), new[] { 0, 3, 5 })]
-    [InlineData(nameof(Settings.OutputScalePercent), new[] { 100, 75, 50 })]
-    [InlineData(nameof(Settings.AacBitrateKbps), new[] { 96, 128, 160, 192 })]
-    [InlineData(nameof(Settings.Mp3BitrateKbps), new[] { 128, 192, 256, 320 })]
-    public void EveryAllowedChoiceSurvivesSaveAndLoad(string propertyName, int[] allowedValues)
+    [Fact]
+    public void IntSettingDefaultsAreValidAndUsedBySettings()
     {
-        var property = typeof(Settings).GetProperty(propertyName)!;
-        var repository = new SettingsRepository(_directory);
-        foreach (var value in allowedValues)
+        var settings = new Settings();
+        foreach (var setting in SettingsSchema.IntSettings)
         {
-            var settings = new Settings();
-            property.SetValue(settings, value);
-            repository.Save(settings);
-            Assert.Equal(value, property.GetValue(repository.Load()));
+            Assert.True(setting.IsValid(setting.Default), setting.Name);
+            Assert.Equal(setting.Default, setting.Get(settings));
         }
+    }
+
+    [Fact]
+    public void AacBitrateChoicesMatchRecordingLibraryValues()
+    {
+        // 録画ライブラリの音声ビットレート列挙はこの 4 値だけを持つ。
+        Assert.Equal(new[] { 96, 128, 160, 192 }, SettingsSchema.AacBitrateKbps.Choices);
+    }
+
+    [Fact]
+    public void EveryAllowedIntSettingValueSurvivesSaveAndLoad()
+    {
+        var repository = new SettingsRepository(_directory);
+        foreach (var setting in SettingsSchema.IntSettings)
+        {
+            var values = setting switch
+            {
+                IntChoiceSetting choice => choice.Choices,
+                IntRangeSetting range => Enumerable.Range(range.Min, range.Max - range.Min + 1),
+                _ => throw new InvalidOperationException($"未知の整数設定です: {setting.Name}")
+            };
+            foreach (var value in values)
+            {
+                var settings = new Settings();
+                setting.Set(settings, value);
+                repository.Save(settings);
+                Assert.Equal(value, setting.Get(repository.Load()));
+            }
+        }
+    }
+
+    [Fact]
+    public void InvalidIntegerSettingDoesNotChangeExistingFileOrLeaveTemporaryFile()
+    {
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        var temporaryPath = settingsPath + ".tmp";
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { FrameRate = SettingsSchema.FrameRate.Default });
+        var originalContents = File.ReadAllText(settingsPath);
+        var invalidSettings = new Settings { OutputScalePercent = 60 };
+
+        var exception = Assert.Throws<ArgumentException>(() => repository.Save(invalidSettings));
+
+        Assert.Contains(nameof(Settings.OutputScalePercent), exception.Message);
+        Assert.Equal(originalContents, File.ReadAllText(settingsPath));
+        Assert.False(File.Exists(temporaryPath));
     }
 
     public void Dispose()
