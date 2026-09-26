@@ -16,17 +16,35 @@ public sealed class CaptureCompletionRulesTests
     }
 
     [Fact]
-    public void ShortError_TruncatesAfter180Characters()
+    public void ErrorDetail_KeepsExactly180Characters()
     {
-        var value = new string('x', 181);
+        var value = new string('x', 180);
 
-        Assert.Equal(new string('x', 180), CaptureText.ShortError(value));
+        Assert.Equal(value, CaptureText.ErrorDetail(value));
     }
 
     [Fact]
-    public void ShortPath_KeepsTheEndAndPrefixesAnEllipsis()
+    public void ErrorDetail_TruncatesOneCharacterOver180Characters()
     {
-        Assert.Equal("…5678", CaptureText.ShortPath("12345678", 4));
+        var value = new string('x', 181);
+
+        Assert.Equal(new string('x', 180), CaptureText.ErrorDetail(value));
+    }
+
+    [Fact]
+    public void PathDetail_KeepsExactly190Characters()
+    {
+        var value = new string('x', 190);
+
+        Assert.Equal(value, CaptureText.PathDetail(value));
+    }
+
+    [Fact]
+    public void PathDetail_PrefixesAnEllipsisAndKeepsTheEndWhenOneCharacterOver190Characters()
+    {
+        var value = new string('x', 191);
+
+        Assert.Equal($"…{new string('x', 190)}", CaptureText.PathDetail(value));
     }
 
     [Theory]

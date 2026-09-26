@@ -38,7 +38,7 @@ internal static class CaptureCompletion
         string actionFailureDetails,
         string? warning,
         Func<string, Task<bool>> openFolder,
-        Action<int, string, string, ToolTipIcon, string?> showNotification)
+        Action<NotificationDuration, string, string, ToolTipIcon, string?> showNotification)
     {
         if (settings.PlayCaptureSound)
         {
@@ -72,7 +72,7 @@ internal static class CaptureCompletion
         if (notification == CaptureNotification.None) return;
         var message = notification == CaptureNotification.Warning ? warning! : kind.SavedNotification;
         var icon = notification == CaptureNotification.Warning ? ToolTipIcon.Warning : ToolTipIcon.Info;
-        try { showNotification(4000, UiLabels.AppName, message, icon, filePath); }
+        try { showNotification(NotificationDuration.Standard, UiLabels.AppName, message, icon, filePath); }
         catch (Exception exception) { DiagnosticLog.Warn(kind.LogTag, $"保存の通知を表示できませんでした: ファイル={filePath}; {exception}"); }
     }
 }

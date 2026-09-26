@@ -132,7 +132,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.App, $"自動起動の設定に失敗しました: {exception}");
-            ShowNotification(3000, UiLabels.AppName, UiLabels.SettingsApplyFailed, ToolTipIcon.Error);
+            ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.SettingsApplyFailed, ToolTipIcon.Error);
         }
 
         var failures = _hotkeyManager.Replace(_settings);
@@ -203,7 +203,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var body = printScreenFailure is null
             ? startup ? UiLabels.StartupHotkeyFailureBody : UiLabels.SettingsApplyHotkeyFailed
             : UiLabels.PrintScreenSnippingHint;
-        ShowNotification(3500, UiLabels.StartupHotkeyFailureTitle, body, ToolTipIcon.Warning);
+        ShowNotification(NotificationDuration.Standard, UiLabels.StartupHotkeyFailureTitle, body, ToolTipIcon.Warning);
     }
 
     private async void PerformAction(RecorderAction action)
@@ -257,8 +257,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             catch (Exception exception)
             {
                 DiagnosticLog.Error(DiagnosticLogTags.Capture, $"静止画の撮影に失敗しました: 方法={CaptureText.CaptureMethodName(screenshotMode)}; {exception}");
-                var reason = CaptureText.ShortError(exception.Message);
-                ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
+                var reason = CaptureText.ErrorDetail(exception.Message);
+                ShowNotification(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
             }
             finally
             {
@@ -282,21 +282,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_recording.CanStop)
         {
             _exitRequested = true;
-            ShowNotification(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
+            ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
             _recording.StopRecording();
             return;
         }
         if (_recording.State == VideoRecordingState.Saving)
         {
             _exitRequested = true;
-            ShowNotification(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
+            ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
             return;
         }
         if (_screenshotCaptureInProgress || _recording.SelectionInProgress)
         {
             _exitRequested = true;
             if (_screenshotCaptureInProgress)
-                ShowNotification(3000, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
+                ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
             return;
         }
         ExitThread();
@@ -304,11 +304,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
 
 
-    private void ShowNotification(int timeout, string title, string message, ToolTipIcon icon) =>
-        _captureNotifier.Show(timeout, title, message, icon);
+    private void ShowNotification(NotificationDuration duration, string title, string message, ToolTipIcon icon) =>
+        _captureNotifier.Show(duration, title, message, icon);
 
-    private void ShowCaptureNotification(int timeout, string title, string message, ToolTipIcon icon, string? path) =>
-        _captureNotifier.ShowForCapture(timeout, title, message, icon, path);
+    private void ShowCaptureNotification(NotificationDuration duration, string title, string message, ToolTipIcon icon, string? path) =>
+        _captureNotifier.ShowForCapture(duration, title, message, icon, path);
 
     private string? GetUpdateBlockedReason()
     {
@@ -343,7 +343,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             timer.Dispose();
             _updateCompletedNotificationTimer = null;
             DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新後の版を起動しました: 版={AppVersion.Current}。");
-            ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.UpdateCompleted, AppVersion.Current), ToolTipIcon.Info);
+            ShowNotification(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.UpdateCompleted, AppVersion.Current), ToolTipIcon.Info);
         };
         timer.Start();
     }
@@ -398,14 +398,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 return;
             }
             if (result.Count == 0 || result.Folder is null) return;
-            var message = string.Format(UiLabels.IncompleteRecordingsFound, result.Count, CaptureText.ShortPath(result.Folder, 190));
+            var message = string.Format(UiLabels.IncompleteRecordingsFound, result.Count, CaptureText.PathDetail(result.Folder));
             _leftoverRecordingNotificationTimer = new System.Windows.Forms.Timer { Interval = StartupNotificationDelayMilliseconds * 2 };
             _leftoverRecordingNotificationTimer.Tick += (_, _) =>
             {
                 _leftoverRecordingNotificationTimer.Stop();
                 _leftoverRecordingNotificationTimer.Dispose();
                 _leftoverRecordingNotificationTimer = null;
-                ShowNotification(6000, UiLabels.AppName, message, ToolTipIcon.Warning);
+                ShowNotification(NotificationDuration.Long, UiLabels.AppName, message, ToolTipIcon.Warning);
             };
             _leftoverRecordingNotificationTimer.Start();
         }), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
@@ -460,7 +460,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.App, $"マニュアルを開けませんでした: {exception}");
-            ShowNotification(3000, UiLabels.AppName, UiLabels.ManualOpenFailed, ToolTipIcon.Error);
+            ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.ManualOpenFailed, ToolTipIcon.Error);
         }
     }
 
@@ -479,7 +479,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 DiagnosticLog.Warn(DiagnosticLogTags.App, $"保存後にフォルダーを開けませんでした: フォルダー={path}; {exception}");
             if (notifyFailure)
             {
-                try { ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error); }
+                try { ShowNotification(NotificationDuration.Brief, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Error); }
                 catch (Exception notificationException) { DiagnosticLog.Warn(DiagnosticLogTags.App, $"フォルダーを開けなかったことを通知できませんでした: {notificationException}"); }
             }
             return false;

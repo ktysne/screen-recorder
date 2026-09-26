@@ -144,7 +144,7 @@ internal sealed class VideoRecordingController : IDisposable
                 var message = targetBounds.Width < 2 || targetBounds.Height < 2
                     ? UiLabels.RecordingRegionTooSmall
                     : UiLabels.RecordingOutputTooSmall;
-                _notifier.Show(4000, UiLabels.AppName, message, ToolTipIcon.Warning);
+                _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, message, ToolTipIcon.Warning);
                 return;
             }
 
@@ -251,7 +251,7 @@ internal sealed class VideoRecordingController : IDisposable
             engine.RecordingWarning += (_, eventArgs) => DispatchToUi(() =>
             {
                 if (!ReferenceEquals(engine, _recordingEngine)) return;
-                _notifier.Show(5000, UiLabels.AppName, eventArgs.Message, ToolTipIcon.Warning);
+                _notifier.Show(NotificationDuration.Long, UiLabels.AppName, CaptureText.ErrorDetail(eventArgs.Message), ToolTipIcon.Warning);
             });
             _recordingEngine = engine;
             var startStopwatch = Stopwatch.StartNew();
@@ -288,7 +288,7 @@ internal sealed class VideoRecordingController : IDisposable
                 _recordingState.TryFail();
                 CleanupRecordingSession();
                 UpdateRecordingUi();
-                _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingStartFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Error);
+                _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.RecordingStartFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Error);
             }
         }
         finally
@@ -350,7 +350,7 @@ internal sealed class VideoRecordingController : IDisposable
             if (wasRecording) _recordingState.RequestResume();
             else _recordingState.RequestPause();
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画の一時停止または再開に失敗しました: {exception}");
-            _notifier.Show(3500, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Warning);
+            _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Warning);
             UpdateRecordingUi();
         }
     }
@@ -469,7 +469,7 @@ internal sealed class VideoRecordingController : IDisposable
             DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画を保存しました: {finalPath}");
             await CompleteRecordingSave(finalPath, active.Settings);
             if (processResult.Warning is not null)
-                _notifier.ShowForCapture(5000, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
+                _notifier.ShowForCapture(NotificationDuration.Long, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
             // 変換前の一時ファイルが残ると次の起動で未完了の録画と誤って知らせるため、削除を終えてから保存を完了する。
             if (processResult.SupersededPath is { } supersededPath) await DeleteSupersededRecordingAsync(supersededPath);
             _recordingState.TryCompleteSaving();
@@ -582,14 +582,14 @@ internal sealed class VideoRecordingController : IDisposable
     {
         var message = recordingStartFailure
             ? retainedPath is null
-                ? string.Format(UiLabels.RecordingStartFailed, CaptureText.ShortError(error))
-                : string.Format(UiLabels.RecordingStartTemporaryFileRetained, CaptureText.ShortPath(retainedPath, 150))
+                ? string.Format(UiLabels.RecordingStartFailed, CaptureText.ErrorDetail(error))
+                : string.Format(UiLabels.RecordingStartTemporaryFileRetained, CaptureText.PathDetail(retainedPath))
             : retainedPath is null
-                ? string.Format(UiLabels.RecordingFailed, CaptureText.ShortError(error))
+                ? string.Format(UiLabels.RecordingFailed, CaptureText.ErrorDetail(error))
                 : string.Format(
                     finalizationConfirmed ? UiLabels.RecordingTemporaryFileRetained : UiLabels.RecordingTemporaryFileIncomplete,
-                    CaptureText.ShortPath(retainedPath, 150));
-        _notifier.ShowForCapture(5000, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
+                    CaptureText.PathDetail(retainedPath));
+        _notifier.ShowForCapture(NotificationDuration.Long, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
     }
 
     private void SetSystemSleepInhibition(bool inhibit)
@@ -757,12 +757,12 @@ internal sealed class VideoRecordingController : IDisposable
         if (availability.Error is { } exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量を確認できませんでした: フォルダー={videoDirectory}; {exception}");
-            _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Error);
+            _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Error);
             return false;
         }
         if (VideoRecordingStateMachine.HasMinimumFreeSpace(availability.AvailableBytes!.Value)) return true;
         DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量が不足しています: {videoDirectory}");
-        _notifier.Show(4000, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
+        _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, UiLabels.RecordingSpaceInsufficient, ToolTipIcon.Warning);
         return false;
     }
 

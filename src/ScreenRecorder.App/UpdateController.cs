@@ -149,7 +149,7 @@ internal sealed class UpdateController : IDisposable
                 _notify(string.Format(UiLabels.UpdateUpToDate, AppVersion.Current), ToolTipIcon.Info, false);
                 break;
             default:
-                _notify(string.Format(UiLabels.UpdateCheckFailed, result.Error), ToolTipIcon.Warning, false);
+                _notify(string.Format(UiLabels.UpdateCheckFailed, CaptureText.ErrorDetail(result.Error ?? string.Empty)), ToolTipIcon.Warning, false);
                 break;
         }
     }
@@ -297,7 +297,7 @@ internal sealed class UpdateController : IDisposable
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.Update, $"配布ページを開けませんでした: {exception}");
-            _notify(string.Format(UiLabels.DistributionPageOpenFailed, exception.Message), ToolTipIcon.Error, false);
+            _notify(string.Format(UiLabels.DistributionPageOpenFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Error, false);
         }
     }
 
