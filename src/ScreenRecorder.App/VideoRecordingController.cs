@@ -379,7 +379,7 @@ internal sealed class VideoRecordingController : IDisposable
             if (_recordingEngine is { } engine)
                 _ = FinishRecordingFailureAfterTerminationAsync(engine, exception.Message, _activeRecording?.TemporaryPath);
             else
-                FinishRecordingFailure(exception.Message, _activeRecording?.TemporaryPath, finalizationConfirmed: false);
+                _ = FinishRecordingFailureAsync(exception.Message, _activeRecording?.TemporaryPath, finalizationConfirmed: false);
         }
     }
 
@@ -447,7 +447,10 @@ internal sealed class VideoRecordingController : IDisposable
 
     private async void HandleRecordingCompleted(IRecordingEngine engine, RecordingEngineCompletedEventArgs eventArgs)
     {
-        if (!ReferenceEquals(engine, _recordingEngine) || _recordingCompletionProcessing || _activeRecording is not { } active) return;
+        if (!ReferenceEquals(engine, _recordingEngine)
+            || _recordingCompletionProcessing
+            || _recordingFailureFinalizationStarted
+            || _activeRecording is not { } active) return;
         _recordingCompletionProcessing = true;
         if (_recordingState.CanStop) _recordingState.TryBeginSaving();
         ShowSavingState();
@@ -464,7 +467,7 @@ internal sealed class VideoRecordingController : IDisposable
                 return MoveRecordingToFinalPath(active, pathToMove);
             });
             DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画を保存しました: {finalPath}");
-            if (processResult.SupersededPath is { } supersededPath) DeleteSupersededRecording(supersededPath);
+            if (processResult.SupersededPath is { } supersededPath) await DeleteSupersededRecordingAsync(supersededPath);
             await CompleteRecordingSave(finalPath, active.Settings);
             if (processResult.Warning is not null)
                 _notifier.ShowForCapture(5000, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
@@ -473,7 +476,12 @@ internal sealed class VideoRecordingController : IDisposable
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画を保存できませんでした: 一時ファイル={active.TemporaryPath}; {exception}");
-            var retainedPath = processedPath is not null && File.Exists(processedPath) ? processedPath : _activeRecording?.TemporaryPath ?? active.TemporaryPath;
+            var temporaryPath = _activeRecording?.TemporaryPath ?? active.TemporaryPath;
+            var retainedPath = await Task.Run(() =>
+            {
+                if (processedPath is not null && File.Exists(processedPath)) return processedPath;
+                return !string.IsNullOrWhiteSpace(temporaryPath) && File.Exists(temporaryPath) ? temporaryPath : null;
+            });
             ShowRecordingFailure(exception.Message, retainedPath, finalizationConfirmed: true);
             _recordingState.TryFail();
         }
@@ -492,7 +500,7 @@ internal sealed class VideoRecordingController : IDisposable
         ShowSavingState();
         var decision = RecordingTerminationRules.Decide(eventArgs.Outcome);
         if (decision is RecordingTerminationDecision.Wait or RecordingTerminationDecision.ContinueCompletedSave) return;
-        FinishRecordingFailure(
+        _ = FinishRecordingFailureAsync(
             eventArgs.Error,
             eventArgs.FilePath,
             finalizationConfirmed: false);
@@ -506,7 +514,7 @@ internal sealed class VideoRecordingController : IDisposable
         DiagnosticLog.Warn(
             DiagnosticLogTags.Record,
             $"録画エンジンが {RecordingStartTimeout.TotalSeconds:0} 秒以内に記録を始めなかったため、録画の開始を諦めます。");
-        FinishRecordingFailure(
+        await FinishRecordingFailureAsync(
             UiLabels.RecordingStartTimedOut,
             _activeRecording?.TemporaryPath,
             finalizationConfirmed: false,
@@ -529,7 +537,7 @@ internal sealed class VideoRecordingController : IDisposable
             || decision != RecordingTerminationDecision.NotifyIncompleteThenDispose)
             return;
 
-        FinishRecordingFailure(
+        await FinishRecordingFailureAsync(
             UiLabels.RecordingFinalizationTimedOut,
             _activeRecording?.TemporaryPath,
             finalizationConfirmed: false);
@@ -541,10 +549,10 @@ internal sealed class VideoRecordingController : IDisposable
         var decision = RecordingTerminationRules.Decide(termination);
         if (!ReferenceEquals(engine, _recordingEngine) || decision is RecordingTerminationDecision.Wait or RecordingTerminationDecision.ContinueCompletedSave)
             return;
-        FinishRecordingFailure(error, temporaryPath, finalizationConfirmed: false);
+        await FinishRecordingFailureAsync(error, temporaryPath, finalizationConfirmed: false);
     }
 
-    private void FinishRecordingFailure(
+    private async Task FinishRecordingFailureAsync(
         string error,
         string? temporaryPath,
         bool finalizationConfirmed,
@@ -553,11 +561,12 @@ internal sealed class VideoRecordingController : IDisposable
         if (_recordingFailureFinalizationStarted || _recordingCompletionProcessing) return;
         _recordingFailureFinalizationStarted = true;
         var activePath = string.IsNullOrWhiteSpace(temporaryPath) ? _activeRecording?.TemporaryPath : temporaryPath;
-        var retainedPath = !string.IsNullOrWhiteSpace(activePath) && File.Exists(activePath) ? activePath : null;
+        var retainedPath = await Task.Run(() =>
+            !string.IsNullOrWhiteSpace(activePath) && File.Exists(activePath) ? activePath : null);
         DiagnosticLog.Error(DiagnosticLogTags.Record, retainedPath is null
             ? $"録画に失敗しました: {error}"
             : $"録画に失敗し、未完了のファイルを保持しました: {retainedPath}; {error}");
-        ShowRecordingFailure(error, activePath, finalizationConfirmed, recordingStartFailure);
+        ShowRecordingFailure(error, retainedPath, finalizationConfirmed, recordingStartFailure);
         _recordingState.TryFail();
         CleanupRecordingSession();
         UpdateRecordingUi();
@@ -566,11 +575,10 @@ internal sealed class VideoRecordingController : IDisposable
 
     private void ShowRecordingFailure(
         string error,
-        string? temporaryPath,
+        string? retainedPath,
         bool finalizationConfirmed,
         bool recordingStartFailure = false)
     {
-        var retainedPath = !string.IsNullOrWhiteSpace(temporaryPath) && File.Exists(temporaryPath) ? temporaryPath : null;
         var message = recordingStartFailure
             ? retainedPath is null
                 ? string.Format(UiLabels.RecordingStartFailed, CaptureText.ShortError(error))
@@ -609,9 +617,9 @@ internal sealed class VideoRecordingController : IDisposable
             _notifier.ShowForCapture);
     }
 
-    private void DeleteSupersededRecording(string path)
+    private Task DeleteSupersededRecordingAsync(string path)
     {
-        _ = Task.Run(() =>
+        return Task.Run(() =>
         {
             try { File.Delete(path); }
             catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Convert, $"変換前の録画ファイルを削除できませんでした: {path}; {exception}"); }
