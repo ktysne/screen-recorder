@@ -279,7 +279,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             TryExitAfterPendingWork();
             return;
         }
-        if (_recording.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
+        if (_recording.CanStop)
         {
             _exitRequested = true;
             ShowNotification(3000, UiLabels.AppName, UiLabels.RecordingExitWaiting, ToolTipIcon.Info);
@@ -358,6 +358,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray.Text = state switch
         {
             VideoRecordingState.Recording => "ScreenRecorder (録画中)",
+            VideoRecordingState.Preparing => $"ScreenRecorder ({UiLabels.RecordingPreparing})",
             VideoRecordingState.Paused => "ScreenRecorder (一時停止中)",
             VideoRecordingState.Saving => "ScreenRecorder (保存中)",
             VideoRecordingState.Countdown => "ScreenRecorder (録画開始前)",

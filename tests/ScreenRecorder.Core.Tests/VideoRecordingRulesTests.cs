@@ -78,6 +78,18 @@ public sealed class VideoRecordingRulesTests
     }
 
     [Fact]
+    public void TryStartRecording_EntersPreparingUntilEngineReportsRecording()
+    {
+        var machine = new VideoRecordingStateMachine();
+        Assert.True(machine.TryBeginCountdown());
+
+        Assert.True(machine.TryStartRecording());
+        Assert.Equal(VideoRecordingState.Preparing, machine.State);
+        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
+        Assert.Equal(VideoRecordingState.Recording, machine.State);
+    }
+
+    [Fact]
     public void TryPauseAndResume_MoveBetweenRecordingStates()
     {
         var machine = CreateRecordingMachine();
@@ -91,7 +103,7 @@ public sealed class VideoRecordingRulesTests
     [Fact]
     public void RequestStopBeforeEngineIsReady_StopsWhenRecordingStarts()
     {
-        var machine = CreateRecordingMachine();
+        var machine = CreatePreparingMachine();
 
         Assert.Equal(RecordingEngineCommand.None, machine.RequestStop());
         Assert.Equal(VideoRecordingState.Saving, machine.State);
@@ -99,26 +111,83 @@ public sealed class VideoRecordingRulesTests
     }
 
     [Fact]
-    public void PauseThenResumeBeforeEngineIsReady_DoesNotPauseWhenRecordingStarts()
+    public void Preparing_DoesNotAcceptPauseOrResume()
     {
-        var machine = CreateRecordingMachine();
+        var machine = CreatePreparingMachine();
 
         Assert.Equal(RecordingEngineCommand.None, machine.RequestPause());
-        Assert.Equal(VideoRecordingState.Paused, machine.State);
         Assert.Equal(RecordingEngineCommand.None, machine.RequestResume());
-        Assert.Equal(VideoRecordingState.Recording, machine.State);
-        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
+        Assert.False(machine.TryPause());
+        Assert.False(machine.TryResume());
+        Assert.Equal(VideoRecordingState.Preparing, machine.State);
     }
 
     [Fact]
-    public void PauseBeforeEngineIsReady_PausesWhenRecordingStarts()
+    public void PreparingFailure_CanMoveThroughSavingBackToIdle()
+    {
+        var machine = CreatePreparingMachine();
+
+        Assert.True(machine.TryBeginSaving());
+        Assert.Equal(VideoRecordingState.Saving, machine.State);
+        Assert.True(machine.TryFail());
+        Assert.Equal(VideoRecordingState.Idle, machine.State);
+    }
+
+    [Fact]
+    public void EngineRecordingStartedAfterResume_DoesNotChangeRecordingState()
     {
         var machine = CreateRecordingMachine();
+        Assert.True(machine.TryPause());
+        Assert.True(machine.TryResume());
 
-        Assert.Equal(RecordingEngineCommand.None, machine.RequestPause());
+        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
+        Assert.Equal(VideoRecordingState.Recording, machine.State);
+    }
+
+    [Fact]
+    public void EngineRecordingStartedWhilePaused_ReturnsPause()
+    {
+        var machine = CreateRecordingMachine();
+        Assert.True(machine.TryPause());
 
         Assert.Equal(RecordingEngineCommand.Pause, machine.OnEngineRecordingStarted());
         Assert.Equal(VideoRecordingState.Paused, machine.State);
+    }
+
+    [Theory]
+    [InlineData(VideoRecordingState.Idle, false, false)]
+    [InlineData(VideoRecordingState.Countdown, false, false)]
+    [InlineData(VideoRecordingState.Preparing, true, false)]
+    [InlineData(VideoRecordingState.Recording, true, true)]
+    [InlineData(VideoRecordingState.Paused, true, true)]
+    [InlineData(VideoRecordingState.Saving, false, false)]
+    public void CanStopAndCanPause_ReflectEachState(VideoRecordingState state, bool canStop, bool canPause)
+    {
+        var machine = new VideoRecordingStateMachine();
+        switch (state)
+        {
+            case VideoRecordingState.Countdown:
+                machine.TryBeginCountdown();
+                break;
+            case VideoRecordingState.Preparing:
+                machine.TryBeginCountdown();
+                machine.TryStartRecording();
+                break;
+            case VideoRecordingState.Recording:
+                CreateRecordingMachineState(machine);
+                break;
+            case VideoRecordingState.Paused:
+                CreateRecordingMachineState(machine);
+                machine.TryPause();
+                break;
+            case VideoRecordingState.Saving:
+                CreateRecordingMachineState(machine);
+                machine.TryBeginSaving();
+                break;
+        }
+
+        Assert.Equal(canStop, machine.CanStop);
+        Assert.Equal(canPause, machine.CanPause);
     }
 
     [Fact]
@@ -175,6 +244,22 @@ public sealed class VideoRecordingRulesTests
         var machine = new VideoRecordingStateMachine();
         Assert.True(machine.TryBeginCountdown());
         Assert.True(machine.TryStartRecording());
+        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
         return machine;
+    }
+
+    private static VideoRecordingStateMachine CreatePreparingMachine()
+    {
+        var machine = new VideoRecordingStateMachine();
+        Assert.True(machine.TryBeginCountdown());
+        Assert.True(machine.TryStartRecording());
+        return machine;
+    }
+
+    private static void CreateRecordingMachineState(VideoRecordingStateMachine machine)
+    {
+        Assert.True(machine.TryBeginCountdown());
+        Assert.True(machine.TryStartRecording());
+        Assert.Equal(RecordingEngineCommand.None, machine.OnEngineRecordingStarted());
     }
 }
