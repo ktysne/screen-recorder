@@ -90,7 +90,7 @@ internal static class UpdateApplier
             return;
         }
         log.Write($"Update files replaced: version={version}, install={installDirectory}, files={plan.Steps.Count}");
-        TryWriteCleanupRecord(log, new UpdateCleanupRecord(installDirectory, version, plan.BackupPaths));
+        UpdateCleanup.TryWriteCleanupRecord(log, new UpdateCleanupRecord(installDirectory, version, plan.BackupPaths));
 
         if (!WaitForSingletonRelease())
         {
@@ -210,19 +210,6 @@ internal static class UpdateApplier
         }
     }
 
-    private static void TryWriteCleanupRecord(DailyLog log, UpdateCleanupRecord record)
-    {
-        try
-        {
-            Directory.CreateDirectory(UpdatePaths.UpdateDirectory);
-            File.WriteAllText(UpdatePaths.CleanupRecordPath, record.Serialize());
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            log.Write($"Writing update cleanup record failed: {exception}");
-        }
-    }
-
     private static void TryDelete(DailyLog log, string path)
     {
         try { File.Delete(path); }
@@ -265,6 +252,30 @@ internal static class UpdateCleanup
 {
     private static readonly TimeSpan ApplierWaitTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ApplierExitGrace = TimeSpan.FromSeconds(3);
+
+    internal static void TryWriteCleanupRecord(DailyLog log, UpdateCleanupRecord record)
+    {
+        string? temporaryPath = null;
+        try
+        {
+            Directory.CreateDirectory(UpdatePaths.UpdateDirectory);
+            temporaryPath = Path.Combine(UpdatePaths.UpdateDirectory, $"ScreenRecorder-{UpdateCleanupRecord.FileName}-{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(temporaryPath, record.Serialize());
+            File.Move(temporaryPath, UpdatePaths.CleanupRecordPath, overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            log.Write($"Writing update cleanup record failed: {exception}");
+        }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try { File.Delete(temporaryPath); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { log.Write($"Deleting temporary cleanup record failed: {exception.Message}"); }
+            }
+        }
+    }
 
     public static Task RunAsync(DailyLog log, string installDirectory) => Task.Run(() => Run(log, installDirectory));
 
@@ -315,20 +326,30 @@ internal static class UpdateCleanup
         var recordPath = UpdatePaths.CleanupRecordPath;
         if (!File.Exists(recordPath)) return;
         var record = UpdateCleanupRecord.TryDeserialize(File.ReadAllText(recordPath));
-        if (record is not null && record.AppliesTo(installDirectory, AppVersion.Current))
+        if (record is null || !record.AppliesTo(installDirectory, AppVersion.Current)) return;
+
+        var files = new FileSystemUpdateOperations();
+        var remaining = record.KeepUndeletedBackups(installDirectory, AppVersion.Current, backup =>
         {
-            var files = new FileSystemUpdateOperations();
-            foreach (var backup in record.GetBackupFilePaths())
+            try
             {
-                try { files.DeleteFile(backup); }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    log.Write($"Deleting update backup failed: {backup}; {exception.Message}");
-                }
+                files.DeleteFile(backup);
+                return true;
             }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                log.Write($"Deleting update backup failed: {backup}; {exception.Message}");
+                return false;
+            }
+        });
+        if (remaining is null)
+        {
+            File.Delete(recordPath);
             log.Write($"Update backups removed: version={record.Version}, files={record.BackupFiles.Count}");
+            return;
         }
-        File.Delete(recordPath);
+        TryWriteCleanupRecord(log, remaining);
+        log.Write($"Update backup cleanup incomplete: version={record.Version}, remaining={remaining.BackupFiles.Count}");
     }
 
     private static void CleanUpStaging(DailyLog log)

@@ -58,6 +58,13 @@ public static class UpdatePlanExecutor
     /// <summary>計画どおりに退避とコピーを行い、途中で失敗したら進んだ分を戻す。</summary>
     public static UpdateApplyOutcome Apply(UpdateApplyPlan plan, string sourceDirectory, string installDirectory, IUpdateFileOperations files)
     {
+        var existingBackup = plan.Steps
+            .Where(step => step.ReplacesExistingFile)
+            .Select(step => Path.Combine(installDirectory, step.BackupRelativePath))
+            .FirstOrDefault(files.FileExists);
+        if (existingBackup is not null)
+            return new UpdateApplyOutcome(false, existingBackup, new IOException($"更新用バックアップが既に存在します: {existingBackup}"), []);
+
         var progress = Enumerable.Repeat(UpdateStepProgress.NotStarted, plan.Steps.Count).ToArray();
         string? currentPath = null;
         try
@@ -67,11 +74,6 @@ public static class UpdatePlanExecutor
                 var step = plan.Steps[index];
                 var target = Path.Combine(installDirectory, step.RelativePath);
                 var backup = Path.Combine(installDirectory, step.BackupRelativePath);
-                if (step.RemovesStaleBackup)
-                {
-                    currentPath = backup;
-                    files.DeleteFile(backup);
-                }
                 if (step.ReplacesExistingFile)
                 {
                     currentPath = target;
@@ -107,7 +109,7 @@ public static class UpdatePlanExecutor
                         files.DeleteFile(target);
                         break;
                     case UpdateRollbackActionKind.RestoreBackup:
-                        files.MoveFile(target + UpdateApplyPlanner.BackupSuffix, target);
+                        files.MoveFile(Path.Combine(installDirectory, action.BackupRelativePath!), target);
                         break;
                 }
             }

@@ -101,6 +101,32 @@ public sealed record UpdateCleanupRecord(string InstallDirectory, string Version
 
     /// <summary>消す対象を、記録の中でも <c>.old</c> で終わる安全な相対パスに限る。</summary>
     public IEnumerable<string> GetBackupFilePaths() => BackupFiles
-        .Where(path => UpdatePackagePaths.TryNormalizeRelativePath(path, out _) && path.EndsWith(UpdateApplyPlanner.BackupSuffix, StringComparison.OrdinalIgnoreCase))
-        .Select(path => Path.Combine(InstallDirectory, path));
+        .Select(TryNormalizeBackupPath)
+        .Where(path => path is not null)
+        .Select(path => Path.Combine(InstallDirectory, path!));
+
+    /// <summary>一致する記録のうち、削除できなかったバックアップだけを残す。</summary>
+    /// <param name="installDirectory">起動した側のインストール先。</param>
+    /// <param name="version">起動した側の版。</param>
+    /// <param name="tryDeleteBackup">削除に成功したときに true を返す。</param>
+    public UpdateCleanupRecord? KeepUndeletedBackups(string installDirectory, string version, Func<string, bool> tryDeleteBackup)
+    {
+        ArgumentNullException.ThrowIfNull(tryDeleteBackup);
+        if (!AppliesTo(installDirectory, version)) return this;
+
+        var remaining = new List<string>();
+        foreach (var backup in BackupFiles)
+        {
+            var normalized = TryNormalizeBackupPath(backup);
+            if (normalized is null) continue;
+            if (!tryDeleteBackup(Path.Combine(InstallDirectory, normalized))) remaining.Add(normalized);
+        }
+        return remaining.Count == 0 ? null : this with { BackupFiles = remaining };
+    }
+
+    private static string? TryNormalizeBackupPath(string? path) =>
+        UpdatePackagePaths.TryNormalizeRelativePath(path, out var normalized)
+        && normalized.EndsWith(UpdateApplyPlanner.BackupSuffix, StringComparison.OrdinalIgnoreCase)
+            ? normalized
+            : null;
 }

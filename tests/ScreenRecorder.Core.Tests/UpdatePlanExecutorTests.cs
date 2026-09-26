@@ -16,6 +16,7 @@ public sealed class UpdatePlanExecutorTests : IDisposable
         _install = Path.Combine(_root, "install");
         _source = Path.Combine(_root, "source");
         Write(_install, "ScreenRecorder.exe", "old exe");
+        Write(_install, "ScreenRecorder.exe.old", "user backup");
         Write(_install, "ScreenRecorderLib.dll", "old lib");
         Write(_install, "manual.html", "old manual");
         Write(_install, "user-notes.txt", "user file");
@@ -41,8 +42,9 @@ public sealed class UpdatePlanExecutorTests : IDisposable
         Assert.True(outcome.Succeeded);
         Assert.Equal("new exe", Read("ScreenRecorder.exe"));
         Assert.Equal("new ffmpeg", Read("ffmpeg/ffmpeg.exe"));
-        Assert.Equal("old exe", Read("ScreenRecorder.exe.old"));
-        Assert.Equal("old lib", Read("ScreenRecorderLib.dll.old"));
+        Assert.Equal("old exe", Read(plan.Steps.Single(step => step.RelativePath == "ScreenRecorder.exe").BackupRelativePath));
+        Assert.Equal("old lib", Read(plan.Steps.Single(step => step.RelativePath == "ScreenRecorderLib.dll").BackupRelativePath));
+        Assert.Equal("user backup", Read("ScreenRecorder.exe.old"));
         Assert.Equal("user file", Read("user-notes.txt"));
     }
 
@@ -91,12 +93,28 @@ public sealed class UpdatePlanExecutorTests : IDisposable
     }
 
     [Fact]
-    public void LeftoverBackupFromEarlierUpdateIsReplaced()
+    public void ExistingUserBackupIsUntouched()
     {
-        Write(_install, "ScreenRecorder.exe.old", "stale");
-        var outcome = UpdatePlanExecutor.Apply(CreatePlan(), _source, _install, new FileSystemUpdateOperations());
+        var plan = CreatePlan();
+        var outcome = UpdatePlanExecutor.Apply(plan, _source, _install, new FileSystemUpdateOperations());
         Assert.True(outcome.Succeeded);
-        Assert.Equal("old exe", Read("ScreenRecorder.exe.old"));
+        Assert.Equal("user backup", Read("ScreenRecorder.exe.old"));
+        Assert.Equal("old exe", Read(plan.Steps.Single(step => step.RelativePath == "ScreenRecorder.exe").BackupRelativePath));
+    }
+
+    [Fact]
+    public void ApplyAbortsWithoutChangingFilesWhenPlannedBackupAppears()
+    {
+        var plan = CreatePlan();
+        var backupPath = plan.Steps.Single(step => step.RelativePath == "ScreenRecorder.exe").BackupRelativePath;
+        Write(_install, backupPath, "existing backup");
+        var before = Snapshot();
+
+        var outcome = UpdatePlanExecutor.Apply(plan, _source, _install, new FileSystemUpdateOperations());
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(Path.Combine(_install, backupPath), outcome.FailedPath);
+        Assert.Equal(before, Snapshot());
     }
 
     [Fact]

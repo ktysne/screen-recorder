@@ -22,6 +22,7 @@ internal sealed class UpdateController : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private TimeSpan? _lastAutomaticCheck;
     private bool _checking;
+    private bool _manualCheckRequested;
     private UpdateDialog? _dialog;
     private UpdateManifest? _notifiedManifest;
     private CancellationTokenSource? _downloadCancellation;
@@ -60,7 +61,11 @@ internal sealed class UpdateController : IDisposable
             return;
         }
         _notify(UiLabels.UpdateChecking, ToolTipIcon.Info, false);
-        if (_checking) return;
+        if (_checking)
+        {
+            _manualCheckRequested = true;
+            return;
+        }
         _ = CheckAsync(UpdateCheckTrigger.Manual);
     }
 
@@ -101,6 +106,7 @@ internal sealed class UpdateController : IDisposable
         {
             var result = await _service.CheckAsync(_getSettings().SkippedUpdateVersion, trigger, _lifetime.Token);
             if (_disposed) return;
+            trigger = ConsumeManualCheckRequest(trigger);
             HandleCheckResult(result, trigger);
         }
         catch (OperationCanceledException) when (_disposed)
@@ -108,14 +114,23 @@ internal sealed class UpdateController : IDisposable
         }
         catch (Exception exception)
         {
+            trigger = ConsumeManualCheckRequest(trigger);
             _log.Write($"Update check crashed: trigger={trigger}; {exception}");
             if (!_disposed && trigger == UpdateCheckTrigger.Manual)
                 _notify(string.Format(UiLabels.UpdateCheckFailed, "予期しないエラーが発生しました。"), ToolTipIcon.Warning, false);
         }
         finally
         {
+            _manualCheckRequested = false;
             _checking = false;
         }
+    }
+
+    private UpdateCheckTrigger ConsumeManualCheckRequest(UpdateCheckTrigger activeTrigger)
+    {
+        if (!_manualCheckRequested) return activeTrigger;
+        _manualCheckRequested = false;
+        return UpdateCheckTrigger.Manual;
     }
 
     private void HandleCheckResult(UpdateCheckResult result, UpdateCheckTrigger trigger)
