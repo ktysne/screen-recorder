@@ -24,10 +24,9 @@ public static class UpdateRedirectPolicy
             error = "配布サーバーの転送先を確認できませんでした。";
             return false;
         }
-        if (!string.Equals(resolved.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(resolved.Host, AllowedHost, StringComparison.OrdinalIgnoreCase)
-            || !string.IsNullOrEmpty(resolved.UserInfo)
-            || !resolved.IsDefaultPort)
+        // 転送先も update.json の URL と同じ規則で、書かれたとおりの文字列を検証する。相対の転送先は検証済みの URL を土台に解決したものを見る。
+        var candidate = location.IsAbsoluteUri ? location.OriginalString : resolved.AbsoluteUri;
+        if (!UpdateManifestParser.IsAllowedDownloadUrl(candidate))
         {
             error = "配布サーバーが許可されていない転送先を指定したため、中止しました。";
             return false;

@@ -10,7 +10,6 @@ public sealed class UpdateRedirectPolicyTests
     [Theory]
     [InlineData("https://ktysne.info/releases/latest.zip", "https://ktysne.info/releases/latest.zip")]
     [InlineData("../archives/latest.zip", "https://ktysne.info/archives/latest.zip")]
-    [InlineData("HTTPS://KTYSNE.INFO/releases/latest.zip", "https://ktysne.info/releases/latest.zip")]
     public void AllowsHttpsRedirectsToExactHost(string location, string expected)
     {
         Assert.True(UpdateRedirectPolicy.TryResolve(CurrentUri, new Uri(location, UriKind.RelativeOrAbsolute), 0, out var target, out var error));
@@ -24,6 +23,8 @@ public sealed class UpdateRedirectPolicyTests
     [InlineData("https://ktysne.info.evil.example/releases/latest.zip")]
     [InlineData("https://user@ktysne.info/releases/latest.zip")]
     [InlineData("https://ktysne.info:8443/releases/latest.zip")]
+    [InlineData("https://ktysne.info:443/releases/latest.zip")]
+    [InlineData("HTTPS://KTYSNE.INFO/releases/latest.zip")]
     public void RejectsInsecureOrUntrustedRedirects(string location)
     {
         Assert.False(UpdateRedirectPolicy.TryResolve(CurrentUri, new Uri(location), 0, out var target, out var error));
