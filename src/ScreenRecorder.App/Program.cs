@@ -9,15 +9,19 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
-        // 更新の適用は常駐アプリとは別の処理で行う。未実装の間は、通常の起動や自動起動の書き換えに進ませない。
-        if (args.Contains("--apply-update", StringComparer.OrdinalIgnoreCase)) return;
+        // 適用中は旧プロセスがミューテックスを持っているため、多重起動の判定より前に分ける。
+        if (args.Contains(UpdateApplier.ApplyUpdateArgument, StringComparer.OrdinalIgnoreCase))
+        {
+            UpdateApplier.Run(args);
+            return;
+        }
 
-        using var mutex = new Mutex(true, "Local\\ScreenRecorder.Singleton", out var created);
+        using var mutex = new Mutex(true, UpdatePaths.SingletonMutexName, out var created);
         if (!created) return;
-        Run();
+        Run(startedAfterUpdate: args.Contains(UpdateApplier.UpdatedArgument, StringComparer.OrdinalIgnoreCase));
     }
 
-    private static void Run()
+    private static void Run(bool startedAfterUpdate)
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         ApplicationConfiguration.Initialize();
@@ -34,7 +38,7 @@ internal static class Program
         var sync = new AutoStartSynchronizer(new RunRegistry(), exePath);
         try { sync.Apply(settings.StartWithWindows); }
         catch (Exception exception) { log.Write($"Auto-start update failed: {exception}"); }
-        Application.Run(new TrayApplicationContext(settings, log, settingsRepository, sync));
+        Application.Run(new TrayApplicationContext(settings, log, settingsRepository, sync, exePath, startedAfterUpdate));
         log.Write("Application stopped");
     }
 
