@@ -105,7 +105,7 @@ internal static class UpdateApplier
             return;
         }
         DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新ファイルを置き換えました: 版={version}、インストール先={installDirectory}、ファイル数={plan.Steps.Count}。");
-        UpdateCleanup.TryWriteCleanupRecord(new UpdateCleanupRecord(installDirectory, version, plan.BackupPaths));
+        UpdateCleanup.TryWriteCleanupRecord(new UpdateCleanupRecord(installDirectory, version, plan.BackupPaths), UpdatePaths.GetCleanupRecordPath(plan.UpdateId));
 
         if (!WaitForSingletonRelease())
         {
@@ -139,7 +139,7 @@ internal static class UpdateApplier
 
     private static void RollBackAppliedUpdate(string version, UpdateApplyPlan plan, string installDirectory, string installedExecutable, IUpdateFileOperations files, string reason)
     {
-        TryDelete(UpdatePaths.CleanupRecordPath);
+        TryDelete(UpdatePaths.GetCleanupRecordPath(plan.UpdateId));
         WaitForExclusiveAccess(plan, installDirectory, files);
         var failures = UpdatePlanExecutor.Rollback(UpdateApplyPlanner.CreateFullRollbackPlan(plan), installDirectory, files);
         DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新を取り消して元の版へ戻しました: 理由={reason}、失敗={string.Join(" / ", failures)}。");
@@ -268,15 +268,15 @@ internal static class UpdateCleanup
     private static readonly TimeSpan ApplierWaitTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ApplierExitGrace = TimeSpan.FromSeconds(3);
 
-    internal static void TryWriteCleanupRecord(UpdateCleanupRecord record)
+    internal static void TryWriteCleanupRecord(UpdateCleanupRecord record, string recordPath)
     {
         string? temporaryPath = null;
         try
         {
             Directory.CreateDirectory(UpdatePaths.UpdateDirectory);
-            temporaryPath = Path.Combine(UpdatePaths.UpdateDirectory, $"ScreenRecorder-{UpdateCleanupRecord.FileName}-{Guid.NewGuid():N}.tmp");
+            temporaryPath = Path.Combine(UpdatePaths.UpdateDirectory, $"ScreenRecorder-cleanup-{Guid.NewGuid():N}.tmp");
             File.WriteAllText(temporaryPath, record.Serialize());
-            File.Move(temporaryPath, UpdatePaths.CleanupRecordPath, overwrite: true);
+            File.Move(temporaryPath, recordPath, overwrite: true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -338,33 +338,43 @@ internal static class UpdateCleanup
 
     private static void CleanUpBackups(string installDirectory)
     {
-        var recordPath = UpdatePaths.CleanupRecordPath;
-        if (!File.Exists(recordPath)) return;
-        var record = UpdateCleanupRecord.TryDeserialize(File.ReadAllText(recordPath));
-        if (record is null || !record.AppliesTo(installDirectory, AppVersion.Current)) return;
-
-        var files = new FileSystemUpdateOperations();
-        var remaining = record.KeepUndeletedBackups(installDirectory, AppVersion.Current, backup =>
+        var recordPaths = Directory.EnumerateFiles(UpdatePaths.UpdateDirectory, $"{UpdateCleanupRecord.FileNamePrefix}*.json").ToList();
+        if (File.Exists(UpdatePaths.LegacyCleanupRecordPath)) recordPaths.Add(UpdatePaths.LegacyCleanupRecordPath);
+        foreach (var recordPath in recordPaths)
         {
             try
             {
-                files.DeleteFile(backup);
-                return true;
+                var record = UpdateCleanupRecord.TryDeserialize(File.ReadAllText(recordPath));
+                if (record is null || !record.CanBeCleanedBy(installDirectory, AppVersion.Current)) continue;
+
+                var files = new FileSystemUpdateOperations();
+                var remaining = record.KeepUndeletedBackups(installDirectory, AppVersion.Current, backup =>
+                {
+                    try
+                    {
+                        files.DeleteFile(backup);
+                        return true;
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新前のバックアップを削除できませんでした: {backup}; {exception.Message}");
+                        return false;
+                    }
+                });
+                if (remaining is null)
+                {
+                    File.Delete(recordPath);
+                    DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新前のバックアップを削除しました: 版={record.Version}、ファイル数={record.BackupFiles.Count}。");
+                    continue;
+                }
+                TryWriteCleanupRecord(remaining, recordPath);
+                DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新前のバックアップが残っています: 版={record.Version}、残り={remaining.BackupFiles.Count}。");
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新前のバックアップを削除できませんでした: {backup}; {exception.Message}");
-                return false;
+                DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新の後始末情報を処理できませんでした: ファイル={recordPath}; {exception.Message}");
             }
-        });
-        if (remaining is null)
-        {
-            File.Delete(recordPath);
-            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新前のバックアップを削除しました: 版={record.Version}、ファイル数={record.BackupFiles.Count}。");
-            return;
         }
-        TryWriteCleanupRecord(remaining);
-        DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新前のバックアップが残っています: 版={record.Version}、残り={remaining.BackupFiles.Count}。");
     }
 
     private static void CleanUpStaging()
