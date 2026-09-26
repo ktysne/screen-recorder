@@ -44,6 +44,7 @@ internal static class RecordingWorkerProgram
 internal sealed class RecordingWorkerRuntime : ApplicationContext
 {
     private static readonly TimeSpan IdleTerminationGrace = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan StopFailureTerminationWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SaveWaitAfterDisconnect = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan DisconnectedExitDeadline = SaveWaitAfterDisconnect + TimeSpan.FromSeconds(15);
     private readonly NamedPipeClientStream _pipe;
@@ -260,14 +261,43 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
                     break;
             }
         }
+        catch (Exception exception) when (message is RecordingWorkerPauseCommand or RecordingWorkerResumeCommand)
+        {
+            Enqueue(new RecordingWorkerWarningMessage(exception.Message));
+        }
+        catch (Exception exception) when (message is RecordingWorkerStopCommand && _engine is { } engine)
+        {
+            _ = FailAfterTerminationAsync(engine, exception);
+        }
         catch (Exception exception)
         {
-            BeginTerminalMessage(new RecordingWorkerFailedMessage(
-                _startData?.OutputPath ?? string.Empty,
-                exception.ToString(),
-                Volatile.Read(ref _hasObservedRecording) == 0));
+            SendFailure(exception.ToString());
         }
     }
+
+    // 停止が例外になっても停止の処理は進んでいることがあるため、書き終えを待ってから失敗を送る。
+    private async Task FailAfterTerminationAsync(object engine, Exception stopException)
+    {
+        RecordingTerminationOutcome outcome;
+        try
+        {
+            outcome = await Task.Run(
+                () => RecordingWorkerLibraryBridge.WaitForTerminationAsync(engine, StopFailureTerminationWait),
+                _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+        if (outcome == RecordingTerminationOutcome.Completed) return;
+        SendFailure(stopException.ToString());
+    }
+
+    private void SendFailure(string error) =>
+        BeginTerminalMessage(new RecordingWorkerFailedMessage(
+            _startData?.OutputPath ?? string.Empty,
+            error,
+            Volatile.Read(ref _hasObservedRecording) == 0));
 
     private void StartRecording(RecordingWorkerStartData request)
     {
@@ -362,7 +392,7 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
     private void HandleCommunicationLostOnUi()
     {
         if (Interlocked.Exchange(ref _disconnectHandling, 1) != 0) return;
-        if (_engine is null || Volatile.Read(ref _hasObservedRecording) == 0)
+        if (_engine is null)
         {
             _exitCode = RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.SaveFailedAfterDisconnect);
             FinishOnUi();
@@ -371,7 +401,8 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
 
         try
         {
-            if (_recordingState is RecordingWorkerRecordingState.Recording or RecordingWorkerRecordingState.Paused)
+            // 記録が始まる前の停止はライブラリの包みが保留し、始まった時点で止める。
+            if (_recordingState is not RecordingWorkerRecordingState.Saving)
                 RecordingWorkerLibraryBridge.Stop(_engine);
         }
         catch
