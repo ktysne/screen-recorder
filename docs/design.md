@@ -691,6 +691,7 @@ PC ごとの記録なので、移動プロファイルで持ち回る `%APPDATA%
 ## マニュアルとライセンスの生成
 
 マニュアルの原稿は `site/manual.template.html`、ライセンスの原稿は `site/license.template.html`、配布ページの原稿は `site/index.template.html` に置き、`tools/release-site.js` が版を埋め込んで出力する。
+配布ページが載せるアプリのアイコンは `site/assets/app-icon-256.png` に置き、`tools/release-site.js` がページと一緒に出力先の `assets/` へ写して公開する。
 UI の文言は `src/ScreenRecorder.App/UiLabels.cs` に集め、マニュアルが参照するメニュー名とボタン名がそこに実在するかを `tools/check-manual-labels.js` で検査する。
 `build-package.bat` はビルドの前にこの検査を行い、食い違いがあれば止まる。
 マニュアルに書いた操作が UI に無いと、利用者は手順どおりに操作できないためである。
