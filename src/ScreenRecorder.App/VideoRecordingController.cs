@@ -230,7 +230,10 @@ internal sealed class VideoRecordingController : IDisposable
                 _notifier.Show(5000, UiLabels.AppName, eventArgs.Message, ToolTipIcon.Warning);
             });
             _recordingEngine = engine;
+            var startStopwatch = Stopwatch.StartNew();
             engine.Start(request);
+            startStopwatch.Stop();
+            DiagnosticLog.Debug(DiagnosticLogTags.Record, $"録画エンジンの開始処理にかかった時間: {startStopwatch.ElapsedMilliseconds} ms");
             engineStarted = true;
             if (!_recordingState.TryStartRecording())
             {
