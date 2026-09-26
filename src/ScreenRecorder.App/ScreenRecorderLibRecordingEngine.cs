@@ -50,7 +50,8 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         };
         options.VideoEncoderOptions.Bitrate = checked(request.BitrateMbps * 1_000_000);
         options.VideoEncoderOptions.Framerate = request.FrameRate;
-        options.VideoEncoderOptions.IsFixedFramerate = true;
+        // ハードウェアエンコーダに複製フレームを送り続けると、停止時の書き終えが返らずファイルを掴んだままになることがあるため、固定にしない。
+        options.VideoEncoderOptions.IsFixedFramerate = !request.HardwareEncodingEnabled;
         options.VideoEncoderOptions.IsHardwareEncodingEnabled = request.HardwareEncodingEnabled;
         options.MouseOptions = new MouseOptions
         {
