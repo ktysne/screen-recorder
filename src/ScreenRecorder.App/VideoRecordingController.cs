@@ -64,6 +64,8 @@ internal sealed class VideoRecordingController : IDisposable
     }
 
     public VideoRecordingState State => _recordingState.State;
+    public bool CanStop => _recordingState.CanStop;
+    public bool CanPause => _recordingState.CanPause;
     public bool SelectionInProgress => _recordingSelectionInProgress;
 
     public void Dispose()
@@ -87,7 +89,7 @@ internal sealed class VideoRecordingController : IDisposable
             CancelRecordingCountdown();
             return;
         }
-        if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
+        if (_recordingState.CanStop)
         {
             StopRecording();
             return;
@@ -99,7 +101,7 @@ internal sealed class VideoRecordingController : IDisposable
     public void HandleStopAction()
     {
         if (_recordingState.State == VideoRecordingState.Countdown) CancelRecordingCountdown();
-        else if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused) StopRecording();
+        else if (_recordingState.CanStop) StopRecording();
     }
 
     private async Task StartRecordingAsync(ScreenshotMode mode)
@@ -236,12 +238,7 @@ internal sealed class VideoRecordingController : IDisposable
                 return;
             }
 
-            var audioFormat = !captureSettings.CaptureSystemAudio && !captureSettings.CaptureMicrophone
-                ? "なし"
-                : $"{(captureSettings.AudioFormat == AudioFormat.Mp3 ? "MP3" : "AAC")} ({(captureSettings.AudioFormat == AudioFormat.Mp3 ? captureSettings.Mp3BitrateKbps : captureSettings.AacBitrateKbps)} kbps)";
-            DiagnosticLog.Info(DiagnosticLogTags.Record,
-                $"録画を開始しました: 方法={RecordingShared.CaptureMethodName(mode)}、範囲=({targetBounds.X},{targetBounds.Y}) {targetBounds.Width}x{targetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
-            _recordingStopwatch = Stopwatch.StartNew();
+            DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画の開始を要求しました: 方法={RecordingShared.CaptureMethodName(mode)}。");
             ShowRecordingOverlays();
             StartRecordingTimers(_activeRecording);
             UpdateRecordingUi();
@@ -309,7 +306,7 @@ internal sealed class VideoRecordingController : IDisposable
 
     public void TogglePauseResume()
     {
-        if (_recordingState.State is not (VideoRecordingState.Recording or VideoRecordingState.Paused)) return;
+        if (!_recordingState.CanPause) return;
         var wasRecording = _recordingState.State == VideoRecordingState.Recording;
         var command = wasRecording ? _recordingState.RequestPause() : _recordingState.RequestResume();
         try
@@ -376,7 +373,21 @@ internal sealed class VideoRecordingController : IDisposable
         if (!ReferenceEquals(engine, _recordingEngine)) return;
         if (eventArgs.Status == RecordingEngineStatus.Recording)
         {
+            var wasPreparing = _recordingState.State == VideoRecordingState.Preparing;
             var command = _recordingState.OnEngineRecordingStarted();
+            if (wasPreparing && _recordingState.State == VideoRecordingState.Recording)
+            {
+                _recordingStopwatch = Stopwatch.StartNew();
+                if (_activeRecording is { } active)
+                {
+                    var captureSettings = active.Settings;
+                    var audioFormat = !captureSettings.CaptureSystemAudio && !captureSettings.CaptureMicrophone
+                        ? "なし"
+                        : $"{(captureSettings.AudioFormat == AudioFormat.Mp3 ? "MP3" : "AAC")} ({(captureSettings.AudioFormat == AudioFormat.Mp3 ? captureSettings.Mp3BitrateKbps : captureSettings.AacBitrateKbps)} kbps)";
+                    DiagnosticLog.Info(DiagnosticLogTags.Record,
+                        $"録画を開始しました: 方法={RecordingShared.CaptureMethodName(active.Mode)}、範囲=({active.TargetBounds.X},{active.TargetBounds.Y}) {active.TargetBounds.Width}x{active.TargetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
+                }
+            }
             try { ExecuteRecordingCommand(command); }
             catch (Exception exception)
             {
@@ -392,7 +403,7 @@ internal sealed class VideoRecordingController : IDisposable
             UpdateRecordingUi();
             return;
         }
-        if (eventArgs.Status == RecordingEngineStatus.Saving && _recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
+        if (eventArgs.Status == RecordingEngineStatus.Saving && _recordingState.CanStop)
         {
             if (_recordingState.TryBeginSaving()) ShowSavingState();
         }
@@ -401,7 +412,7 @@ internal sealed class VideoRecordingController : IDisposable
     private async void HandleRecordingCompleted(IRecordingEngine engine, RecordingEngineCompletedEventArgs eventArgs)
     {
         if (!ReferenceEquals(engine, _recordingEngine) || _activeRecording is not { } active) return;
-        if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused) _recordingState.TryBeginSaving();
+        if (_recordingState.CanStop) _recordingState.TryBeginSaving();
         ShowSavingState();
         string? processedPath = null;
         try
@@ -437,7 +448,7 @@ internal sealed class VideoRecordingController : IDisposable
     private void HandleRecordingFailed(IRecordingEngine engine, RecordingEngineFailedEventArgs eventArgs)
     {
         if (!ReferenceEquals(engine, _recordingEngine)) return;
-        if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused) _recordingState.TryBeginSaving();
+        if (_recordingState.CanStop) _recordingState.TryBeginSaving();
         ShowSavingState();
         var decision = RecordingTerminationRules.Decide(eventArgs.Outcome);
         if (decision is RecordingTerminationDecision.Wait or RecordingTerminationDecision.ContinueCompletedSave) return;
@@ -580,7 +591,7 @@ internal sealed class VideoRecordingController : IDisposable
             _recordingToolbar = toolbar;
             toolbar.Show();
             if (!toolbar.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "録画操作バーを撮影対象から除外できませんでした。");
-            toolbar.UpdateStatus(VideoRecordingState.Recording, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
+            toolbar.UpdateStatus(_recordingState.State, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
         }
         catch (Exception exception)
         {
@@ -610,7 +621,7 @@ internal sealed class VideoRecordingController : IDisposable
         _windowMonitorTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _windowMonitorTimer.Tick += (_, _) =>
         {
-            if (_recordingState.State is not (VideoRecordingState.Recording or VideoRecordingState.Paused)) return;
+            if (!_recordingState.CanStop) return;
             if (NativeMethods.IsWindow(windowRecording.WindowHandle)) return;
             DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画対象のウィンドウが閉じられました: hwnd={windowRecording.WindowHandle}");
             StopRecording();
@@ -634,7 +645,7 @@ internal sealed class VideoRecordingController : IDisposable
         }
         _dispatcher.Post(() =>
         {
-            if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused)
+            if (_recordingState.CanStop)
             {
                 DiagnosticLog.Info(DiagnosticLogTags.Record, "スリープに入るため録画を停止します。");
                 StopRecording();

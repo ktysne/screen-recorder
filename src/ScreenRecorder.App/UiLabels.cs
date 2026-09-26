@@ -14,6 +14,7 @@ public static class UiLabels
     public const string PauseRecording = "録画を一時停止";
     public const string ResumeRecording = "録画を再開";
     public const string StopRecording = "録画を停止";
+    public const string RecordingPreparing = "録画の準備中";
     public const string OpenImageFolder = "静止画の保存先を開く";
     public const string OpenVideoFolder = "動画の保存先を開く";
     public const string Settings = "設定...";

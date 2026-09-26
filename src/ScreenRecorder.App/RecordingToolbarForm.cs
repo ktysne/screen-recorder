@@ -82,6 +82,7 @@ internal sealed class RecordingToolbarForm : Form
         var duration = $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
         _status.Text = state switch
         {
+            VideoRecordingState.Preparing => UiLabels.RecordingPreparing,
             VideoRecordingState.Paused => $"一時停止中  {duration}",
             VideoRecordingState.Saving => "保存中",
             _ => $"録画中  {duration}"
@@ -90,7 +91,7 @@ internal sealed class RecordingToolbarForm : Form
         _pauseResume.Text = state == VideoRecordingState.Paused ? UiLabels.ResumeRecording : UiLabels.PauseRecording;
         _pauseResume.AccessibleName = _pauseResume.Text;
         _pauseResume.Enabled = state is VideoRecordingState.Recording or VideoRecordingState.Paused;
-        _stop.Enabled = state is VideoRecordingState.Recording or VideoRecordingState.Paused;
+        _stop.Enabled = state is VideoRecordingState.Preparing or VideoRecordingState.Recording or VideoRecordingState.Paused;
         AccessibilityNotifyClients(AccessibleEvents.NameChange, -1);
     }
 }
