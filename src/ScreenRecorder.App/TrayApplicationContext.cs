@@ -159,7 +159,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem(UiLabels.OpenVideoFolder, null, (_, _) => OpenFolder(_settings.VideoDirectory)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(UiLabels.Settings, null, (_, _) => ShowSettings()));
-        menu.Items.Add(new ToolStripMenuItem(UiLabels.Manual, null, (_, _) => NotifyNotImplemented()));
+        menu.Items.Add(new ToolStripMenuItem(UiLabels.Manual, null, (_, _) => OpenManual()));
         menu.Items.Add(new ToolStripMenuItem(UiLabels.CheckForUpdates, null, (_, _) => _updateController.CheckManually()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(UiLabels.Exit, null, (_, _) => RequestExit()));
@@ -1175,7 +1175,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void NotifyNotImplemented() => ShowNotification(2500, UiLabels.AppName, UiLabels.NotImplemented, ToolTipIcon.Info);
+
+    private void OpenManual()
+    {
+        try { BundledDocument.Open(BundledDocument.ManualFileName); }
+        catch (Exception exception)
+        {
+            _log.Write($"Open manual failed: {exception}");
+            ShowNotification(3000, UiLabels.AppName, UiLabels.ManualOpenFailed, ToolTipIcon.Error);
+        }
+    }
 
     private bool OpenFolder(string path, bool notifyFailure = true)
     {

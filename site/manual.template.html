@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>マニュアル | ScreenRecorder {{VERSION}}</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f7fa; --panel: #fff; --text: #18212f; --muted: #536174; --link: #075cb8; --line: #d6deea; --key-bg: #eef2f7; --note-bg: #fff8e6; --note-line: #e8c46a; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #111821; --panel: #1c2733; --text: #edf3fa; --muted: #b2c0d0; --link: #8fc5ff; --line: #394858; --key-bg: #283646; --note-bg: #2e2a1c; --note-line: #8a7433; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif; line-height: 1.8; }
+    main { width: min(100% - 2rem, 56rem); margin: 3rem auto; }
+    article { padding: clamp(1.25rem, 5vw, 3.5rem); background: var(--panel); border: 1px solid var(--line); border-radius: 1.25rem; }
+    h1 { margin-top: 0; font-size: clamp(1.9rem, 6vw, 3rem); line-height: 1.25; }
+    h2 { margin-top: 3rem; padding-bottom: .3rem; border-bottom: 1px solid var(--line); font-size: 1.4rem; }
+    h3 { margin-top: 2rem; font-size: 1.1rem; }
+    p, li { max-width: 70ch; }
+    a { color: var(--link); }
+    nav ol { padding-left: 1.4rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .95rem; }
+    th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { white-space: nowrap; }
+    kbd { padding: .05rem .4rem; border: 1px solid var(--line); border-radius: .3rem; background: var(--key-bg); font-family: inherit; font-size: .9em; white-space: nowrap; }
+    .label { font-weight: 600; }
+    .note { padding: .8rem 1rem; border-left: 4px solid var(--note-line); background: var(--note-bg); border-radius: .4rem; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body><main><article>
+  <p class="muted">バージョン {{VERSION}}</p>
+  <h1>ScreenRecorder マニュアル</h1>
+  <p>ScreenRecorder は、タスクトレイに常駐して、画面の静止画と動画を撮る Windows 用のアプリです。
+  トレイアイコンのメニューか、ショートカットキーから操作します。</p>
+
+  <nav>
+    <h2>目次</h2>
+    <ol>
+      <li><a href="#start">使い始める</a></li>
+      <li><a href="#screenshot">静止画を撮る</a></li>
+      <li><a href="#record">動画を録る</a></li>
+      <li><a href="#shortcuts">ショートカットキー</a></li>
+      <li><a href="#settings">設定</a></li>
+      <li><a href="#update">更新</a></li>
+      <li><a href="#limits">既知の制約</a></li>
+      <li><a href="#trouble">困ったときは</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="start">使い始める</h2>
+  <p>配布の zip を好きなフォルダーに展開し、<code>ScreenRecorder.exe</code> を起動します。
+  ウィンドウは開かず、画面右下の通知領域にアイコンが出ます。
+  アイコンが見えないときは、通知領域の「^」を押すと隠れたアイコンの中にあります。</p>
+  <p>zip の中のファイルは、すべて同じフォルダーに置いたまま使ってください。
+  <code>ScreenRecorderLib.dll</code> などの DLL と <code>ffmpeg</code> フォルダーは、録画と MP3 への変換に使います。</p>
+  <p>初めて起動するとき、Windows の SmartScreen が「Windows によって PC が保護されました」と表示することがあります。
+  ScreenRecorder はコード署名をしていないためです。
+  「詳細情報」を押してから「実行」を押すと起動できます。</p>
+  <p>既定では、Windows へのサインイン時に自動で起動します。
+  自動で起動させたくない場合は、設定の <span class="label" data-ui-label="全般">全般</span> で <span class="label" data-ui-label="サインイン時に起動">サインイン時に起動</span> をオフにします。</p>
+  <p>アプリを終わらせるには、トレイアイコンを右クリックして <span class="label" data-ui-label="終了">終了</span> を選びます。
+  撮影や録画の保存が進んでいる間は、保存が終わってから終了します。</p>
+
+  <h2 id="screenshot">静止画を撮る</h2>
+  <p>トレイアイコンを右クリックし、<span class="label" data-ui-label="スクリーンショット">スクリーンショット</span> から撮り方を選びます。</p>
+  <table>
+    <thead><tr><th>撮り方</th><th>撮れるもの</th><th>既定のキー</th></tr></thead>
+    <tbody>
+      <tr><td><span class="label" data-ui-label="ディスプレイ全体">ディスプレイ全体</span></td><td>マウスカーソルがあるディスプレイの全体</td><td><kbd>Ctrl</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td><span class="label" data-ui-label="範囲を指定">範囲を指定</span></td><td>ドラッグで囲んだ範囲</td><td><kbd>PrtSc</kbd></td></tr>
+      <tr><td><span class="label" data-ui-label="ウィンドウを指定">ウィンドウを指定</span></td><td>クリックしたウィンドウ</td><td><kbd>Alt</kbd> + <kbd>PrtSc</kbd></td></tr>
+    </tbody>
+  </table>
+  <h3>範囲を指定する</h3>
+  <p>画面が暗くなったら、撮りたい範囲をドラッグで囲みます。
+  範囲の大きさはカーソルの近くに表示されます。
+  囲み終えてマウスのボタンを離すと撮影します。
+  やめるときは <kbd>Esc</kbd> を押すか、右クリックします。</p>
+  <p>範囲は 1 つのディスプレイの中に収まります。
+  複数のディスプレイにまたがってドラッグした場合は、ドラッグを始めたディスプレイの端までで切り取ります。</p>
+  <h3>ウィンドウを指定する</h3>
+  <p>カーソルを重ねたウィンドウが枠で強調されます。
+  撮りたいウィンドウをクリックすると撮影します。
+  ほかのウィンドウに隠れている部分も撮れます(アプリの描き方によっては、いったん前面に出して撮ります)。</p>
+  <h3>保存先とファイル名</h3>
+  <p>既定の保存先は「ピクチャ」の中の <code>ScreenRecorder</code> フォルダーです。
+  トレイメニューの <span class="label" data-ui-label="静止画の保存先を開く">静止画の保存先を開く</span> で開けます。
+  既定では JPEG(品質 98)で保存し、同時にクリップボードへもコピーします。
+  保存が終わると通知が出て、通知をクリックすると保存先でファイルが選ばれた状態になります。</p>
+
+  <h2 id="record">動画を録る</h2>
+  <p>トレイアイコンを右クリックし、<span class="label" data-ui-label="録画">録画</span> から撮り方を選びます。
+  撮り方と選び方は静止画と同じです。</p>
+  <table>
+    <thead><tr><th>撮り方</th><th>既定のキー</th></tr></thead>
+    <tbody>
+      <tr><td><span class="label" data-ui-label="ディスプレイ全体">ディスプレイ全体</span></td><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td><span class="label" data-ui-label="範囲を指定">範囲を指定</span></td><td><kbd>Shift</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td><span class="label" data-ui-label="ウィンドウを指定">ウィンドウを指定</span></td><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>PrtSc</kbd></td></tr>
+    </tbody>
+  </table>
+  <p>対象を選ぶと、画面の中央に 3 秒のカウントダウンが出てから録画が始まります。
+  録画中は画面の端に小さな操作バーが出て、経過時間、一時停止、停止のボタンが並びます。
+  範囲の録画では、録画している範囲の外側に枠が出ます。
+  操作バー、枠、カウントダウンは録画には写りません。</p>
+  <h3>一時停止と停止</h3>
+  <p>一時停止は、操作バーのボタンか、トレイメニューの <span class="label" data-ui-label="録画を一時停止/再開">録画を一時停止/再開</span> で行います。
+  一時停止していた間は動画に残らず、前後がつながります。</p>
+  <p>録画を止めるには、操作バーの停止ボタンか、トレイメニューの <span class="label" data-ui-label="録画を停止">録画を停止</span> を選びます。
+  録画系のショートカットキー(3 つのどれでも)を押しても止まります。
+  カウントダウンの間に止めると、録画を始めずに取り消します。</p>
+  <p>止めたあと、動画のファイルを仕上げる間は「保存中」と表示されます。
+  MP3 を選んでいる場合は、録画のあとで音声を変換するため、保存に少し時間がかかります。</p>
+  <p>ウィンドウの録画中に、そのウィンドウを閉じると、録画はそこで止まって保存されます。
+  PC がスリープに入るときも、録画を止めて保存します。
+  録画中は、PC が操作されないことによる自動のスリープに入りません。</p>
+  <h3>音声</h3>
+  <p>既定では PC の音(スピーカーから出る音)を録音します。
+  マイクの声も入れたいときは、設定の <span class="label" data-ui-label="動画">動画</span> で <span class="label" data-ui-label="マイクを収録">マイクを収録</span> をオンにします。
+  PC の音とマイクの両方をオンにすると、2 つを混ぜて 1 本の音声にします。
+  音声は既定で AAC(192 kbps)で保存し、MP3 も選べます。</p>
+  <p>録画を始めるときに、選んだ音声のデバイスが見つからない場合は、その音源を外して録画を続け、通知で知らせます。</p>
+  <h3>保存先</h3>
+  <p>既定の保存先は「ビデオ」の中の <code>ScreenRecorder</code> フォルダーで、トレイメニューの <span class="label" data-ui-label="動画の保存先を開く">動画の保存先を開く</span> で開けます。
+  録画中は <code>.recording.mp4</code> で終わる名前で書き、保存が終わった時点で本来の名前に変えます。
+  保存先の空き容量が 1 GB 未満のときは、録画を始めません。</p>
+
+  <h2 id="shortcuts">ショートカットキー</h2>
+  <table>
+    <thead><tr><th>操作</th><th>既定のキー</th></tr></thead>
+    <tbody>
+      <tr><td>スクリーンショット: 範囲を指定</td><td><kbd>PrtSc</kbd></td></tr>
+      <tr><td>スクリーンショット: ディスプレイ全体</td><td><kbd>Ctrl</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td>スクリーンショット: ウィンドウを指定</td><td><kbd>Alt</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td>録画: 範囲を指定</td><td><kbd>Shift</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td>録画: ディスプレイ全体</td><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td>録画: ウィンドウを指定</td><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>PrtSc</kbd></td></tr>
+      <tr><td>録画を一時停止/再開</td><td>割り当てなし</td></tr>
+    </tbody>
+  </table>
+  <p>キーは設定の <span class="label" data-ui-label="ショートカット">ショートカット</span> で変えられます。
+  入力欄を選んで、割り当てたいキーを押します。
+  <kbd>Backspace</kbd> か <kbd>Delete</kbd> を押すと割り当てを外せます。
+  ほかの操作と重なったキーには「重複しています」と出て、直すまで保存できません。</p>
+  <div class="note">
+    <p><kbd>PrtSc</kbd> を登録できない場合は、Windows の「Print Screen キーを使用して画面キャプチャを開く」がオンになっている可能性があります。
+    設定の <span class="label" data-ui-label="ショートカット">ショートカット</span> に表示される <span class="label" data-ui-label="Windows のキーボード設定を開く">Windows のキーボード設定を開く</span> を押して、この項目をオフにしてください。
+    オフにしたくない場合は、別のキーを割り当てます。</p>
+  </div>
+
+  <h2 id="settings">設定</h2>
+  <p>トレイメニューの <span class="label" data-ui-label="設定...">設定...</span> を選ぶか、トレイアイコンをダブルクリックすると開きます。
+  <span class="label" data-ui-label="OK">OK</span> を押すと保存して、すぐに反映します。</p>
+  <h3><span data-ui-label="全般">全般</span></h3>
+  <table>
+    <tbody>
+      <tr><th><span data-ui-label="サインイン時に起動">サインイン時に起動</span></th><td>Windows へのサインイン時に自動で起動します。既定はオンです。</td></tr>
+      <tr><th><span data-ui-label="更新を自動で確認">更新を自動で確認</span></th><td>新しい版が出ていないかを自動で確かめます。既定はオンです。</td></tr>
+      <tr><th><span data-ui-label="保存完了を通知">保存完了を通知</span></th><td>保存が終わったときに通知を出します。既定はオンです。</td></tr>
+      <tr><th><span data-ui-label="撮影時に効果音を鳴らす">撮影時に効果音を鳴らす</span></th><td>撮影したときに短い音を鳴らします。既定はオフです。</td></tr>
+      <tr><th><span data-ui-label="ファイル名のひな形">ファイル名のひな形</span></th><td>保存するファイルの名前の形です。<code>{date}</code>(年月日)、<code>{time}</code>(時分秒)、<code>{mode}</code>(撮り方)、<code>{window}</code>(ウィンドウの名前)を使えます。既定は <code>ScreenRecorder_{date}_{time}</code> です。同じ名前のファイルがあると <code>_2</code>、<code>_3</code> を付けます。</td></tr>
+      <tr><th><span data-ui-label="月ごとのフォルダーに分ける">月ごとのフォルダーに分ける</span></th><td>保存先の中に <code>2026-10</code> のような月ごとのフォルダーを作って保存します。既定はオフです。</td></tr>
+    </tbody>
+  </table>
+  <p>このタブには、<span class="label" data-ui-label="ログのフォルダーを開く">ログのフォルダーを開く</span>、<span class="label" data-ui-label="すべての設定を既定に戻す">すべての設定を既定に戻す</span>、<span class="label" data-ui-label="ライセンスを開く">ライセンスを開く</span> のボタンもあります。</p>
+  <h3><span data-ui-label="静止画">静止画</span></h3>
+  <table>
+    <tbody>
+      <tr><th><span data-ui-label="保存先">保存先</span></th><td>静止画を保存するフォルダーです。</td></tr>
+      <tr><th><span data-ui-label="形式">形式</span></th><td>JPEG か PNG です。既定は JPEG です。</td></tr>
+      <tr><th><span data-ui-label="JPEG の品質">JPEG の品質</span></th><td>1 から 100 で、大きいほどきれいでファイルが大きくなります。既定は 98 です。</td></tr>
+      <tr><th><span data-ui-label="PNG の圧縮">PNG の圧縮</span></th><td>速い、標準、最小サイズから選びます。PNG は劣化しないので、変わるのはファイルの大きさと保存にかかる時間だけです。</td></tr>
+      <tr><th><span data-ui-label="クリップボードへコピー">クリップボードへコピー</span></th><td>保存と同時にクリップボードへコピーします。既定はオンです。</td></tr>
+      <tr><th><span data-ui-label="カーソルを写す">カーソルを写す</span></th><td>マウスカーソルを画像に入れます。既定はオフです。</td></tr>
+      <tr><th><span data-ui-label="撮影までの遅延">撮影までの遅延</span></th><td>操作してから撮影するまで待つ秒数です(範囲やウィンドウを選ぶ場合は、選び終えてから数えます)。メニューを開いた状態を撮りたいときに使います。</td></tr>
+      <tr><th><span data-ui-label="撮影後の動作">撮影後の動作</span></th><td>保存のあとで、画像を既定のアプリで開くか、保存先を開くかを選べます。</td></tr>
+    </tbody>
+  </table>
+  <h3><span data-ui-label="動画">動画</span></h3>
+  <table>
+    <tbody>
+      <tr><th><span data-ui-label="フレームレート">フレームレート</span></th><td>1 秒あたりのコマ数です。15、24、30、60 fps から選びます。既定は 30 fps です。</td></tr>
+      <tr><th><span data-ui-label="ビットレート">ビットレート</span></th><td>映像の画質です。1 から 100 Mbps で、大きいほどきれいでファイルが大きくなります。既定は 12 Mbps です。</td></tr>
+      <tr><th><span data-ui-label="カーソルを写す">カーソルを写す</span></th><td>マウスカーソルを動画に入れます。既定はオンです。</td></tr>
+      <tr><th><span data-ui-label="録画開始前のカウントダウン">録画開始前のカウントダウン</span></th><td>録画を始めるまでの秒数です。既定は 3 秒です。</td></tr>
+      <tr><th><span data-ui-label="出力の大きさ">出力の大きさ</span></th><td>録画した映像を縮小して保存します。100%、75%、50% から選びます。</td></tr>
+      <tr><th><span data-ui-label="クリック位置を強調する">クリック位置を強調する</span></th><td>マウスをクリックした位置を、動画の中で目立たせます。既定はオフです。</td></tr>
+      <tr><th><span data-ui-label="エンコーダ">エンコーダ</span></th><td>「自動」は GPU のハードウェアエンコーダを優先して使います。録画がうまくいかないときは「ソフトウェアのみ」を試してください。</td></tr>
+      <tr><th><span data-ui-label="PC の音を収録">PC の音を収録</span></th><td>PC の音を録音します。既定はオンです。</td></tr>
+      <tr><th><span data-ui-label="マイクを収録">マイクを収録</span></th><td>マイクの声を録音します。既定はオフです。</td></tr>
+      <tr><th><span data-ui-label="マイクのデバイス">マイクのデバイス</span></th><td>録音に使うマイクです。既定は Windows の既定のデバイスです。</td></tr>
+      <tr><th><span data-ui-label="音声形式">音声形式</span></th><td>AAC か MP3 です。既定は AAC(192 kbps)です。</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="update">更新</h2>
+  <p>新しい版が出ると、通知と更新の画面でお知らせします。
+  「今すぐ更新」を選ぶと、新しい版をダウンロードして入れ替え、ScreenRecorder を起動し直します。
+  録画中や撮影中は更新を始めません。
+  トレイメニューの <span class="label" data-ui-label="更新を確認">更新を確認</span> で、いつでも確かめられます。</p>
+  <p>ScreenRecorder を「Program Files」のような、書き込みに管理者の権限が要るフォルダーに置いている場合は、自動では入れ替えられません。
+  配布ページから新しい zip を入手して、手で展開し直してください。</p>
+
+  <h2 id="limits">既知の制約</h2>
+  <ul>
+    <li>著作権の保護がかかった動画(配信サービスの映像など)は、黒く写ることがあります。</li>
+    <li>HDR を有効にしたディスプレイでは、静止画の明るい部分が白く飛ぶことがあります。</li>
+    <li>Windows 10 では、ウィンドウの録画中に、対象のウィンドウに黄色い枠が表示されます。枠は録画には写りません。</li>
+    <li>録画の途中で電源が切れたり、ScreenRecorder が強制終了されたりすると、<code>.recording.mp4</code> で終わる再生できないファイルが残ります。次に起動したときに、その件数と場所をお知らせします。</li>
+    <li>録画中に利用者の操作でスリープに入った場合は、保存が終わる前に止まり、同じくファイルが残ることがあります。</li>
+  </ul>
+
+  <h2 id="trouble">困ったときは</h2>
+  <ul>
+    <li>ショートカットキーが効かない: 設定の <span class="label" data-ui-label="ショートカット">ショートカット</span> で、状態の欄に「登録できません」と出ていないかを確かめてください。ほかのアプリが同じキーを使っている場合は、別のキーを割り当てます。</li>
+    <li>録画が始まらない、止まってしまう: 設定の <span class="label" data-ui-label="動画">動画</span> で <span class="label" data-ui-label="エンコーダ">エンコーダ</span> を「ソフトウェアのみ」にして試してください。</li>
+    <li>MP3 にならず AAC で保存された: <code>ffmpeg</code> フォルダーが <code>ScreenRecorder.exe</code> と同じ場所にあるかを確かめてください。</li>
+    <li>原因を調べたい: 設定の <span class="label" data-ui-label="全般">全般</span> で <span class="label" data-ui-label="ログのフォルダーを開く">ログのフォルダーを開く</span> を押すと、動作の記録を見られます。</li>
+  </ul>
+</article></main></body>
+</html>

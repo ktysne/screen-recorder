@@ -96,7 +96,6 @@ public static class UiLabels
     public const string SettingsSaveFailed = "設定を保存できませんでした。入力内容を確認して、もう一度お試しください。";
     public const string RestoreDefaultsConfirmation = "すべての設定を既定値に戻します。変更は OK を押すまで保存されません。続けますか？";
     public const string RestoreDefaultsTitle = "設定を既定に戻す";
-    public const string NotImplemented = "この機能はまだ利用できません。";
     public const string ScreenshotSavedNotification = "画像を保存しました。クリックすると保存先でファイルを選択します。";
     public const string ScreenshotCaptureFailed = "撮影できませんでした: {0}";
     public const string ScreenshotExitWaiting = "撮影と保存の処理が終わったら ScreenRecorder を終了します。";
@@ -128,10 +127,11 @@ public static class UiLabels
     public const string ShortcutColumnKey = "キー";
     public const string ShortcutColumnStatus = "状態";
     public const string FilenameTemplateHelp = "{date} は日付、{time} は時刻、{mode} は撮影方法、{window} はウィンドウ名に置き換わります。";
-    public const string CaptureDelayHelp = "範囲またはウィンドウを選んだ後、撮影まで待つ時間です。";
+    public const string CaptureDelayHelp = "撮影の操作をしてから撮影するまで待つ時間です。範囲やウィンドウを指定する場合は、選び終えてから数えます。";
     public const string DirectoryRequired = "保存先のフォルダーを指定してください。";
     public const string SettingsValuesInvalid = "設定値を確認してください。";
     public const string LicenseOpenFailed = "ライセンスを開けませんでした。";
+    public const string ManualOpenFailed = "マニュアルを開けませんでした。";
     public const string KeyboardSettingsOpenFailed = "Windows のキーボード設定を開けませんでした。";
     public const string Seconds3 = "3 秒";
     public const string Seconds5 = "5 秒";
