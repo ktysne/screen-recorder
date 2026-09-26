@@ -25,8 +25,10 @@ public static class UpdateRedirectPolicy
             return false;
         }
         // 転送先も update.json の URL と同じ規則で、書かれたとおりの文字列を検証する。相対の転送先は検証済みの URL を土台に解決したものを見る。
+        // ホストを含む相対の書き方(//host/...)は、解決で正規化されて検証をすり抜けるため受け付けない。
+        var isNetworkPath = !location.IsAbsoluteUri && (location.OriginalString.StartsWith("//", StringComparison.Ordinal) || location.OriginalString.StartsWith(@"\\", StringComparison.Ordinal));
         var candidate = location.IsAbsoluteUri ? location.OriginalString : resolved.AbsoluteUri;
-        if (!UpdateManifestParser.IsAllowedDownloadUrl(candidate))
+        if (isNetworkPath || !UpdateManifestParser.IsAllowedDownloadUrl(candidate))
         {
             error = "配布サーバーが許可されていない転送先を指定したため、中止しました。";
             return false;

@@ -25,6 +25,8 @@ public sealed class UpdateRedirectPolicyTests
     [InlineData("https://ktysne.info:8443/releases/latest.zip")]
     [InlineData("https://ktysne.info:443/releases/latest.zip")]
     [InlineData("HTTPS://KTYSNE.INFO/releases/latest.zip")]
+    [InlineData("//KTYSNE.INFO/releases/latest.zip")]
+    [InlineData("//ktysne.info/releases/latest.zip")]
     public void RejectsInsecureOrUntrustedRedirects(string location)
     {
         Assert.False(UpdateRedirectPolicy.TryResolve(CurrentUri, new Uri(location), 0, out var target, out var error));
