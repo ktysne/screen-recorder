@@ -90,6 +90,51 @@ public sealed class VideoRecordingRulesTests
     }
 
     [Fact]
+    public void IsWaitingForEngineStart_IsTrueWhilePreparing()
+    {
+        var machine = CreatePreparingMachine();
+
+        Assert.True(machine.IsWaitingForEngineStart);
+    }
+
+    [Fact]
+    public void IsWaitingForEngineStart_RemainsTrueAfterStopIsDeferredDuringPreparing()
+    {
+        var machine = CreatePreparingMachine();
+
+        Assert.Equal(RecordingEngineCommand.None, machine.RequestStop());
+
+        Assert.Equal(VideoRecordingState.Saving, machine.State);
+        Assert.True(machine.IsWaitingForEngineStart);
+    }
+
+    [Theory]
+    [InlineData(VideoRecordingState.Recording)]
+    [InlineData(VideoRecordingState.Paused)]
+    [InlineData(VideoRecordingState.Saving)]
+    public void IsWaitingForEngineStart_IsFalseAfterEngineStarts(VideoRecordingState state)
+    {
+        var machine = CreateRecordingMachine();
+        if (state == VideoRecordingState.Paused) machine.RequestPause();
+        if (state == VideoRecordingState.Saving) machine.RequestStop();
+
+        Assert.Equal(state, machine.State);
+        Assert.False(machine.IsWaitingForEngineStart);
+    }
+
+    [Theory]
+    [InlineData(VideoRecordingState.Idle)]
+    [InlineData(VideoRecordingState.Countdown)]
+    public void IsWaitingForEngineStart_IsFalseBeforeRecordingStarts(VideoRecordingState state)
+    {
+        var machine = new VideoRecordingStateMachine();
+        if (state == VideoRecordingState.Countdown) machine.TryBeginCountdown();
+
+        Assert.Equal(state, machine.State);
+        Assert.False(machine.IsWaitingForEngineStart);
+    }
+
+    [Fact]
     public void TryPauseAndResume_MoveBetweenRecordingStates()
     {
         var machine = CreateRecordingMachine();
