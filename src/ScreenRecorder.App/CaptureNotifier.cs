@@ -46,17 +46,21 @@ internal sealed class CaptureNotifier
             _openNotifiedUpdate();
             return;
         }
-        OpenPendingCaptureLocation();
+        _ = OpenPendingCaptureLocationAsync();
     }
 
-    private void OpenPendingCaptureLocation()
+    private async Task OpenPendingCaptureLocationAsync()
     {
         var path = _pendingCapturePath;
-        if (path is null || !File.Exists(path)) return;
+        if (path is null) return;
         try
         {
-            var start = new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true };
-            using (Process.Start(start)) { }
+            await Task.Run(() =>
+            {
+                if (!File.Exists(path)) return;
+                var start = new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true };
+                using (Process.Start(start)) { }
+            });
         }
         catch (Exception exception)
         {

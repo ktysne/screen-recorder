@@ -35,8 +35,7 @@ internal sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostPro
                 return KeepAac(temporaryPath, outputPath, "ffmpeg.exe が見つからないため、音声は AAC のまま保存しました。", "ffmpeg.exe が見つかりませんでした。");
 
             var sourceSize = new FileInfo(temporaryPath).Length;
-            var rootPath = Path.GetPathRoot(temporaryPath) ?? throw new IOException("録画ファイルのドライブを特定できません。");
-            if (!Mp3TranscodeRules.HasEnoughFreeSpace(new DriveInfo(rootPath).AvailableFreeSpace, sourceSize))
+            if (!Mp3TranscodeRules.HasEnoughFreeSpace(DiskSpace.GetAvailableFreeBytes(temporaryPath), sourceSize))
                 return KeepAac(temporaryPath, outputPath, "変換に必要な空き容量がないため、音声は AAC のまま保存しました。", "変換に必要な空き容量がありませんでした。");
 
             var startInfo = new ProcessStartInfo(ffmpegPath)

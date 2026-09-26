@@ -52,7 +52,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             TryExitAfterPendingWork,
             _captureNotifier,
             _uiDispatcher,
-            path => OpenFolder(path, notifyFailure: false));
+            path => OpenFolderAsync(path, notifyFailure: false));
         _tray.DoubleClick += (_, _) => ShowSettings();
         _tray.BalloonTipClicked += (_, _) => _captureNotifier.HandleBalloonClicked();
         _hotkeyManager = new HotkeyManager(PerformHotkeyAction);
@@ -153,10 +153,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         switch (command)
         {
             case TrayMenuCommand.OpenImageFolder:
-                OpenFolder(_settings.StillImageDirectory);
+                _ = OpenFolderAsync(_settings.StillImageDirectory);
                 break;
             case TrayMenuCommand.OpenVideoFolder:
-                OpenFolder(_settings.VideoDirectory);
+                _ = OpenFolderAsync(_settings.VideoDirectory);
                 break;
             case TrayMenuCommand.Settings:
                 ShowSettings();
@@ -451,14 +451,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
         }
 
-        CaptureCompletion.Execute(
+        await CaptureCompletion.ExecuteAsync(
             CaptureCompletionKind.Screenshot,
             settings,
             result.FilePath,
             settings.StillImageDirectory,
             $"方法={CaptureText.CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={result.FilePath}",
             warning,
-            path => OpenFolder(path, notifyFailure: false),
+            path => OpenFolderAsync(path, notifyFailure: false),
             ShowCaptureNotification);
     }
 
@@ -472,11 +472,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private bool OpenFolder(string path, bool notifyFailure = true)
+    private async Task<bool> OpenFolderAsync(string path, bool notifyFailure = true)
     {
         try
         {
-            ShellLauncher.OpenFolder(path);
+            await ShellLauncher.OpenFolderAsync(path);
             return true;
         }
         catch (Exception exception)
@@ -485,7 +485,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 DiagnosticLog.Error(DiagnosticLogTags.App, $"フォルダーを開けませんでした: フォルダー={path}; {exception}");
             else
                 DiagnosticLog.Warn(DiagnosticLogTags.App, $"保存後にフォルダーを開けませんでした: フォルダー={path}; {exception}");
-            if (notifyFailure) ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+            if (notifyFailure)
+            {
+                try { ShowNotification(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error); }
+                catch (Exception notificationException) { DiagnosticLog.Warn(DiagnosticLogTags.App, $"フォルダーを開けなかったことを通知できませんでした: {notificationException}"); }
+            }
             return false;
         }
     }

@@ -654,10 +654,10 @@ internal sealed class SettingsForm : Form
         if (dialog.ShowDialog(this) == DialogResult.OK) input.Text = dialog.SelectedPath;
     }
 
-    private void OpenLogsFolder()
+    private async void OpenLogsFolder()
     {
         DiagnosticLog.Flush(DiagnosticLogWriter.FlushWaitMilliseconds);
-        OpenFolder(DiagnosticLog.LogsDirectory);
+        await OpenFolderAsync(DiagnosticLog.LogsDirectory);
     }
 
     private void OpenLicense()
@@ -673,16 +673,17 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private void OpenFolder(string path)
+    private async Task OpenFolderAsync(string path)
     {
         try
         {
-            ShellLauncher.OpenFolder(path);
+            await ShellLauncher.OpenFolderAsync(path);
         }
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.App, $"フォルダーを開けませんでした: フォルダー={path}; {exception}");
-            _formStatus.Text = string.Format(UiLabels.FolderOpenFailed, exception.Message);
+            if (!IsDisposed && !Disposing && !_formStatus.IsDisposed && !_formStatus.Disposing)
+                _formStatus.Text = string.Format(UiLabels.FolderOpenFailed, exception.Message);
         }
     }
 
