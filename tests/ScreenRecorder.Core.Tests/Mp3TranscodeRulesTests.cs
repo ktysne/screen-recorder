@@ -6,6 +6,13 @@ namespace ScreenRecorder.Core.Tests;
 public sealed class Mp3TranscodeRulesTests
 {
     [Theory]
+    [InlineData(60, false)]
+    [InlineData(59.999, false)]
+    [InlineData(60.001, true)]
+    public void IsStalled_UsesStrictlyMoreThanTheOutputTimeout(double seconds, bool expected) =>
+        Assert.Equal(expected, Mp3TranscodeRules.IsStalled(TimeSpan.FromSeconds(seconds)));
+
+    [Theory]
     [InlineData(128, "128k")]
     [InlineData(192, "192k")]
     [InlineData(256, "256k")]
