@@ -8,7 +8,6 @@ namespace ScreenRecorder.App;
 internal sealed class UpdateController : IDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
-    private readonly DailyLog _log;
     private readonly UpdateService _service;
     private readonly string _installDirectory;
     private readonly Func<Settings> _getSettings;
@@ -32,7 +31,6 @@ internal sealed class UpdateController : IDisposable
     /// <param name="notify">通知の文言、アイコン、クリックで更新ダイアログを開くか。</param>
     /// <param name="getBusyReason">録画中や撮影中なら、更新できない理由。</param>
     public UpdateController(
-        DailyLog log,
         string installDirectory,
         Func<Settings> getSettings,
         Func<string, bool> saveSkippedVersion,
@@ -40,8 +38,7 @@ internal sealed class UpdateController : IDisposable
         Action<string, ToolTipIcon, bool> notify,
         Action requestExitForUpdate)
     {
-        _log = log;
-        _service = new UpdateService(log);
+        _service = new UpdateService();
         _installDirectory = installDirectory;
         _getSettings = getSettings;
         _saveSkippedVersion = saveSkippedVersion;
@@ -115,7 +112,9 @@ internal sealed class UpdateController : IDisposable
         catch (Exception exception)
         {
             trigger = ConsumeManualCheckRequest(trigger);
-            _log.Write($"Update check crashed: trigger={trigger}; {exception}");
+            var message = $"更新の確認に失敗しました: きっかけ={TriggerName(trigger)}; {exception}";
+            if (trigger == UpdateCheckTrigger.Manual) DiagnosticLog.Error(DiagnosticLogTags.Update, message);
+            else DiagnosticLog.Warn(DiagnosticLogTags.Update, message);
             if (!_disposed && trigger == UpdateCheckTrigger.Manual)
                 _notify(string.Format(UiLabels.UpdateCheckFailed, "予期しないエラーが発生しました。"), ToolTipIcon.Warning, false);
         }
@@ -203,6 +202,7 @@ internal sealed class UpdateController : IDisposable
 
         var cancellation = new CancellationTokenSource();
         _downloadCancellation = cancellation;
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新のダウンロードを開始します: 版={dialog.Manifest.Version}、URL={dialog.Manifest.Url}。");
         dialog.ShowDownloading(new UpdateDownloadProgress(0, null));
         var progress = new Progress<UpdateDownloadProgress>(value =>
         {
@@ -235,7 +235,7 @@ internal sealed class UpdateController : IDisposable
         }
         catch (Exception exception)
         {
-            _log.Write($"Update preparation crashed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新の準備に失敗しました: {exception}");
             if (!dialog.IsDisposed) dialog.ShowFailed("予期しないエラーが発生しました。");
         }
         finally
@@ -247,6 +247,7 @@ internal sealed class UpdateController : IDisposable
 
     private void ApplyPreparedUpdate(PreparedUpdate prepared, UpdateDialog dialog)
     {
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新の適用を開始します: 版={prepared.Manifest.Version}。");
         dialog.ShowApplying();
         try
         {
@@ -260,11 +261,11 @@ internal sealed class UpdateController : IDisposable
             start.ArgumentList.Add(prepared.ExtractedDirectory);
             start.ArgumentList.Add(_installDirectory);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("更新の処理を起動できませんでした。");
-            _log.Write($"Update applier started: pid={process.Id}, version={prepared.Manifest.Version}, source={prepared.ExtractedDirectory}, install={_installDirectory}");
+            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新適用プロセスを起動しました: PID={process.Id}、版={prepared.Manifest.Version}、展開元={prepared.ExtractedDirectory}、インストール先={_installDirectory}。");
         }
         catch (Exception exception)
         {
-            _log.Write($"Starting update applier failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新適用プロセスを起動できませんでした: {exception}");
             _prepared = null;
             dialog.ShowFailed("更新の処理を起動できませんでした。");
             return;
@@ -280,7 +281,7 @@ internal sealed class UpdateController : IDisposable
             _notify(UiLabels.UpdateSkipSaveFailed, ToolTipIcon.Warning, false);
             return;
         }
-        _log.Write($"Update version skipped: {version}");
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新をスキップしました: 版={version}。");
         dialog.Close();
     }
 
@@ -292,7 +293,7 @@ internal sealed class UpdateController : IDisposable
         }
         catch (Exception exception)
         {
-            _log.Write($"Opening distribution page failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"配布ページを開けませんでした: {exception}");
             _notify(string.Format(UiLabels.DistributionPageOpenFailed, exception.Message), ToolTipIcon.Error, false);
         }
     }
@@ -308,8 +309,10 @@ internal sealed class UpdateController : IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _log.Write($"Install directory is not writable: {_installDirectory}; {exception.Message}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Update, $"インストール先へ書き込めないため、自動更新を使えません: フォルダー={_installDirectory}; {exception.Message}");
             return false;
         }
     }
+
+    private static string TriggerName(UpdateCheckTrigger trigger) => trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
 }

@@ -37,7 +37,7 @@ internal sealed record PreparedUpdate(UpdateManifest Manifest, string ExtractedD
 }
 
 /// <summary>update.json の取得と、配布 zip のダウンロード、照合、展開を行う。</summary>
-internal sealed class UpdateService(DailyLog log)
+internal sealed class UpdateService
 {
     private static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DownloadStallTimeout = TimeSpan.FromSeconds(60);
@@ -54,11 +54,21 @@ internal sealed class UpdateService(DailyLog log)
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            log.Write($"Update check failed: trigger={trigger}; {exception}");
+            var triggerName = trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
+            LogCheckFailure(trigger, $"更新の確認に失敗しました: きっかけ={triggerName}; {exception}");
             return UpdateCheckResult.Failed(DescribeNetworkFailure(exception));
         }
         var result = UpdateCheckEvaluator.Evaluate(AppVersion.Current, json, skippedVersion, trigger);
-        log.Write($"Update check: trigger={trigger}, current={AppVersion.Current}, kind={result.Kind}, latest={result.Manifest?.Version}, error={result.Error}");
+        var checkTrigger = trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
+        if (result.Kind == UpdateCheckKind.Failed)
+        {
+            LogCheckFailure(trigger, $"更新の確認に失敗しました: きっかけ={checkTrigger}; {result.Error}");
+        }
+        else
+        {
+            var hasNewVersion = result.Kind is UpdateCheckKind.Available or UpdateCheckKind.Skipped;
+            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新の確認が完了しました: きっかけ={checkTrigger}、新しい版={(hasNewVersion ? "あり" : "なし")}、現在の版={AppVersion.Current}、最新の版={result.Manifest?.Version}。");
+        }
         return result;
     }
 
@@ -75,7 +85,7 @@ internal sealed class UpdateService(DailyLog log)
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            log.Write($"Update staging cleanup failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新用ファイルを準備できませんでした: {exception}");
             throw new UpdatePackageException("更新用の一時フォルダーを準備できませんでした。", exception);
         }
 
@@ -85,13 +95,13 @@ internal sealed class UpdateService(DailyLog log)
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            log.Write($"Update download failed: url={manifest.Url}; {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新ファイルをダウンロードできませんでした: URL={manifest.Url}; {exception}");
             TryDelete(zipPath);
             throw exception as UpdatePackageException ?? new UpdatePackageException($"ダウンロードできませんでした。{DescribeNetworkFailure(exception)}", exception);
         }
         catch (OperationCanceledException)
         {
-            log.Write("Update download cancelled");
+            DiagnosticLog.Info(DiagnosticLogTags.Update, "更新のダウンロードをキャンセルしました。");
             TryDelete(zipPath);
             throw;
         }
@@ -103,23 +113,23 @@ internal sealed class UpdateService(DailyLog log)
             {
                 if (!UpdatePackage.MatchesSha256(zipPath, manifest.Sha256))
                 {
-                    log.Write($"Update package hash mismatch: expected={manifest.Sha256}, actual={UpdatePackage.ComputeSha256(zipPath)}");
+                    DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新ファイルのハッシュが一致しません: 期待値={manifest.Sha256}、実際の値={UpdatePackage.ComputeSha256(zipPath)}。");
                     TryDelete(zipPath);
                     throw new UpdatePackageException("ダウンロードしたファイルが最新版情報と一致しないため、中止しました。");
                 }
                 var files = UpdatePackage.Extract(zipPath, extractDirectory);
-                log.Write($"Update package extracted: directory={extractDirectory}, files={files.Count}");
+                DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新ファイルを展開しました: フォルダー={extractDirectory}、ファイル数={files.Count}。");
                 return new PreparedUpdate(manifest, extractDirectory);
             }
             catch (Exception exception) when (exception is not UpdatePackageException)
             {
-                log.Write($"Update package extraction failed: {exception}");
+                DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新ファイルを展開できませんでした: {exception}");
                 TryDeleteDirectory(extractDirectory);
                 throw new UpdatePackageException("ダウンロードしたファイルを展開できませんでした。", exception);
             }
             catch (UpdatePackageException exception)
             {
-                log.Write($"Update package rejected: {exception.Message}");
+                DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新ファイルを受け付けませんでした: {exception.Message}");
                 TryDeleteDirectory(extractDirectory);
                 throw;
             }
@@ -271,12 +281,18 @@ internal sealed class UpdateService(DailyLog log)
     private void TryDelete(string path)
     {
         try { DeleteIfExists(path); }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { log.Write($"Deleting update file failed: {path}; {exception.Message}"); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新用ファイルを削除できませんでした: ファイル={path}; {exception.Message}"); }
     }
 
     private void TryDeleteDirectory(string path)
     {
         try { DeleteDirectoryIfExists(path); }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { log.Write($"Deleting update directory failed: {path}; {exception.Message}"); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新用フォルダーを削除できませんでした: フォルダー={path}; {exception.Message}"); }
+    }
+
+    private static void LogCheckFailure(UpdateCheckTrigger trigger, string message)
+    {
+        if (trigger == UpdateCheckTrigger.Manual) DiagnosticLog.Error(DiagnosticLogTags.Update, message);
+        else DiagnosticLog.Warn(DiagnosticLogTags.Update, message);
     }
 }

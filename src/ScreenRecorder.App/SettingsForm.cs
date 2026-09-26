@@ -11,7 +11,6 @@ internal sealed class SettingsForm : Form
 
     private readonly Settings _initialSettings;
     private readonly IReadOnlyDictionary<RecorderAction, HotkeyFailure> _hotkeyFailures;
-    private readonly DailyLog _log;
     private readonly Func<Settings, bool> _saveSettings;
     private readonly Func<bool> _isRecording;
     private (string Label, string? Value)[] _microphoneChoices = [];
@@ -45,16 +44,14 @@ internal sealed class SettingsForm : Form
     public SettingsForm(
         Settings settings,
         IReadOnlyList<HotkeyFailure> hotkeyFailures,
-        DailyLog log,
         Func<Settings, bool> saveSettings,
         Func<bool> isRecording)
     {
         _initialSettings = settings.Clone();
         _hotkeyFailures = hotkeyFailures.ToDictionary(failure => failure.Action);
-        _log = log;
         _saveSettings = saveSettings;
         _isRecording = isRecording;
-        _microphoneChoices = LoadMicrophoneChoices(_initialSettings.MicrophoneDeviceId, _log, out _microphoneEnumerationFailed);
+        _microphoneChoices = LoadMicrophoneChoices(_initialSettings.MicrophoneDeviceId, out _microphoneEnumerationFailed);
 
         Text = UiLabels.SettingsTitle;
         Name = "SettingsForm";
@@ -114,8 +111,30 @@ internal sealed class SettingsForm : Form
         BindText(naming, UiLabels.FileNameTemplate, settings => settings.FileNameTemplate, (settings, value) => settings.FileNameTemplate = value, UiLabels.FilenameTemplateHelp);
         BindCheck(naming, UiLabels.OrganizeByMonth, settings => settings.OrganizeByMonth, (settings, value) => settings.OrganizeByMonth = value);
 
+        var diagnosticLog = AddSection(root, UiLabels.DiagnosticLog);
+        BindChoice(diagnosticLog, UiLabels.DiagnosticLogLevel,
+            [
+                (UiLabels.DiagnosticLogLevelSilent, Core.DiagnosticLogLevel.Silent),
+                (UiLabels.DiagnosticLogLevelError, Core.DiagnosticLogLevel.Error),
+                (UiLabels.DiagnosticLogLevelWarn, Core.DiagnosticLogLevel.Warn),
+                (UiLabels.DiagnosticLogLevelInfo, Core.DiagnosticLogLevel.Info),
+                (UiLabels.DiagnosticLogLevelDebug, Core.DiagnosticLogLevel.Debug)
+            ],
+            settings => settings.DiagnosticLogLevel, (settings, value) => settings.DiagnosticLogLevel = value, UiLabels.DiagnosticLogNote);
+        var diagnosticButtons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Anchor = AnchorStyles.Left };
+        var openLogsButton = new Button { Text = UiLabels.OpenDiagnosticLogsFolder, AutoSize = true };
+        openLogsButton.Click += (_, _) => OpenLogsFolder();
+        var policyButton = new Button { Text = UiLabels.ReviewDiagnosticLogPolicy, AutoSize = true };
+        policyButton.Click += (_, _) =>
+        {
+            using var dialog = new DiagnosticLogPolicyDialog();
+            dialog.ShowDialog(this);
+        };
+        diagnosticButtons.Controls.Add(openLogsButton);
+        diagnosticButtons.Controls.Add(policyButton);
+        AddFullWidth(diagnosticLog, diagnosticButtons);
+
         var tools = AddSection(root, UiLabels.ApplicationTools);
-        AddButtonRow(tools, UiLabels.OpenLogsFolder, OpenLogsFolder);
         AddButtonRow(tools, UiLabels.RestoreDefaults, RestoreDefaults);
         AddButtonRow(tools, UiLabels.OpenLicense, OpenLicense);
         return page;
@@ -371,6 +390,22 @@ internal sealed class SettingsForm : Form
         table.Controls.Add(control, 0, row);
         table.SetColumnSpan(control, 3);
         control.Margin = new Padding(4, 4, 4, 4);
+        if (control is Label { AutoSize: true } label) WrapToCellWidth(table, label);
+    }
+
+    // 固定の上限で折り返すと、表示される行数と表の高さの計算が食い違い、下の行がグループの外へはみ出す。
+    private static void WrapToCellWidth(TableLayoutPanel table, Label label)
+    {
+        table.SizeChanged += (_, _) =>
+        {
+            var widths = table.GetColumnWidths();
+            var column = table.GetColumn(label);
+            var span = table.GetColumnSpan(label);
+            if (column < 0 || widths.Length < column + span) return;
+            var width = widths.Skip(column).Take(span).Sum() - label.Margin.Horizontal;
+            if (width <= 0 || label.MaximumSize.Width == width) return;
+            label.MaximumSize = new Size(width, 0);
+        };
     }
 
     private static void AddFieldRow(TableLayoutPanel table, string label, Control editor, Control? trailing = null, string? help = null)
@@ -396,6 +431,7 @@ internal sealed class SettingsForm : Form
             var hint = new Label { Text = help, AutoSize = true, ForeColor = SystemColors.GrayText, MaximumSize = new Size(720, 0), Margin = new Padding(4, 0, 4, 7) };
             table.Controls.Add(hint, 1, helpRow);
             table.SetColumnSpan(hint, 2);
+            WrapToCellWidth(table, hint);
         }
     }
 
@@ -500,7 +536,7 @@ internal sealed class SettingsForm : Form
         _saveButton.Enabled = !invalid;
     }
 
-    private static (string Label, string? Value)[] LoadMicrophoneChoices(string? savedDeviceId, DailyLog log, out bool enumerationFailed)
+    private static (string Label, string? Value)[] LoadMicrophoneChoices(string? savedDeviceId, out bool enumerationFailed)
     {
         var choices = new List<(string Label, string? Value)> { (UiLabels.DefaultDevice, null) };
         enumerationFailed = false;
@@ -512,7 +548,7 @@ internal sealed class SettingsForm : Form
         catch (Exception exception)
         {
             enumerationFailed = true;
-            log.Write($"Enumerating microphone devices failed: {exception}");
+            DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"マイクを列挙できませんでした: {exception}");
         }
 
         if (!enumerationFailed && savedDeviceId is not null && choices.All(choice => !string.Equals(choice.Value, savedDeviceId, StringComparison.Ordinal)))
@@ -576,7 +612,7 @@ internal sealed class SettingsForm : Form
         }
         catch (Exception exception)
         {
-            _log.Write($"Settings save failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"設定を保存できませんでした: {exception}");
             _formStatus.Text = UiLabels.SettingsSaveFailed;
         }
     }
@@ -593,7 +629,11 @@ internal sealed class SettingsForm : Form
         if (dialog.ShowDialog(this) == DialogResult.OK) input.Text = dialog.SelectedPath;
     }
 
-    private void OpenLogsFolder() => OpenFolder(Path.GetDirectoryName(_log.CurrentFilePath)!);
+    private void OpenLogsFolder()
+    {
+        DiagnosticLog.Flush(DiagnosticLogWriter.FlushWaitMilliseconds);
+        OpenFolder(DiagnosticLog.LogsDirectory);
+    }
 
     private void OpenLicense()
     {
@@ -603,7 +643,7 @@ internal sealed class SettingsForm : Form
         }
         catch (Exception exception)
         {
-            _log.Write($"Open license failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"ライセンスを開けませんでした: {exception}");
             _formStatus.Text = UiLabels.LicenseOpenFailed;
         }
     }
@@ -617,7 +657,7 @@ internal sealed class SettingsForm : Form
         }
         catch (Exception exception)
         {
-            _log.Write($"Open folder failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"フォルダーを開けませんでした: フォルダー={path}; {exception}");
             _formStatus.Text = string.Format(UiLabels.FolderOpenFailed, exception.Message);
         }
     }
@@ -630,7 +670,7 @@ internal sealed class SettingsForm : Form
         }
         catch (Exception exception)
         {
-            _log.Write($"Open keyboard settings failed: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"キーボード設定を開けませんでした: {exception}");
             _formStatus.Text = UiLabels.KeyboardSettingsOpenFailed;
         }
     }

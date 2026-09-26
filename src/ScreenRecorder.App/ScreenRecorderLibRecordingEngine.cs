@@ -7,7 +7,6 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
 {
     private static readonly TimeSpan FailureFinalizationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan IdleCompletionGracePeriod = TimeSpan.FromMilliseconds(200);
-    private readonly DailyLog _log;
     private readonly object _gate = new();
     private readonly TaskCompletionSource _terminationSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Recorder? _recorder;
@@ -21,7 +20,7 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
     private bool _hasObservedRecording;
     private bool _disposed;
 
-    public ScreenRecorderLibRecordingEngine(DailyLog log) => _log = log;
+    public ScreenRecorderLibRecordingEngine() { }
 
     public event EventHandler<RecordingEngineStatusChangedEventArgs>? StatusChanged;
     public event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
@@ -62,19 +61,21 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         if (request.CaptureSystemAudio)
         {
             try { loopbackAvailable = Recorder.GetSystemAudioLoopbackDevices().Any(device => device.IsDefaultDevice); }
-            catch (Exception exception) { _log.Write($"Enumerating system audio devices before recording failed: {exception}"); }
+            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"PC の音声デバイスを列挙できませんでした: {exception}"); }
         }
         var microphoneDevices = new List<RecordableAudioCaptureDevice>();
         if (request.CaptureMicrophone)
         {
             try { microphoneDevices = Recorder.GetSystemAudioCaptureDevices(); }
-            catch (Exception exception) { _log.Write($"Enumerating microphone devices before recording failed: {exception}"); }
+            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"マイクを列挙できませんでした: {exception}"); }
         }
         var microphoneAvailable = !request.CaptureMicrophone || (request.MicrophoneDeviceId is null
             ? microphoneDevices.Any(device => device.IsDefaultDevice)
             : microphoneDevices.Any(device => string.Equals(device.ID, request.MicrophoneDeviceId, StringComparison.Ordinal)));
         var captureSystemAudio = request.CaptureSystemAudio && loopbackAvailable;
         var captureMicrophone = request.CaptureMicrophone && microphoneAvailable;
+        if (request.CaptureSystemAudio && !captureSystemAudio) DiagnosticLog.Warn(DiagnosticLogTags.Audio, "PC の音声入力元を使用できないため、音声を収録しません。");
+        if (request.CaptureMicrophone && !captureMicrophone) DiagnosticLog.Warn(DiagnosticLogTags.Audio, "マイクを使用できないため、音声を収録しません。");
         options.AudioOptions.IsAudioEnabled = captureSystemAudio || captureMicrophone;
         // 録画中に設定を変える API(DynamicAudioOptions)は録画の開始前には効かないので、作る前の設定で音源を渡す。
         options.AudioOptions.AudioSources.Clear();
@@ -311,7 +312,7 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         if (stopIfActive && recorder is not null && recorder.Status is RecorderStatus.Recording or RecorderStatus.Paused)
         {
             try { recorder.Stop(); }
-            catch (Exception exception) { _log.Write($"Stopping failed recording failed: {exception}"); }
+            catch (Exception exception) { DiagnosticLog.Error(DiagnosticLogTags.Record, $"失敗した録画を停止できませんでした: {exception}"); }
         }
         _ = RaiseFailureAfterStopAsync(filePath, error);
     }

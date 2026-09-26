@@ -11,6 +11,7 @@ public sealed class SettingsRepositoryTests : IDisposable
     public void DefaultsMatchDesign()
     {
         var settings = new Settings();
+        Assert.Equal(DiagnosticLogLevel.Info, settings.DiagnosticLogLevel);
         Assert.True(settings.StartWithWindows);
         Assert.True(settings.CheckForUpdatesAutomatically);
         Assert.True(settings.NotifyWhenSaved);
@@ -79,6 +80,34 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(98, settings.JpegQuality);
         Assert.True(settings.PlayCaptureSound);
         Assert.Equal(30, settings.FrameRate);
+    }
+
+    [Theory]
+    [InlineData("{\"diagnosticLogLevel\":\"unknown\"}")]
+    [InlineData("{\"diagnosticLogLevel\":\"\"}")]
+    [InlineData("{\"diagnosticLogLevel\":4}")]
+    public void InvalidDiagnosticLogLevelUsesDefault(string json)
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "settings.json"), json);
+
+        Assert.Equal(DiagnosticLogLevel.Info, new SettingsRepository(_directory).Load().DiagnosticLogLevel);
+    }
+
+    [Theory]
+    [InlineData(DiagnosticLogLevel.Silent, "silent")]
+    [InlineData(DiagnosticLogLevel.Error, "error")]
+    [InlineData(DiagnosticLogLevel.Warn, "warn")]
+    [InlineData(DiagnosticLogLevel.Info, "info")]
+    [InlineData(DiagnosticLogLevel.Debug, "debug")]
+    public void DiagnosticLogLevelIsSavedAsLowercaseAndSurvivesReload(DiagnosticLogLevel level, string settingName)
+    {
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { DiagnosticLogLevel = level });
+
+        var json = File.ReadAllText(Path.Combine(_directory, "settings.json"));
+        Assert.Contains($"\"diagnosticLogLevel\": \"{settingName}\"", json);
+        Assert.Equal(level, repository.Load().DiagnosticLogLevel);
     }
 
     [Fact]
