@@ -59,11 +59,12 @@ public static class UiLabels
     public const string CaptureMicrophone = "マイクを収録";
     public const string MicrophoneDevice = "マイクのデバイス";
     public const string AudioFormat = "音声形式";
-    public const string AudioRecordingUnavailable = "音声収録は現在利用できません。";
     public const string AacBitrate = "AAC のビットレート";
     public const string Mp3Bitrate = "MP3 のビットレート";
     public const string DefaultDevice = "既定のデバイス";
     public const string SavedMicrophoneDevice = "保存済みのデバイス";
+    public const string DeviceNotFound = "見つかりません";
+    public const string Mp3ConversionHelp = "MP3 は録画の後で変換するため、保存に少し時間がかかります。";
     public const string Jpeg = "JPEG";
     public const string Png = "PNG";
     public const string PngFast = "速い";

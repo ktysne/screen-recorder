@@ -24,7 +24,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Icon _savingTrayIcon;
     private readonly Control _uiDispatcher;
     private readonly VideoRecordingStateMachine _recordingState = new();
-    private readonly IVideoRecordingPostProcessor _videoPostProcessor = new PassthroughVideoRecordingPostProcessor();
+    private readonly IVideoRecordingPostProcessor _videoPostProcessor;
     private readonly Dictionary<RecorderAction, ToolStripMenuItem> _shortcutMenuItems = [];
     private Settings _settings;
     private SettingsForm? _settingsForm;
@@ -64,6 +64,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _settings = settings.Clone();
         _log = log;
+        _videoPostProcessor = new FfmpegVideoRecordingPostProcessor(log);
         _settingsRepository = settingsRepository;
         _autoStartSynchronizer = autoStartSynchronizer;
         _uiDispatcher = new Control();
@@ -456,11 +457,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 captureSettings.CaptureVideoCursor,
                 captureSettings.HighlightClicks,
                 captureSettings.Encoder == EncoderMode.Automatic,
-                !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000));
+                !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000),
+                captureSettings.CaptureSystemAudio,
+                captureSettings.CaptureMicrophone,
+                captureSettings.MicrophoneDeviceId,
+                captureSettings.AudioFormat == AudioFormat.Mp3 ? 192 : captureSettings.AacBitrateKbps);
             var engine = new ScreenRecorderLibRecordingEngine(_log);
             engine.StatusChanged += (_, eventArgs) => DispatchToUi(() => HandleRecordingStatus(engine, eventArgs));
             engine.RecordingCompleted += (_, eventArgs) => DispatchToUi(() => HandleRecordingCompleted(engine, eventArgs));
             engine.RecordingFailed += (_, eventArgs) => DispatchToUi(() => HandleRecordingFailed(engine, eventArgs));
+            engine.RecordingWarning += (_, eventArgs) => DispatchToUi(() =>
+            {
+                _log.Write($"Recording audio source unavailable: {eventArgs.Message}");
+                ShowNotification(5000, UiLabels.AppName, eventArgs.Message, ToolTipIcon.Warning);
+            });
             _recordingEngine = engine;
             engine.Start(request);
             engineStarted = true;
@@ -629,19 +639,26 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (!ReferenceEquals(engine, _recordingEngine) || _activeRecording is not { } active) return;
         if (_recordingState.State is VideoRecordingState.Recording or VideoRecordingState.Paused) _recordingState.TryBeginSaving();
         ShowSavingState();
+        string? processedPath = null;
         try
         {
             var completedPath = string.IsNullOrWhiteSpace(eventArgs.FilePath) ? active.TemporaryPath : eventArgs.FilePath;
-            var processedPath = await _videoPostProcessor.ProcessAsync(completedPath, active.Settings, CancellationToken.None);
+            var processResult = await _videoPostProcessor.ProcessAsync(completedPath, active.Settings, CancellationToken.None);
+            processedPath = processResult.FilePath;
             if (!File.Exists(processedPath)) throw new FileNotFoundException("録画ライブラリが完了を通知しましたが、一時ファイルが見つかりません。", processedPath);
-            var finalPath = await Task.Run(() => MoveRecordingToFinalPath(active, processedPath));
+            var pathToMove = processedPath;
+            var finalPath = await Task.Run(() => MoveRecordingToFinalPath(active, pathToMove));
+            if (processResult.SupersededPath is { } supersededPath) DeleteSupersededRecording(supersededPath);
             CompleteRecordingSave(finalPath, active.Settings);
+            if (processResult.Warning is not null)
+                ShowCaptureNotification(5000, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
             _recordingState.TryCompleteSaving();
         }
         catch (Exception exception)
         {
             _log.Write($"Video recording save failed: temporary={active.TemporaryPath}; {exception}");
-            ShowRecordingFailure(exception.Message, _activeRecording?.TemporaryPath ?? active.TemporaryPath, finalizationConfirmed: true);
+            var retainedPath = processedPath is not null && File.Exists(processedPath) ? processedPath : _activeRecording?.TemporaryPath ?? active.TemporaryPath;
+            ShowRecordingFailure(exception.Message, retainedPath, finalizationConfirmed: true);
             _recordingState.TryFail();
         }
         finally
@@ -752,6 +769,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         if (warning is not null) ShowCaptureNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning, finalPath);
         else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.RecordingSavedNotification, ToolTipIcon.Info, finalPath);
+    }
+
+    private void DeleteSupersededRecording(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception exception) { _log.Write($"Deleting the recording before MP3 conversion failed: file={path}; {exception}"); }
     }
 
     private static string MoveRecordingToFinalPath(ActiveRecording active, string completedPath)

@@ -26,6 +26,7 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
     public event EventHandler<RecordingEngineStatusChangedEventArgs>? StatusChanged;
     public event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
     public event EventHandler<RecordingEngineFailedEventArgs>? RecordingFailed;
+    public event EventHandler<RecordingEngineWarningEventArgs>? RecordingWarning;
 
     public void Start(RecordingStartRequest request)
     {
@@ -57,7 +58,36 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
             IsMousePointerEnabled = request.CaptureCursor,
             IsMouseClicksDetected = request.HighlightClicks
         };
-        options.AudioOptions.IsAudioEnabled = false;
+        var loopbackAvailable = false;
+        if (request.CaptureSystemAudio)
+        {
+            try { loopbackAvailable = Recorder.GetSystemAudioLoopbackDevices().Any(device => device.IsDefaultDevice); }
+            catch (Exception exception) { _log.Write($"Enumerating system audio devices before recording failed: {exception}"); }
+        }
+        var microphoneDevices = new List<RecordableAudioCaptureDevice>();
+        if (request.CaptureMicrophone)
+        {
+            try { microphoneDevices = Recorder.GetSystemAudioCaptureDevices(); }
+            catch (Exception exception) { _log.Write($"Enumerating microphone devices before recording failed: {exception}"); }
+        }
+        var microphoneAvailable = !request.CaptureMicrophone || (request.MicrophoneDeviceId is null
+            ? microphoneDevices.Any(device => device.IsDefaultDevice)
+            : microphoneDevices.Any(device => string.Equals(device.ID, request.MicrophoneDeviceId, StringComparison.Ordinal)));
+        var captureSystemAudio = request.CaptureSystemAudio && loopbackAvailable;
+        var captureMicrophone = request.CaptureMicrophone && microphoneAvailable;
+        options.AudioOptions.IsAudioEnabled = captureSystemAudio || captureMicrophone;
+        // 録画中に設定を変える API(DynamicAudioOptions)は録画の開始前には効かないので、作る前の設定で音源を渡す。
+        options.AudioOptions.AudioSources.Clear();
+        if (captureSystemAudio || captureMicrophone)
+        {
+            options.AudioOptions.Bitrate = ToAudioBitrate(request.AacBitrateKbps);
+            options.AudioOptions.Channels = AudioChannels.Stereo;
+            if (captureSystemAudio) options.AudioOptions.AudioSources.Add(LoopbackAudioSource.Default);
+            if (captureMicrophone)
+                options.AudioOptions.AudioSources.Add(request.MicrophoneDeviceId is null
+                    ? CaptureAudioSource.Default
+                    : new CaptureAudioSource(request.MicrophoneDeviceId));
+        }
 
         var recorder = Recorder.CreateRecorder(options);
         lock (_gate)
@@ -73,6 +103,11 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         recorder.OnRecordingComplete += OnRecordingComplete;
         recorder.OnRecordingFailed += OnRecordingFailed;
         recorder.Record(request.OutputPath);
+        var missingSources = new List<string>();
+        if (request.CaptureSystemAudio && !captureSystemAudio) missingSources.Add("PC の音声デバイス");
+        if (request.CaptureMicrophone && !captureMicrophone) missingSources.Add("マイク");
+        if (missingSources.Count > 0)
+            RecordingWarning?.Invoke(this, new RecordingEngineWarningEventArgs($"{string.Join("、", missingSources)}が見つからなかったため、その音源を録音しません。"));
     }
 
     public void Pause()
@@ -187,6 +222,15 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         }
         return source;
     }
+
+    private static AudioBitrate ToAudioBitrate(int bitrateKbps) => bitrateKbps switch
+    {
+        96 => AudioBitrate.bitrate_96kbps,
+        128 => AudioBitrate.bitrate_128kbps,
+        160 => AudioBitrate.bitrate_160kbps,
+        192 => AudioBitrate.bitrate_192kbps,
+        _ => throw new ArgumentOutOfRangeException(nameof(bitrateKbps))
+    };
 
     private void OnStatusChanged(object? sender, RecordingStatusEventArgs eventArgs)
     {

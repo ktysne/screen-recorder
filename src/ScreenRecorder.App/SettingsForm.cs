@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using ScreenRecorderLib;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
@@ -13,6 +14,8 @@ internal sealed class SettingsForm : Form
     private readonly DailyLog _log;
     private readonly Func<Settings, bool> _saveSettings;
     private readonly Func<bool> _isRecording;
+    private (string Label, string? Value)[] _microphoneChoices = [];
+    private bool _microphoneEnumerationFailed;
     private readonly List<Action<Settings>> _loaders = [];
     private readonly List<Action<Settings>> _readers = [];
     private readonly Dictionary<RecorderAction, TextBox> _shortcutInputs = [];
@@ -34,6 +37,7 @@ internal sealed class SettingsForm : Form
     private readonly List<Control> _audioControls = [];
     private ComboBox _imageFormat = null!;
     private ComboBox _audioFormat = null!;
+    private Label _mp3Hint = null!;
     private CheckBox _microphoneEnabled = null!;
     private TabPage _videoTab = null!;
     private bool _loading;
@@ -50,6 +54,7 @@ internal sealed class SettingsForm : Form
         _log = log;
         _saveSettings = saveSettings;
         _isRecording = isRecording;
+        _microphoneChoices = LoadMicrophoneChoices(_initialSettings.MicrophoneDeviceId, _log, out _microphoneEnumerationFailed);
 
         Text = UiLabels.SettingsTitle;
         Name = "SettingsForm";
@@ -164,24 +169,28 @@ internal sealed class SettingsForm : Form
             settings => settings.Encoder, (settings, value) => settings.Encoder = value);
 
         var audio = AddSection(root, UiLabels.AudioOptions);
-        AddFullWidth(audio, new Label
-        {
-            Text = UiLabels.AudioRecordingUnavailable,
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText,
-            AccessibleName = UiLabels.AudioRecordingUnavailable
-        });
         _audioControls.Add(BindCheck(audio, UiLabels.CaptureSystemAudio, settings => settings.CaptureSystemAudio, (settings, value) => settings.CaptureSystemAudio = value));
         _microphoneEnabled = BindCheck(audio, UiLabels.CaptureMicrophone, settings => settings.CaptureMicrophone, (settings, value) => settings.CaptureMicrophone = value);
         _audioControls.Add(_microphoneEnabled);
         var microphone = BindChoice(audio, UiLabels.MicrophoneDevice,
-            MicrophoneChoices(_initialSettings.MicrophoneDeviceId),
+            _microphoneChoices,
             settings => settings.MicrophoneDeviceId, (settings, value) => settings.MicrophoneDeviceId = value);
+        if (_microphoneEnumerationFailed && _initialSettings.MicrophoneDeviceId is not null)
+            _readers[^1] = settings => settings.MicrophoneDeviceId = _initialSettings.MicrophoneDeviceId;
         _microphoneControls.Add(microphone);
         _audioControls.Add(microphone);
         _audioFormat = BindChoice(audio, UiLabels.AudioFormat,
             [(UiLabels.Aac, AudioFormat.Aac), (UiLabels.Mp3, AudioFormat.Mp3)],
             settings => settings.AudioFormat, (settings, value) => settings.AudioFormat = value);
+        _mp3Hint = new Label
+        {
+            Text = UiLabels.Mp3ConversionHelp,
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            MaximumSize = new Size(720, 0),
+            Visible = false
+        };
+        AddFullWidth(audio, _mp3Hint);
         _audioControls.Add(_audioFormat);
         var aacBitrate = BindChoice(audio, UiLabels.AacBitrate,
             [(UiLabels.KilobitsPerSecond(96), 96), (UiLabels.KilobitsPerSecond(128), 128), (UiLabels.KilobitsPerSecond(160), 160), (UiLabels.KilobitsPerSecond(192), 192)],
@@ -491,11 +500,25 @@ internal sealed class SettingsForm : Form
         _saveButton.Enabled = !invalid;
     }
 
-    // デバイスの一覧を持たない間も、保存済みの ID をほかの設定の保存で消さないために選択肢へ残す。
-    private static (string Label, string? Value)[] MicrophoneChoices(string? savedDeviceId) =>
-        savedDeviceId is null
-            ? [(UiLabels.DefaultDevice, null)]
-            : [(UiLabels.DefaultDevice, null), (UiLabels.SavedMicrophoneDevice, savedDeviceId)];
+    private static (string Label, string? Value)[] LoadMicrophoneChoices(string? savedDeviceId, DailyLog log, out bool enumerationFailed)
+    {
+        var choices = new List<(string Label, string? Value)> { (UiLabels.DefaultDevice, null) };
+        enumerationFailed = false;
+        try
+        {
+            choices.AddRange(Recorder.GetSystemAudioCaptureDevices()
+                .Select(device => ($"{device.FriendlyName} ({device.ID})", (string?)device.ID)));
+        }
+        catch (Exception exception)
+        {
+            enumerationFailed = true;
+            log.Write($"Enumerating microphone devices failed: {exception}");
+        }
+
+        if (!enumerationFailed && savedDeviceId is not null && choices.All(choice => !string.Equals(choice.Value, savedDeviceId, StringComparison.Ordinal)))
+            choices.Add(($"{UiLabels.SavedMicrophoneDevice} ({UiLabels.DeviceNotFound})", savedDeviceId));
+        return choices.ToArray();
+    }
 
     private HotkeyFailure? GetCurrentFailure(RecorderAction action, string notation)
     {
@@ -616,12 +639,14 @@ internal sealed class SettingsForm : Form
     private void UpdateEnablement()
     {
         if (_imageFormat is null || _audioFormat is null || _microphoneEnabled is null) return;
+        // 欄ごとの条件で無効にしたものを戻さないよう、音声の欄全体の有効化は先に行う。
+        foreach (var control in _audioControls) control.Enabled = true;
         foreach (var control in _jpegControls) control.Enabled = (StillImageFormat?)SelectedValue<StillImageFormat>(_imageFormat) == StillImageFormat.Jpeg;
         foreach (var control in _pngControls) control.Enabled = (StillImageFormat?)SelectedValue<StillImageFormat>(_imageFormat) == StillImageFormat.Png;
         foreach (var control in _aacControls) control.Enabled = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Aac;
         foreach (var control in _mp3Controls) control.Enabled = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Mp3;
-        foreach (var control in _microphoneControls) control.Enabled = _microphoneEnabled.Checked;
-        foreach (var control in _audioControls) control.Enabled = false;
+        foreach (var control in _microphoneControls) control.Enabled = _microphoneEnabled.Checked && !_microphoneEnumerationFailed;
+        _mp3Hint.Visible = (AudioFormat?)SelectedValue<AudioFormat>(_audioFormat) == AudioFormat.Mp3;
         _videoTab.Enabled = !_isRecording();
     }
 
