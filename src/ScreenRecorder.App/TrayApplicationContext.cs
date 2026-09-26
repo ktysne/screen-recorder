@@ -18,6 +18,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly VideoRecordingController _recording;
     private Settings _settings;
     private SettingsForm? _settingsForm;
+    private SaveDirectoryDialog? _saveDirectoryDialog;
     private bool _screenshotCaptureInProgress;
     private bool _exitRequested;
     private System.Windows.Forms.Timer? _startupNotificationTimer;
@@ -52,7 +53,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             TryExitAfterPendingWork,
             _captureNotifier,
             _uiDispatcher,
-            path => OpenFolderAsync(path, notifyFailure: false));
+            path => OpenFolderAsync(path, notifyFailure: false),
+            ConfirmSaveDirectoryAsync,
+            RememberConfirmedDirectory);
         _tray.DoubleClick += (_, _) => ShowSettings();
         _tray.BalloonTipClicked += (_, _) => _captureNotifier.HandleBalloonClicked();
         _hotkeyManager = new HotkeyManager(PerformHotkeyAction);
@@ -117,10 +120,34 @@ internal sealed class TrayApplicationContext : ApplicationContext
         form.Activate();
     }
 
-    private bool SaveAndApplySettings(Settings settings)
+    private bool SaveAndApplySettings(Settings settings, bool stillDirectoryChanged, bool videoDirectoryChanged, bool defaultsRestored)
     {
         // 設定画面は開いた時点の値を持つため、開いている間に選ばれたスキップの版で上書きさせない。
         settings.SkippedUpdateVersion = _settings.SkippedUpdateVersion;
+        if (!stillDirectoryChanged && !defaultsRestored)
+        {
+            settings.StillImageDirectory = _settings.StillImageDirectory;
+            settings.ConfirmedStillImageDirectory = _settings.ConfirmedStillImageDirectory;
+        }
+        else
+        {
+            settings.ConfirmedStillImageDirectory = stillDirectoryChanged
+                && !(defaultsRestored && string.Equals(settings.StillImageDirectory, new Settings().StillImageDirectory, StringComparison.Ordinal))
+                    ? settings.StillImageDirectory
+                    : null;
+        }
+        if (!videoDirectoryChanged && !defaultsRestored)
+        {
+            settings.VideoDirectory = _settings.VideoDirectory;
+            settings.ConfirmedVideoDirectory = _settings.ConfirmedVideoDirectory;
+        }
+        else
+        {
+            settings.ConfirmedVideoDirectory = videoDirectoryChanged
+                && !(defaultsRestored && string.Equals(settings.VideoDirectory, new Settings().VideoDirectory, StringComparison.Ordinal))
+                    ? settings.VideoDirectory
+                    : null;
+        }
         _settingsRepository.Save(settings);
         _settings = settings.Clone();
         DiagnosticLog.Info(DiagnosticLogTags.App, "設定を保存しました。");
@@ -252,7 +279,53 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 using var result = await _screenshotCaptureService.CaptureAsync(screenshotMode, captureSettings);
                 if (result is null) return;
-                await CompleteScreenshotAsync(result, screenshotMode, captureSettings);
+                if (!SaveDirectoryRules.IsConfirmed(captureSettings.ConfirmedStillImageDirectory, captureSettings.StillImageDirectory))
+                {
+                    var selectedDirectory = await ConfirmSaveDirectoryAsync(SaveDirectoryKind.StillImage, captureSettings.StillImageDirectory);
+                    if (selectedDirectory is null)
+                    {
+                        var clipboardResult = await CopyScreenshotToClipboardAsync(result.Image, captureSettings.CopyImageToClipboard);
+                        ShowNotification(
+                            NotificationDuration.Standard,
+                            UiLabels.AppName,
+                            clipboardResult.Copied
+                                ? UiLabels.ScreenshotNotSavedClipboardNotification
+                                : clipboardResult.Warning is not null
+                                    ? UiLabels.ScreenshotNotSavedClipboardFailedNotification
+                                    : UiLabels.ScreenshotNotSavedNotification,
+                            clipboardResult.Warning is not null ? ToolTipIcon.Warning : ToolTipIcon.Info);
+                        return;
+                    }
+                    RememberConfirmedDirectory(SaveDirectoryKind.StillImage, selectedDirectory);
+                    captureSettings.StillImageDirectory = selectedDirectory;
+                    captureSettings.ConfirmedStillImageDirectory = selectedDirectory;
+                }
+
+                string savedPath;
+                while (true)
+                {
+                    try
+                    {
+                        savedPath = await _screenshotCaptureService.SaveImageAsync(result, captureSettings);
+                        break;
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        DiagnosticLog.Error(DiagnosticLogTags.Capture, $"静止画を保存できませんでした: 方法={CaptureText.CaptureMethodName(screenshotMode)}; {exception}");
+                        var selectedDirectory = await ConfirmSaveDirectoryAsync(SaveDirectoryKind.StillImage, captureSettings.StillImageDirectory, exception);
+                        if (selectedDirectory is null)
+                        {
+                            await CopyScreenshotToClipboardAsync(result.Image, captureSettings.CopyImageToClipboard);
+                            var reason = CaptureText.ErrorDetail(exception.Message);
+                            ShowNotification(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
+                            return;
+                        }
+                        RememberConfirmedDirectory(SaveDirectoryKind.StillImage, selectedDirectory);
+                        captureSettings.StillImageDirectory = selectedDirectory;
+                        captureSettings.ConfirmedStillImageDirectory = selectedDirectory;
+                    }
+                }
+                await CompleteScreenshotAsync(result, screenshotMode, captureSettings, savedPath);
             }
             catch (Exception exception)
             {
@@ -295,6 +368,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_screenshotCaptureInProgress || _recording.SelectionInProgress)
         {
             _exitRequested = true;
+            _saveDirectoryDialog?.CancelFromExit();
             if (_screenshotCaptureInProgress)
                 ShowNotification(NotificationDuration.Brief, UiLabels.AppName, UiLabels.ScreenshotExitWaiting, ToolTipIcon.Info);
             return;
@@ -430,28 +504,75 @@ internal sealed class TrayApplicationContext : ApplicationContext
     };
 
 
-    private async Task CompleteScreenshotAsync(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings)
+    private async Task CompleteScreenshotAsync(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings, string filePath)
     {
-        string? warning = null;
-        if (settings.CopyImageToClipboard)
-        {
-            try { await ClipboardImageWriter.SetImageAsync(result.Image); }
-            catch (Exception exception)
-            {
-                DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"静止画をクリップボードへコピーできませんでした: {exception}");
-                warning = UiLabels.ScreenshotClipboardFailed;
-            }
-        }
+        var clipboardResult = await CopyScreenshotToClipboardAsync(result.Image, settings.CopyImageToClipboard);
 
         await CaptureCompletion.ExecuteAsync(
             CaptureCompletionKind.Screenshot,
             settings,
-            result.FilePath,
+            filePath,
             settings.StillImageDirectory,
-            $"方法={CaptureText.CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={result.FilePath}",
-            warning,
+            $"方法={CaptureText.CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={filePath}",
+            clipboardResult.Warning,
             path => OpenFolderAsync(path, notifyFailure: false),
             ShowCaptureNotification);
+    }
+
+    private async Task<(string? Warning, bool Copied)> CopyScreenshotToClipboardAsync(Bitmap image, bool enabled)
+    {
+        if (!enabled) return (null, false);
+        try
+        {
+            await ClipboardImageWriter.SetImageAsync(image);
+            return (null, true);
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"静止画をクリップボードへコピーできませんでした: {exception}");
+            return (UiLabels.ScreenshotClipboardFailed, false);
+        }
+    }
+
+    private Task<string?> ConfirmSaveDirectoryAsync(SaveDirectoryKind kind, string directory, Exception? failure = null)
+    {
+        using var dialog = new SaveDirectoryDialog(kind, directory, failure);
+        _saveDirectoryDialog = dialog;
+        try
+        {
+            if (_settingsForm is { IsDisposed: false, Visible: true } owner) dialog.ShowDialog(owner);
+            else dialog.ShowDialog();
+            return Task.FromResult(dialog.DialogResult == DialogResult.OK ? dialog.SelectedDirectory : null);
+        }
+        finally
+        {
+            if (ReferenceEquals(_saveDirectoryDialog, dialog)) _saveDirectoryDialog = null;
+        }
+    }
+
+    private void RememberConfirmedDirectory(SaveDirectoryKind kind, string directory)
+    {
+        var updated = _settings.Clone();
+        if (kind == SaveDirectoryKind.StillImage)
+        {
+            updated.StillImageDirectory = directory;
+            updated.ConfirmedStillImageDirectory = directory;
+        }
+        else
+        {
+            updated.VideoDirectory = directory;
+            updated.ConfirmedVideoDirectory = directory;
+        }
+
+        _settings = updated;
+        try
+        {
+            _settingsRepository.Save(updated);
+        }
+        catch (Exception exception)
+        {
+            DiagnosticLog.Error(DiagnosticLogTags.App, $"確認した保存先を設定へ保存できませんでした: 種別={kind}; フォルダー={directory}; {exception}");
+        }
     }
 
     private void OpenManual()

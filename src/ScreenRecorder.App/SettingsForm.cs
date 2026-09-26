@@ -10,7 +10,7 @@ internal sealed class SettingsForm : Form
 
     private readonly Settings _initialSettings;
     private readonly IReadOnlyDictionary<RecorderAction, HotkeyFailure> _hotkeyFailures;
-    private readonly Func<Settings, bool> _saveSettings;
+    private readonly Func<Settings, bool, bool, bool, bool> _saveSettings;
     private readonly Func<bool> _isRecording;
     // Form はタイトルバーに設定したアイコンを破棄しないため、自分で破棄する。
     private readonly Icon _appIcon = AppIcon.Create(SystemInformation.IconSize);
@@ -42,11 +42,12 @@ internal sealed class SettingsForm : Form
     private CheckBox _microphoneEnabled = null!;
     private TabPage _videoTab = null!;
     private bool _loading;
+    private bool _defaultsRestored;
 
     public SettingsForm(
         Settings settings,
         IReadOnlyList<HotkeyFailure> hotkeyFailures,
-        Func<Settings, bool> saveSettings,
+        Func<Settings, bool, bool, bool, bool> saveSettings,
         Func<bool> isRecording)
     {
         _initialSettings = settings.Clone();
@@ -622,7 +623,9 @@ internal sealed class SettingsForm : Form
         var draft = ReadSettings();
         try
         {
-            if (!_saveSettings(draft))
+            var stillDirectoryChanged = !string.Equals(draft.StillImageDirectory, _initialSettings.StillImageDirectory, StringComparison.Ordinal);
+            var videoDirectoryChanged = !string.Equals(draft.VideoDirectory, _initialSettings.VideoDirectory, StringComparison.Ordinal);
+            if (!_saveSettings(draft, stillDirectoryChanged, videoDirectoryChanged, _defaultsRestored))
             {
                 _formStatus.Text = UiLabels.SettingsSaveFailed;
                 return;
@@ -640,6 +643,7 @@ internal sealed class SettingsForm : Form
     private void RestoreDefaults()
     {
         if (MessageBox.Show(this, UiLabels.RestoreDefaultsConfirmation, UiLabels.RestoreDefaultsTitle, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        _defaultsRestored = true;
         LoadSettings(new Settings());
     }
 

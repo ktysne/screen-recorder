@@ -86,6 +86,12 @@
   トレイメニューの <span class="label" data-ui-label="静止画の保存先を開く">静止画の保存先を開く</span> で開けます。
   既定では JPEG(品質 98)で保存し、同時にクリップボードへもコピーします。
   保存が終わると通知が出て、通知をクリックすると保存先でファイルが選ばれた状態になります。</p>
+  <p>初回は <span class="label" data-ui-label="静止画の保存先を確認してください">静止画の保存先を確認してください</span> が表示されます。
+  <span class="label" data-ui-label="このフォルダーに保存">このフォルダーに保存</span>を押すと、保存先を確認してから画像を保存します。
+  キャンセルすると画像は保存されませんが、設定がオンならクリップボードへコピーします。
+  保存先へ書き込めない場合は理由が表示され、<span class="label" data-ui-label="保護されていない場所に作る">保護されていない場所に作る</span>か、<span class="label" data-ui-label="別のフォルダーを選ぶ">別のフォルダーを選ぶ</span>ことで続けられます。
+  Windows の保護機能が原因と考えられる場合は、<span class="label" data-ui-label="Windows セキュリティを開く">Windows セキュリティを開く</span>から設定を確認してください。
+  設定画面で保存先を変えて OK を押すと、その保存先の確認状態も更新されます。</p>
 
   <h2 id="record">動画を録る</h2>
   <p>トレイアイコンを右クリックし、<span class="label" data-ui-label="録画">録画</span> から撮り方を選びます。
@@ -123,6 +129,11 @@
   <h3>保存先</h3>
   <p>既定の保存先は「ビデオ」の中の <code>ScreenRecorder</code> フォルダーで、トレイメニューの <span class="label" data-ui-label="動画の保存先を開く">動画の保存先を開く</span> で開けます。
   録画中は <code>.recording.mp4</code> で終わる名前で書き、保存が終わった時点で本来の名前に変えます。
+  初回は <span class="label" data-ui-label="動画の保存先を確認してください">動画の保存先を確認してください</span> が表示されます。
+  録画は保存先の確認後に始まります。
+  保存先へ書き込めない場合は理由が表示され、<span class="label" data-ui-label="保護されていない場所に作る">保護されていない場所に作る</span>か、<span class="label" data-ui-label="別のフォルダーを選ぶ">別のフォルダーを選ぶ</span>ことで続けられます。
+  Windows の保護機能が原因と考えられる場合は、<span class="label" data-ui-label="Windows セキュリティを開く">Windows セキュリティを開く</span>から設定を確認してください。
+  録画中に発生した書き込み失敗は録画失敗として通知されます。
   保存先の空き容量が 1 GB 未満のときは、録画を始めません。</p>
 
   <h2 id="shortcuts">ショートカットキー</h2>

@@ -18,6 +18,8 @@ internal sealed class VideoRecordingController : IDisposable
     private readonly CaptureNotifier _notifier;
     private readonly UiDispatcher _dispatcher;
     private readonly Func<string, Task<bool>> _openFolderQuietly;
+    private readonly Func<SaveDirectoryKind, string, Exception?, Task<string?>> _confirmSaveDirectory;
+    private readonly Action<SaveDirectoryKind, string> _rememberConfirmedDirectory;
     private readonly VideoRecordingStateMachine _recordingState = new();
     private readonly IVideoRecordingPostProcessor _videoPostProcessor = new FfmpegVideoRecordingPostProcessor();
     private bool _recordingSelectionInProgress;
@@ -58,7 +60,9 @@ internal sealed class VideoRecordingController : IDisposable
         Action tryExitAfterPendingWork,
         CaptureNotifier notifier,
         UiDispatcher dispatcher,
-        Func<string, Task<bool>> openFolderQuietly)
+        Func<string, Task<bool>> openFolderQuietly,
+        Func<SaveDirectoryKind, string, Exception?, Task<string?>> confirmSaveDirectory,
+        Action<SaveDirectoryKind, string> rememberConfirmedDirectory)
     {
         _currentSettings = currentSettings;
         _exitRequested = exitRequested;
@@ -68,6 +72,8 @@ internal sealed class VideoRecordingController : IDisposable
         _notifier = notifier;
         _dispatcher = dispatcher;
         _openFolderQuietly = openFolderQuietly;
+        _confirmSaveDirectory = confirmSaveDirectory;
+        _rememberConfirmedDirectory = rememberConfirmedDirectory;
     }
 
     public VideoRecordingState State => _recordingState.State;
@@ -122,6 +128,34 @@ internal sealed class VideoRecordingController : IDisposable
         var engineStarted = false;
         try
         {
+            string? selectedDirectory = null;
+            if (!SaveDirectoryRules.IsConfirmed(captureSettings.ConfirmedVideoDirectory, captureSettings.VideoDirectory))
+            {
+                selectedDirectory = await _confirmSaveDirectory(SaveDirectoryKind.Video, captureSettings.VideoDirectory, null);
+                if (selectedDirectory is null || _exitRequested()) return;
+            }
+            else
+            {
+                try
+                {
+                    await Task.Run(() => SaveDirectoryProbe.Check(captureSettings.VideoDirectory));
+                }
+                catch (Exception exception) when (IsSaveDirectoryFailure(exception))
+                {
+                    if (_exitRequested()) return;
+                    selectedDirectory = await _confirmSaveDirectory(SaveDirectoryKind.Video, captureSettings.VideoDirectory, exception);
+                    if (selectedDirectory is null || _exitRequested()) return;
+                }
+            }
+
+            if (_exitRequested()) return;
+            if (selectedDirectory is not null)
+            {
+                captureSettings.VideoDirectory = selectedDirectory;
+                captureSettings.ConfirmedVideoDirectory = selectedDirectory;
+                _rememberConfirmedDirectory(SaveDirectoryKind.Video, selectedDirectory);
+            }
+
             var initialSpaceAvailability = await Task.Run(() => GetRecordingSpaceAvailability(captureSettings.VideoDirectory));
             if (_exitRequested()) return;
             if (!CheckRecordingSpace(captureSettings.VideoDirectory, initialSpaceAvailability)) return;
@@ -300,6 +334,9 @@ internal sealed class VideoRecordingController : IDisposable
             _tryExitAfterPendingWork();
         }
     }
+
+    private static bool IsSaveDirectoryFailure(Exception exception) => exception is
+        IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException;
 
     private async Task WaitForRecordingCountdownAsync(int seconds, Rectangle displayBounds, CancellationToken cancellationToken)
     {

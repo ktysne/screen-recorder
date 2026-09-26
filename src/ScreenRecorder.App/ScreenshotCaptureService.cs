@@ -4,10 +4,12 @@ using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
 
-internal sealed class ScreenshotCaptureResult(Bitmap image, string filePath) : IDisposable
+internal sealed class ScreenshotCaptureResult(Bitmap image, DateTime capturedAt, ScreenshotMode mode, string? windowTitle) : IDisposable
 {
     public Bitmap Image { get; } = image;
-    public string FilePath { get; } = filePath;
+    public DateTime CapturedAt { get; } = capturedAt;
+    public ScreenshotMode Mode { get; } = mode;
+    public string? WindowTitle { get; } = windowTitle;
     public void Dispose() => Image.Dispose();
 }
 
@@ -55,13 +57,8 @@ internal sealed class ScreenshotCaptureService
             if (settings.CaptureImageCursor) CursorOverlay.Draw(image, captureBounds);
 
             var capturedAt = DateTime.Now;
-            var filePath = await Task.Run(() =>
-            {
-                DesktopCapture.MakeOpaque(image);
-                return SaveImage(image, settings, mode, selection?.WindowTitle, capturedAt);
-            });
-            DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画を保存しました: {filePath}");
-            var result = new ScreenshotCaptureResult(image, filePath);
+            await Task.Run(() => DesktopCapture.MakeOpaque(image));
+            var result = new ScreenshotCaptureResult(image, capturedAt, mode, selection?.WindowTitle);
             image = null;
             return result;
         }
@@ -70,6 +67,13 @@ internal sealed class ScreenshotCaptureService
             image?.Dispose();
         }
     }
+
+    public Task<string> SaveImageAsync(ScreenshotCaptureResult result, Settings settings) => Task.Run(() =>
+    {
+        var path = SaveImage(result.Image, settings, result.Mode, result.WindowTitle, result.CapturedAt);
+        DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画を保存しました: {path}");
+        return path;
+    });
 
     private async Task WaitWithCountdownAsync(int seconds, Rectangle displayBounds)
     {

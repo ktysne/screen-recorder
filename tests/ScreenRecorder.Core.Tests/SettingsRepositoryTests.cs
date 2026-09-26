@@ -49,6 +49,8 @@ public sealed class SettingsRepositoryTests : IDisposable
             settings.PauseRecordingEnabled
         }, Assert.True);
         Assert.Null(settings.SkippedUpdateVersion);
+        Assert.Null(settings.ConfirmedStillImageDirectory);
+        Assert.Null(settings.ConfirmedVideoDirectory);
         Assert.EndsWith("ScreenRecorder", settings.StillImageDirectory);
         Assert.EndsWith("ScreenRecorder", settings.VideoDirectory);
     }
@@ -172,6 +174,36 @@ public sealed class SettingsRepositoryTests : IDisposable
         var loaded = repository.Load();
         Assert.Equal(StillImageFormat.Png, loaded.ImageFormat);
         Assert.Equal(73, loaded.JpegQuality);
+    }
+
+    [Fact]
+    public void ConfirmedDirectoriesSurviveSaveLoadAndClone()
+    {
+        var settings = new Settings
+        {
+            ConfirmedStillImageDirectory = Path.Combine(_directory, "Pictures"),
+            ConfirmedVideoDirectory = Path.Combine(_directory, "Videos")
+        };
+        var repository = new SettingsRepository(_directory);
+        repository.Save(settings);
+
+        var loaded = repository.Load();
+        Assert.Equal(settings.ConfirmedStillImageDirectory, loaded.ConfirmedStillImageDirectory);
+        Assert.Equal(settings.ConfirmedVideoDirectory, loaded.ConfirmedVideoDirectory);
+        Assert.Equal(settings.ConfirmedStillImageDirectory, loaded.Clone().ConfirmedStillImageDirectory);
+        Assert.Equal(settings.ConfirmedVideoDirectory, loaded.Clone().ConfirmedVideoDirectory);
+    }
+
+    [Fact]
+    public void MissingConfirmedDirectoryPropertiesRemainUnconfirmed()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "settings.json"), "{\"stillImageDirectory\":\"pictures\",\"videoDirectory\":\"videos\"}");
+
+        var settings = new SettingsRepository(_directory).Load();
+
+        Assert.Null(settings.ConfirmedStillImageDirectory);
+        Assert.Null(settings.ConfirmedVideoDirectory);
     }
 
     [Fact]
