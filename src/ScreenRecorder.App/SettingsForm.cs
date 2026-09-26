@@ -89,8 +89,10 @@ internal sealed class SettingsForm : Form
         _formStatus.Margin = new Padding(4, 9, 8, 4);
         footer.Controls.Add(_formStatus, 0, 0);
         var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Dock = DockStyle.Fill };
-        var cancelButton = new Button { Text = UiLabels.Cancel, AutoSize = true, MinimumSize = new Size(96, 0), DialogResult = DialogResult.Cancel };
+        var cancelButton = new Button { Text = UiLabels.Cancel, AutoSize = true, MinimumSize = new Size(96, 0) };
         _saveButton.Click += (_, _) => Save();
+        // モードレスで開くため、ボタンの DialogResult ではフォームが閉じない。
+        cancelButton.Click += (_, _) => Close();
         buttons.Controls.Add(_saveButton);
         buttons.Controls.Add(cancelButton);
         footer.Controls.Add(buttons, 1, 0);
