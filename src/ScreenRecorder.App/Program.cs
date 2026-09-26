@@ -9,18 +9,24 @@ internal static class Program
     private static readonly TimeSpan RecordingEngineDisposalWaitOnExit = TimeSpan.FromMinutes(2);
 
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args)
     {
         // 適用中は旧プロセスがミューテックスを持っているため、多重起動の判定より前に分ける。
         if (args.Contains(UpdateApplier.ApplyUpdateArgument, StringComparer.OrdinalIgnoreCase))
         {
             UpdateApplier.Run(args);
-            return;
+            return 0;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "--record-worker", StringComparison.OrdinalIgnoreCase))
+            return args.Length >= 2
+                ? RecordingWorkerProgram.Run(args[1])
+                : RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.StartFailed);
+
         using var mutex = new Mutex(true, UpdatePaths.SingletonMutexName, out var created);
-        if (!created) return;
+        if (!created) return 0;
         Run(startedAfterUpdate: args.Contains(UpdateApplier.UpdatedArgument, StringComparer.OrdinalIgnoreCase));
+        return 0;
     }
 
     private static void Run(bool startedAfterUpdate)
