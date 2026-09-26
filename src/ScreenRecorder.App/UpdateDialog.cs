@@ -160,6 +160,7 @@ internal sealed class UpdateDialog : Form
         };
         _skipButton.Click += (_, _) => SkipRequested?.Invoke(this, EventArgs.Empty);
         AcceptButton = _primaryButton;
+        CancelButton = _secondaryButton;
         ActiveControl = _primaryButton;
     }
 
