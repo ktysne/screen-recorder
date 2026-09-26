@@ -6,6 +6,8 @@ namespace ScreenRecorder.App;
 
 internal static class Program
 {
+    private static readonly TimeSpan RecordingEngineDisposalWaitOnExit = TimeSpan.FromMinutes(2);
+
     [STAThread]
     private static void Main(string[] args)
     {
@@ -46,8 +48,11 @@ internal static class Program
         var applicationReturnedNormally = false;
         try
         {
-            Application.Run(new TrayApplicationContext(settings, settingsRepository, sync, exePath, startedAfterUpdate));
+            var context = new TrayApplicationContext(settings, settingsRepository, sync, exePath, startedAfterUpdate);
+            Application.Run(context);
             applicationReturnedNormally = true;
+            if (!context.RecordingEngineDisposal.Wait(RecordingEngineDisposalWaitOnExit))
+                DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画エンジンの破棄が {RecordingEngineDisposalWaitOnExit.TotalMinutes:0} 分以内に終わらないまま終了します。");
         }
         finally
         {

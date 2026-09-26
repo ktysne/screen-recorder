@@ -35,6 +35,7 @@ internal sealed class VideoRecordingController : IDisposable
     private IRecordingEngine? _recordingEngine;
     private ActiveRecording? _activeRecording;
     private Stopwatch? _recordingStopwatch;
+    private Task _engineDisposal = Task.CompletedTask;
 
     private sealed record ActiveRecording(
         string FinalPath,
@@ -72,6 +73,9 @@ internal sealed class VideoRecordingController : IDisposable
     public bool CanStop => _recordingState.CanStop;
     public bool CanPause => _recordingState.CanPause;
     public bool SelectionInProgress => _recordingSelectionInProgress;
+
+    // ライブラリの破棄は一時ファイルの書き終えを含むことがあるため、終了時にこの完了を待つ。
+    public Task EngineDisposal => _engineDisposal;
 
     public void Dispose()
     {
@@ -752,7 +756,12 @@ internal sealed class VideoRecordingController : IDisposable
     {
         var engine = _recordingEngine;
         _recordingEngine = null;
-        if (engine is not null) _ = Task.Run(() => DisposeRecordingEngine(engine));
+        if (engine is not null)
+        {
+            var previousDisposal = _engineDisposal;
+            var disposal = Task.Run(() => DisposeRecordingEngine(engine));
+            _engineDisposal = Task.WhenAll(previousDisposal, disposal);
+        }
 
         SetSystemSleepInhibition(false);
         _recordingTimer?.Stop();
