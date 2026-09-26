@@ -1,4 +1,4 @@
-"""assets の透過素材から exe とウィンドウに使う app.ico を作る。
+"""assets の透過素材から exe とウィンドウに使う app.ico と、配布ページに載せる PNG を作る。
 
 使い方: python tools/make-app-icon.py (Pillow が必要)
 """
@@ -9,6 +9,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "assets" / "screen-recorder-a1-transparent.png"
 OUTPUT = ROOT / "src" / "ScreenRecorder.App" / "app.ico"
+SITE_ICON_OUTPUT = ROOT / "site" / "assets" / "app-icon-256.png"
+SITE_ICON_SIZE = 256
 SIZES = [16, 20, 24, 32, 40, 48, 64, 256]
 # 図柄を正方形の中央に置き、縁に小さな余白を残す。
 MARGIN_RATIO = 0.03
@@ -27,6 +29,8 @@ def main() -> None:
     # 各サイズを元の大きさから直接縮小する。Pillow に任せると最大の 1 枚から段階的に縮めて細い線がぼやける。
     frames = [master.resize((size, size), Image.LANCZOS) for size in SIZES]
     frames[-1].save(OUTPUT, format="ICO", sizes=[(size, size) for size in SIZES], append_images=frames[:-1])
+    SITE_ICON_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    master.resize((SITE_ICON_SIZE, SITE_ICON_SIZE), Image.LANCZOS).save(SITE_ICON_OUTPUT, format="PNG", optimize=True)
 
 
 if __name__ == "__main__":

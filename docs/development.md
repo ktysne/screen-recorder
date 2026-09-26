@@ -18,8 +18,8 @@ dotnet test ScreenRecorder.slnx
 
 ## アプリのアイコン
 
-`src/ScreenRecorder.App/app.ico` は `assets/screen-recorder-a1-transparent.png` から作ります。
-素材を差し替えたときは、Pillow を入れた Python で次のコマンドを実行し、できた `app.ico` をコミットします。
+`src/ScreenRecorder.App/app.ico` と配布ページのアイコン `site/assets/app-icon-256.png` は、`assets/screen-recorder-a1-transparent.png` から作ります。
+素材を差し替えたときは、Pillow を入れた Python で次のコマンドを実行し、できた 2 つのファイルをコミットします。
 
 ```powershell
 python tools/make-app-icon.py

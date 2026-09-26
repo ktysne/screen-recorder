@@ -34,7 +34,22 @@ test('更新情報に schema、許可ホストの URL、SHA-256 を含める', (
 
 test('転送項目は update.json を最後にする', () => {
   const names = release.buildUploadItems({ version: '1.2.3', out: 'build/release' }).map(item => item.name);
-  assert.deepEqual(names, ['ScreenRecorder-1.2.3-win-x64.zip', 'manual.html', 'license.html', 'index.html', 'update.json']);
+  assert.deepEqual(names, ['ScreenRecorder-1.2.3-win-x64.zip', 'app-icon-256.png', 'manual.html', 'license.html', 'index.html', 'update.json']);
+});
+
+test('配布ページが参照するアイコンを出力先の assets に置く', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-recorder-pages-'));
+  try {
+    const ffmpegInfo = path.join(dir, 'ffmpeg-version.txt');
+    fs.writeFileSync(ffmpegInfo, 'ffmpeg version 7.1 configuration: --enable-shared');
+    const output = release.generatePages({ version: '1.2.3', out: path.join(dir, 'site'), releasedAt: '2026-09-27', ffmpegInfo });
+    const index = fs.readFileSync(path.join(output, 'index.html'), 'utf8');
+    const referenced = [...index.matchAll(/(?:src|href)="(assets\/[^"]+)"/g)].map(match => match[1]);
+    assert.ok(referenced.length > 0);
+    for (const asset of referenced) assert.ok(fs.existsSync(path.join(output, asset)), asset);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('版から配布 zip の URL を組み立てる', () => {
