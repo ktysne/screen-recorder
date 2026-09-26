@@ -98,6 +98,8 @@ public static class UiLabels
     public const string CaptureAfterOpenFolder = "保存先を開く";
     public const string ScreenshotCountdownPrefix = "撮影まで";
     public const string RecordingCountdownPrefix = "録画開始まで";
+    public const string ScreenshotCountdownAccessibleName = "撮影までの残り時間";
+    public const string RecordingCountdownAccessibleName = "録画開始までの残り時間";
     public const string Aac = "AAC";
     public const string Mp3 = "MP3";
     public const string EncoderAutomatic = "自動";

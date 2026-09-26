@@ -1,8 +1,15 @@
 using System.Runtime.InteropServices;
+using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
 
-internal sealed class CaptureCountdownForm : Form
+internal enum CaptureCountdownKind
+{
+    Screenshot,
+    Recording
+}
+
+internal sealed class CaptureCountdownForm : CaptureExcludedOverlayForm
 {
     private readonly Font _messageFont = new("Yu Gothic UI", 13, FontStyle.Bold);
     private readonly string _countdownLabel;
@@ -11,13 +18,14 @@ internal sealed class CaptureCountdownForm : Form
         Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleCenter,
         ForeColor = Color.White,
-        BackColor = Color.FromArgb(35, 35, 35),
-        AccessibleName = "撮影までの残り時間"
+        BackColor = Color.FromArgb(35, 35, 35)
     };
 
-    public CaptureCountdownForm(Rectangle displayBounds, bool forRecording = false)
+    public CaptureCountdownForm(Rectangle displayBounds, CaptureCountdownKind kind)
     {
+        var forRecording = kind == CaptureCountdownKind.Recording;
         _countdownLabel = forRecording ? UiLabels.RecordingCountdownPrefix : UiLabels.ScreenshotCountdownPrefix;
+        _message.AccessibleName = forRecording ? UiLabels.RecordingCountdownAccessibleName : UiLabels.ScreenshotCountdownAccessibleName;
         _message.Font = _messageFont;
         FormBorderStyle = FormBorderStyle.None;
         AutoScaleMode = AutoScaleMode.None;
@@ -32,26 +40,43 @@ internal sealed class CaptureCountdownForm : Form
         Controls.Add(_message);
     }
 
-    protected override bool ShowWithoutActivation => true;
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var parameters = base.CreateParams;
-            parameters.ExStyle |= 0x08000000 | 0x00000080;
-            return parameters;
-        }
-    }
-
-    public bool ExcludeFromCapture() => NativeMethods.SetWindowDisplayAffinity(Handle, NativeMethods.WindowDisplayAffinityExcludeFromCapture);
-
     public void SetRemainingSeconds(int seconds) => _message.Text = $"{_countdownLabel} {seconds} 秒";
 
     protected override void Dispose(bool disposing)
     {
         if (disposing) _messageFont.Dispose();
         base.Dispose(disposing);
+    }
+}
+
+internal static class CaptureCountdown
+{
+    public static async Task RunAsync(
+        CaptureCountdownKind kind,
+        int seconds,
+        Rectangle displayBounds,
+        CancellationToken cancellationToken,
+        Action<CaptureCountdownForm>? onShown = null)
+    {
+        using var countdown = new CaptureCountdownForm(displayBounds, kind);
+        try
+        {
+            countdown.Show();
+            onShown?.Invoke(countdown);
+            countdown.ExcludeFromCapture(
+                kind == CaptureCountdownKind.Recording ? DiagnosticLogTags.Record : DiagnosticLogTags.Capture,
+                kind == CaptureCountdownKind.Recording ? "録画カウントダウン" : "撮影カウントダウン");
+            for (var remaining = seconds; remaining > 0; remaining--)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                countdown.SetRemainingSeconds(remaining);
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+        }
+        finally
+        {
+            if (!countdown.IsDisposed) countdown.Close();
+        }
     }
 }
 

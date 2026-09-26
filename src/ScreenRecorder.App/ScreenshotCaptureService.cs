@@ -73,15 +73,7 @@ internal sealed class ScreenshotCaptureService
 
     private async Task WaitWithCountdownAsync(int seconds, Rectangle displayBounds)
     {
-        using var countdown = new CaptureCountdownForm(displayBounds);
-        countdown.Show();
-        if (!countdown.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Capture, "撮影カウントダウンを撮影対象から除外できませんでした。");
-        for (var remaining = seconds; remaining > 0; remaining--)
-        {
-            countdown.SetRemainingSeconds(remaining);
-            await Task.Delay(TimeSpan.FromSeconds(1));
-        }
-        countdown.Close();
+        await CaptureCountdown.RunAsync(CaptureCountdownKind.Screenshot, seconds, displayBounds, CancellationToken.None);
     }
 
     // 打ち切った PrintWindow は止められないので、戻るまで次のウィンドウ撮影を受け付けず、スレッドと画像を溜めない。
