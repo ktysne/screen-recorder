@@ -73,7 +73,7 @@ test('公開中の版より古い版は転送しない', () => {
   assert.throws(() => release.decideUploadAgainstPublished('0.1.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /新しい/);
 });
 
-test('公開中と同じ版は、同じ zip の再試行だけを許し、zip は送り直さない', () => {
+test('公開中と同じ版は、同じ zip の再試行だけを許し、サーバに同じ zip があれば送り直さない', () => {
   assert.deepEqual(release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'a'.repeat(64) }), { skipZip: true });
   assert.throws(() => release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /一致しない/);
 });
@@ -83,38 +83,50 @@ test('初回の公開と、公開中より新しい版は zip も含めて転送
   assert.deepEqual(release.decideUploadAgainstPublished('0.3.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), { skipZip: false });
 });
 
-function fakeClient({ renameFailures = 0, removeFails = false, uploadFails = false } = {}) {
+// failOn は、失敗させる rename の呼び出しの番号(1 始まり)の一覧。
+function fakeClient(failOn = []) {
   const calls = [];
   let renames = 0;
   return {
     calls,
-    async rename(from, to) { calls.push(['rename', from, to]); if (renames++ < renameFailures) throw new Error('rename failed'); },
-    async remove(name) { calls.push(['remove', name]); if (removeFails) throw new Error('remove failed'); },
-    async uploadFrom(local, name) { calls.push(['upload', name]); if (uploadFails) throw new Error('upload failed'); },
+    async rename(from, to) { renames += 1; calls.push(['rename', from, to]); if (failOn.includes(renames)) throw new Error('rename failed'); },
+    async remove(name) { calls.push(['remove', name]); },
   };
 }
 
 test('update.json は上書きの改名ができればそれだけで切り替える', async () => {
   const client = fakeClient();
-  await release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', 'local', true);
+  await release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', true);
   assert.deepEqual(client.calls, [['rename', 'update.json.uploading', 'update.json']]);
 });
 
-test('上書きの改名ができないサーバでは、消してから改名する', async () => {
-  const client = fakeClient({ renameFailures: 1 });
-  await release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', 'local', true);
-  assert.deepEqual(client.calls.map(call => call[0]), ['rename', 'remove', 'rename']);
+test('上書きの改名ができないサーバでは、公開中のものを退避してから改名し、退避を消す', async () => {
+  const client = fakeClient([1]);
+  await release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', true);
+  assert.deepEqual(client.calls, [
+    ['rename', 'update.json.uploading', 'update.json'],
+    ['rename', 'update.json', 'update.json.previous'],
+    ['rename', 'update.json.uploading', 'update.json'],
+    ['remove', 'update.json.previous'],
+  ]);
 });
 
-test('消した後の改名にも失敗したら、公開名へ直接送り直して update.json を残す', async () => {
-  const client = fakeClient({ renameFailures: 2 });
-  await release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', 'local', true);
-  assert.deepEqual(client.calls.at(-1), ['upload', 'update.json']);
+test('退避の後の改名に失敗したら、退避したものを公開名へ戻して止める', async () => {
+  const client = fakeClient([1, 3]);
+  await assert.rejects(release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', true), /元に戻しました/);
+  assert.deepEqual(client.calls.at(-1), ['rename', 'update.json.previous', 'update.json']);
 });
 
-test('送り直しにも失敗したら、手で改名する手順を示して止める', async () => {
-  const client = fakeClient({ renameFailures: 2, uploadFails: true });
-  await assert.rejects(release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', 'local', true), /改名してください/);
+test('元に戻すこともできなければ、退避名を示して止める', async () => {
+  const client = fakeClient([1, 3, 4]);
+  await assert.rejects(release.replaceRemoteFile(client, 'update.json.uploading', 'update.json', true), /update\.json\.previous を update\.json に改名してください/);
+});
+
+test('サーバ上に同じ名前で同じ大きさのファイルがあるときだけ、公開済みとみなす', () => {
+  const entries = [{ name: 'a.zip', type: 1, size: 10 }];
+  assert.equal(release.isSameRemoteFile(entries, 'a.zip', 10), true);
+  assert.equal(release.isSameRemoteFile(entries, 'a.zip', 11), false);
+  assert.equal(release.isSameRemoteFile([], 'a.zip', 10), false);
 });
 
 test('ffmpeg の版の情報が無いときは生成を止める', () => {

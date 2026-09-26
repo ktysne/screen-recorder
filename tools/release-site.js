@@ -62,6 +62,9 @@ function renderTemplate(template, values) {
 
 const FORBIDDEN_FFMPEG_CONFIGURATIONS = ['--enable-gpl', '--enable-nonfree'];
 const UPLOADING_SUFFIX = '.uploading';
+const PREVIOUS_SUFFIX = '.previous';
+// basic-ftp の FileType でファイルを表す値。
+const REMOTE_TYPE_FILE = 1;
 
 function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -142,7 +145,7 @@ function verifyReleaseInputs(version, items) {
 }
 
 // 転送の直前に公開中の版と比べ、古い成果物で公開版を巻き戻さない。
-// 同じ版は同じ成果物(SHA-256 が一致)の再試行だけを許し、その zip は update.json より先に照合済みで公開されているので送り直さない。
+// 同じ版は同じ成果物(SHA-256 が一致)の再試行だけを許し、公開中の zip はサーバ上で同じ大きさなら送り直さない。
 function decideUploadAgainstPublished(version, localSha256, published) {
   if (!published) return { skipZip: false };
   const order = compareVersions(version, published.version);
@@ -153,26 +156,32 @@ function decideUploadAgainstPublished(version, localSha256, published) {
   return { skipZip: order === 0 };
 }
 
-// update.json を一時名から公開名へ切り替える。上書きの改名を許さないサーバでは消してから改名し、
-// それも失敗したら公開名へ直接送り直して、update.json が無いまま残らないようにする。
-async function replaceRemoteFile(client, temporaryName, finalName, localPath, finalExists) {
+// update.json を一時名から公開名へ切り替える。上書きの改名を許さないサーバでは、公開中のものを退避名へ移してから改名し、
+// 失敗したら退避名を戻す。公開名へ直接書き込むと、途中で切れたときに壊れた update.json が公開されるため行わない。
+async function replaceRemoteFile(client, temporaryName, finalName, finalExists) {
   try {
     await client.rename(temporaryName, finalName);
     return;
   } catch (renameError) {
     if (!finalExists) throw renameError;
   }
+  const previousName = `${finalName}${PREVIOUS_SUFFIX}`;
+  await client.rename(finalName, previousName);
   try {
-    await client.remove(finalName);
     await client.rename(temporaryName, finalName);
   } catch (error) {
     try {
-      await client.uploadFrom(localPath, finalName);
+      await client.rename(previousName, finalName);
     } catch (restoreError) {
-      throw new Error(`${finalName} を置き換えられず、公開名への直接の転送にも失敗しました。${temporaryName} をサーバ上で ${finalName} に改名してください (${restoreError.message})`);
+      throw new Error(`${finalName} を置き換えられず、元に戻すこともできませんでした。サーバ上の ${previousName} を ${finalName} に改名してください (${restoreError.message})`);
     }
-    console.warn(`${finalName} の改名に失敗したため、公開名へ直接送り直しました (${error.message})`);
+    throw new Error(`${finalName} を置き換えられなかったため、公開中のものを元に戻しました (${error.message})`);
   }
+  try { await client.remove(previousName); } catch (error) { console.warn(`${previousName} を消せませんでした (${error.message})`); }
+}
+
+function isSameRemoteFile(entries, name, size) {
+  return entries.some(entry => entry.name === name && entry.type === REMOTE_TYPE_FILE && entry.size === size);
 }
 
 async function fetchPublishedLatest(fetchImpl = fetch) {
@@ -243,8 +252,7 @@ async function uploadFiles(options) {
   const localSha256 = verifyReleaseInputs(options.version, items);
   const { skipZip } = decideUploadAgainstPublished(options.version, localSha256, await fetchPublishedLatest());
   const config = loadConfig(options.config);
-  const targets = buildRemoteTargets(skipZip ? items.filter(item => item.name !== zipFileName(options.version)) : items, config.remoteRoot);
-  if (skipZip) console.log(`${zipFileName(options.version)} は同じ内容で公開済みのため送りません。`);
+  const targets = buildRemoteTargets(items, config.remoteRoot);
   console.log(`接続先: ${config.host}:${config.port}`);
   console.log('転送順:');
   for (const item of targets) console.log(`  ${item.name} (${item.size} bytes)`);
@@ -264,6 +272,10 @@ async function uploadFiles(options) {
     await client.access({ host: config.host, port: config.port, user: config.user, password: config.password, secure: config.secure });
     for (const item of targets) {
       await client.ensureDir(`${config.remoteRoot}/${item.remoteDir}`.replace(/\/$/, ''));
+      if (skipZip && item.name === zipFileName(options.version) && isSameRemoteFile(await client.list(), item.name, item.size)) {
+        console.log(`${item.name} は同じ内容で公開済みのため送りません。`);
+        continue;
+      }
       // update.json は利用者の更新確認が読むので、途中で切れても壊れた内容を公開しないよう一時名で送ってから改名する。
       const uploadName = item.name === 'update.json' ? `${item.name}${UPLOADING_SUFFIX}` : item.name;
       await client.uploadFrom(item.localPath, uploadName);
@@ -273,7 +285,7 @@ async function uploadFiles(options) {
         throw new Error(`${item.name} の転送後サイズが一致しません (local=${item.size}, remote=${remote?.size ?? 'missing'})`);
       }
       if (uploadName !== item.name) {
-        await replaceRemoteFile(client, uploadName, item.name, item.localPath, entries.some(entry => entry.name === item.name));
+        await replaceRemoteFile(client, uploadName, item.name, entries.some(entry => entry.name === item.name));
       }
       console.log(`転送・照合完了: ${item.name}`);
     }
@@ -328,5 +340,5 @@ module.exports = {
   isValidVersion, compareVersions, downloadUrlOf, zipFileName, localDateString, buildUpdateManifest,
   serializeUpdateManifest, renderTemplate, generateFiles, generatePages, buildUploadItems,
   verifyReleaseInputs, checkPublishedVersion, configFromEnvironment, buildRemoteTargets,
-  ffmpegBuildInfoFrom, decideUploadAgainstPublished, replaceRemoteFile,
+  ffmpegBuildInfoFrom, decideUploadAgainstPublished, replaceRemoteFile, isSameRemoteFile,
 };
