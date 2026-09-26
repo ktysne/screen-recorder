@@ -36,6 +36,7 @@ public sealed class SettingsRepository(string? baseDirectory = null)
             result.PngCompression = EnumValue(root, nameof(result.PngCompression), defaults.PngCompression);
             result.CopyImageToClipboard = Bool(root, nameof(result.CopyImageToClipboard), defaults.CopyImageToClipboard);
             result.CaptureImageCursor = Bool(root, nameof(result.CaptureImageCursor), defaults.CaptureImageCursor);
+            result.WindowScreenshotShortcutTarget = EnumValue(root, nameof(result.WindowScreenshotShortcutTarget), defaults.WindowScreenshotShortcutTarget);
             result.AfterCaptureAction = EnumValue(root, nameof(result.AfterCaptureAction), defaults.AfterCaptureAction);
             result.VideoDirectory = String(root, nameof(result.VideoDirectory), defaults.VideoDirectory);
             result.CaptureVideoCursor = Bool(root, nameof(result.CaptureVideoCursor), defaults.CaptureVideoCursor);

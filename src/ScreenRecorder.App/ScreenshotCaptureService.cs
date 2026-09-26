@@ -17,12 +17,24 @@ internal sealed class ScreenshotCaptureService
 
     private sealed record WindowCapture(Bitmap Image, Rectangle Bounds);
 
-    public async Task<ScreenshotCaptureResult?> CaptureAsync(ScreenshotMode mode, Settings settings)
+    public async Task<ScreenshotCaptureResult?> CaptureAsync(ScreenshotMode mode, Settings settings, IntPtr? targetWindow = null)
     {
         var delayedRegion = mode == ScreenshotMode.Region && settings.CaptureDelaySeconds > 0;
+        ScreenshotSelection? shortcutSelection = null;
+        if (mode == ScreenshotMode.Window && targetWindow is { } requestedWindow)
+        {
+            if (CaptureSelection.TryCreateWindowSelection(requestedWindow, out shortcutSelection, out var reason))
+            {
+                DiagnosticLog.Info(DiagnosticLogTags.Capture, $"ショートカットの撮影対象に前面のウィンドウを使います: hwnd={requestedWindow}。");
+            }
+            else
+            {
+                DiagnosticLog.Info(DiagnosticLogTags.Capture, $"ショートカットの前面ウィンドウを撮影できないため、選択画面を表示します: 理由={reason}。");
+            }
+        }
         using var selection = mode == ScreenshotMode.Full
             ? null
-            : await CaptureSelection.SelectAsync(mode, freezeDesktop: !delayedRegion);
+            : shortcutSelection ?? await CaptureSelection.SelectAsync(mode, freezeDesktop: !delayedRegion);
         if (mode != ScreenshotMode.Full && selection is null) return null;
 
         var captureBounds = mode == ScreenshotMode.Full

@@ -23,6 +23,7 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(PngCompression.Standard, settings.PngCompression);
         Assert.True(settings.CopyImageToClipboard);
         Assert.False(settings.CaptureImageCursor);
+        Assert.Equal(WindowScreenshotShortcutTarget.ActiveWindow, settings.WindowScreenshotShortcutTarget);
         Assert.Equal(0, settings.CaptureDelaySeconds);
         Assert.Equal(CaptureAfterAction.None, settings.AfterCaptureAction);
         Assert.Equal(30, settings.FrameRate);
@@ -172,6 +173,18 @@ public sealed class SettingsRepositoryTests : IDisposable
         var loaded = repository.Load();
         Assert.Equal(StillImageFormat.Png, loaded.ImageFormat);
         Assert.Equal(73, loaded.JpegQuality);
+    }
+
+    [Fact]
+    public void WindowScreenshotShortcutTargetSurvivesSaveLoadAndClone()
+    {
+        var repository = new SettingsRepository(_directory);
+        repository.Save(new Settings { WindowScreenshotShortcutTarget = WindowScreenshotShortcutTarget.SelectWindow });
+
+        var loaded = repository.Load();
+
+        Assert.Equal(WindowScreenshotShortcutTarget.SelectWindow, loaded.WindowScreenshotShortcutTarget);
+        Assert.Equal(WindowScreenshotShortcutTarget.SelectWindow, loaded.Clone().WindowScreenshotShortcutTarget);
     }
 
     [Fact]
