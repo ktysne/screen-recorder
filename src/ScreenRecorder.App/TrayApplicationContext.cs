@@ -511,7 +511,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 ? "なし"
                 : $"{(captureSettings.AudioFormat == AudioFormat.Mp3 ? "MP3" : "AAC")} ({(captureSettings.AudioFormat == AudioFormat.Mp3 ? captureSettings.Mp3BitrateKbps : captureSettings.AacBitrateKbps)} kbps)";
             DiagnosticLog.Info(DiagnosticLogTags.Record,
-                $"録画を開始しました: 方法={CaptureMethodName(mode)}、範囲={targetBounds.Width}x{targetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
+                $"録画を開始しました: 方法={CaptureMethodName(mode)}、範囲=({targetBounds.X},{targetBounds.Y}) {targetBounds.Width}x{targetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
             _recordingStopwatch = Stopwatch.StartNew();
             ShowRecordingOverlays();
             StartRecordingTimers(_activeRecording);

@@ -34,8 +34,24 @@ public static class DiagnosticLogFormatting
         return result.ToString().TrimEnd(' ');
     }
 
+    private const string TimestampFormat = "yyyyMMdd-HHmmss-fff";
+
     public static string MakeFileName(DateTime timestamp) =>
-        FilePrefix + timestamp.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + FileSuffix;
+        FilePrefix + timestamp.ToString(TimestampFormat, CultureInfo.InvariantCulture) + FileSuffix;
+
+    /// <summary>既存のどのログよりも名前順で後になる、新しいログの名前を返す。</summary>
+    /// <remarks>時計が戻ると現在時刻の名前が既存より前になり、次のローテーションで最新のログが消えるため、最新の名前の 1 ミリ秒後へ送る。</remarks>
+    public static string MakeFileName(DateTime timestamp, IEnumerable<string> existingNames)
+    {
+        var candidate = MakeFileName(timestamp);
+        var latest = existingNames.Where(IsLogFileName).Max(StringComparer.Ordinal);
+        if (latest is null || StringComparer.Ordinal.Compare(candidate, latest) > 0) return candidate;
+
+        var latestTimestamp = latest.Substring(FilePrefix.Length, TimestampFormat.Length);
+        return DateTime.TryParseExact(latestTimestamp, TimestampFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? MakeFileName(parsed.AddMilliseconds(1))
+            : candidate;
+    }
 
     public static bool IsLogFileName(string? name)
     {

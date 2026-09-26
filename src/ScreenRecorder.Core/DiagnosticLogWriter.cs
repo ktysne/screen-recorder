@@ -113,7 +113,8 @@ public sealed class DiagnosticLogWriter : IDisposable
         var isError = level == DiagnosticLogLevel.Error;
         lock (state.Gate)
         {
-            if (!state.Started) return false;
+            // 判定からここまでの間に SetLevel が「記録しない」へ下げた場合に、止めた後の行を積まない。
+            if (!state.Started || !state.Level.ShouldRecord(level)) return false;
 
             var count = isError ? state.ErrorQueuedCount : state.NormalQueuedCount;
             var bytes = isError ? state.ErrorQueuedBytes : state.NormalQueuedBytes;
@@ -376,21 +377,25 @@ internal sealed class FileDiagnosticLogDestination : IDiagnosticLogDestination
         var existing = Directory.EnumerateFiles(directory)
             .Select(Path.GetFileName)
             .Where(name => name is not null)
-            .Cast<string>();
-        foreach (var name in DiagnosticLogFormatting.SelectFilesToDelete(existing, DiagnosticLogFormatting.MaximumFiles - 1))
-        {
-            try { File.Delete(Path.Combine(directory, name)); }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-        }
+            .Cast<string>()
+            .ToList();
 
-        var path = Path.Combine(directory, DiagnosticLogFormatting.MakeFileName(DateTime.Now));
-        using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+        var fileName = DiagnosticLogFormatting.MakeFileName(DateTime.Now, existing);
+        var path = Path.Combine(directory, fileName);
+        using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
         {
             WriteLines(stream, headerLines);
             stream.Flush();
         }
         _filePath = path;
+
+        // 作成に失敗したときに過去のログだけが減らないよう、古いものは作成の後に消す。
+        foreach (var name in DiagnosticLogFormatting.SelectFilesToDelete(existing.Append(fileName), DiagnosticLogFormatting.MaximumFiles))
+        {
+            try { File.Delete(Path.Combine(directory, name)); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
         return true;
     }
 

@@ -109,6 +109,34 @@ public sealed class DiagnosticLogTests
     }
 
     [Fact]
+    public void NewLogNameUsesTheCurrentTimeWhenItIsLaterThanExistingLogs()
+    {
+        var existing = new[] { "screen-recorder-20260926-145301-007.log", "memo.txt" };
+
+        Assert.Equal("screen-recorder-20260926-150000-000.log", DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 15, 0, 0), existing));
+    }
+
+    [Fact]
+    public void NewLogNameFollowsTheLatestLogWhenTheClockWentBack()
+    {
+        var existing = new[] { "screen-recorder-20260926-145301-007.log", "screen-recorder-20260926-145959-999.log" };
+
+        var name = DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 13, 0, 0), existing);
+
+        Assert.Equal("screen-recorder-20260926-150000-000.log", name);
+        Assert.DoesNotContain(name, DiagnosticLogFormatting.SelectFilesToDelete(existing.Append(name), 1));
+    }
+
+    [Fact]
+    public void NewLogNameFallsBackToTheCurrentTimeWhenTheLatestNameIsNotADate()
+    {
+        // 数字だけで構成されていれば名前の形には一致するが、13 月は日付として読めない。
+        var existing = new[] { "screen-recorder-20261399-000000-000.log" };
+
+        Assert.Equal("screen-recorder-20260926-150000-000.log", DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 15, 0, 0), existing));
+    }
+
+    [Fact]
     public void HeaderStatesVersionLevelPrivacyAndExcludedContent()
     {
         var header = DiagnosticLogFormatting.CreateHeader("1.2.3", DiagnosticLogLevel.Warn);

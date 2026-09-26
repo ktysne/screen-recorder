@@ -28,7 +28,7 @@ internal sealed class ScreenshotCaptureService
         var captureBounds = mode == ScreenshotMode.Full
             ? Screen.FromPoint(Cursor.Position).Bounds
             : selection!.Bounds;
-        DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画の撮影を開始しました: 方法={CaptureMethodName(mode)}, 範囲={captureBounds.Width}x{captureBounds.Height}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画の撮影を開始しました: 方法={CaptureMethodName(mode)}, 範囲=({captureBounds.X},{captureBounds.Y}) {captureBounds.Width}x{captureBounds.Height}。");
         var displayBounds = mode == ScreenshotMode.Full ? captureBounds : Screen.FromRectangle(captureBounds).Bounds;
         if (settings.CaptureDelaySeconds > 0)
             await WaitWithCountdownAsync(settings.CaptureDelaySeconds, displayBounds);
