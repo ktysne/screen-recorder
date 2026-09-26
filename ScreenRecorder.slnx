@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ScreenRecorder.Core/ScreenRecorder.Core.csproj" />
+    <Project Path="src/ScreenRecorder.App/ScreenRecorder.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ScreenRecorder.Core.Tests/ScreenRecorder.Core.Tests.csproj" />
+  </Folder>
+</Solution>
