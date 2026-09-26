@@ -13,6 +13,8 @@ internal static class NativeMethods
     internal const uint CursorShowing = 0x00000001;
     internal const uint DrawIconNormal = 0x00000003;
     internal const uint WindowDisplayAffinityExcludeFromCapture = 0x00000011;
+    internal const int WsExNoActivate = 0x08000000;
+    internal const int WsExToolWindow = 0x00000080;
     internal const uint ExecutionStateSystemRequired = 0x00000001;
     internal const uint ExecutionStateContinuous = 0x80000000;
     internal const int SwRestore = 9;

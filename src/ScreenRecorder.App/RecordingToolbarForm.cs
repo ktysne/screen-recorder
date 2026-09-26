@@ -2,7 +2,7 @@ using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
 
-internal sealed class RecordingToolbarForm : Form
+internal sealed class RecordingToolbarForm : CaptureExcludedOverlayForm
 {
     private readonly Label _status = new()
     {
@@ -63,20 +63,6 @@ internal sealed class RecordingToolbarForm : Form
     public event EventHandler? PauseResumeRequested;
     public event EventHandler? StopRequested;
 
-    protected override bool ShowWithoutActivation => true;
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var parameters = base.CreateParams;
-            parameters.ExStyle |= 0x08000000 | 0x00000080;
-            return parameters;
-        }
-    }
-
-    public bool ExcludeFromCapture() => NativeMethods.SetWindowDisplayAffinity(Handle, NativeMethods.WindowDisplayAffinityExcludeFromCapture);
-
     public void UpdateStatus(VideoRecordingState state, TimeSpan elapsed)
     {
         var duration = $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
@@ -96,7 +82,7 @@ internal sealed class RecordingToolbarForm : Form
     }
 }
 
-internal sealed class RecordingRegionFrameForm : Form
+internal sealed class RecordingRegionFrameForm : CaptureExcludedOverlayForm
 {
     private const int BorderWidth = 3;
 
@@ -112,20 +98,6 @@ internal sealed class RecordingRegionFrameForm : Form
         ShowInTaskbar = false;
         DoubleBuffered = true;
     }
-
-    protected override bool ShowWithoutActivation => true;
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var parameters = base.CreateParams;
-            parameters.ExStyle |= 0x08000000 | 0x00000080;
-            return parameters;
-        }
-    }
-
-    public bool ExcludeFromCapture() => NativeMethods.SetWindowDisplayAffinity(Handle, NativeMethods.WindowDisplayAffinityExcludeFromCapture);
 
     protected override void OnPaint(PaintEventArgs e)
     {

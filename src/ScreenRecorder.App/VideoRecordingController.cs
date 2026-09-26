@@ -303,22 +303,22 @@ internal sealed class VideoRecordingController : IDisposable
 
     private async Task WaitForRecordingCountdownAsync(int seconds, Rectangle displayBounds, CancellationToken cancellationToken)
     {
-        using var countdown = new CaptureCountdownForm(displayBounds, forRecording: true);
-        _recordingCountdownForm = countdown;
-        countdown.Show();
-        if (!countdown.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "録画カウントダウンを撮影対象から除外できませんでした。");
+        CaptureCountdownForm? countdown = null;
         try
         {
-            for (var remaining = seconds; remaining > 0; remaining--)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                countdown.SetRemainingSeconds(remaining);
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-            }
+            await CaptureCountdown.RunAsync(
+                CaptureCountdownKind.Recording,
+                seconds,
+                displayBounds,
+                cancellationToken,
+                shownCountdown =>
+                {
+                    countdown = shownCountdown;
+                    _recordingCountdownForm = shownCountdown;
+                });
         }
         finally
         {
-            countdown.Close();
             if (ReferenceEquals(_recordingCountdownForm, countdown)) _recordingCountdownForm = null;
         }
     }
@@ -673,7 +673,7 @@ internal sealed class VideoRecordingController : IDisposable
             toolbar.StopRequested += (_, _) => StopRecording();
             _recordingToolbar = toolbar;
             toolbar.Show();
-            if (!toolbar.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "録画操作バーを撮影対象から除外できませんでした。");
+            toolbar.ExcludeFromCapture(DiagnosticLogTags.Record, "録画操作バー");
             toolbar.UpdateStatus(_recordingState.State, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
         }
         catch (Exception exception)
@@ -687,7 +687,7 @@ internal sealed class VideoRecordingController : IDisposable
             var frame = new RecordingRegionFrameForm(active.TargetBounds);
             _recordingRegionFrame = frame;
             frame.Show();
-            if (!frame.ExcludeFromCapture()) DiagnosticLog.Warn(DiagnosticLogTags.Record, "範囲枠を撮影対象から除外できませんでした。");
+            frame.ExcludeFromCapture(DiagnosticLogTags.Record, "範囲枠");
         }
         catch (Exception exception)
         {
