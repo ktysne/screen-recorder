@@ -19,12 +19,24 @@ internal sealed class ScreenshotCaptureService
 
     private sealed record WindowCapture(Bitmap Image, Rectangle Bounds);
 
-    public async Task<ScreenshotCaptureResult?> CaptureAsync(ScreenshotMode mode, Settings settings)
+    public async Task<ScreenshotCaptureResult?> CaptureAsync(ScreenshotMode mode, Settings settings, IntPtr? targetWindow = null)
     {
         var delayedRegion = mode == ScreenshotMode.Region && settings.CaptureDelaySeconds > 0;
+        ScreenshotSelection? shortcutSelection = null;
+        if (mode == ScreenshotMode.Window && targetWindow is { } requestedWindow)
+        {
+            if (CaptureSelection.TryCreateWindowSelection(requestedWindow, out shortcutSelection, out var reason))
+            {
+                DiagnosticLog.Info(DiagnosticLogTags.Capture, $"ショートカットの撮影対象に前面のウィンドウを使います: hwnd={requestedWindow}。");
+            }
+            else
+            {
+                DiagnosticLog.Info(DiagnosticLogTags.Capture, $"ショートカットの前面ウィンドウを撮影できないため、選択画面を表示します: 理由={reason}。");
+            }
+        }
         using var selection = mode == ScreenshotMode.Full
             ? null
-            : await CaptureSelection.SelectAsync(mode, freezeDesktop: !delayedRegion);
+            : shortcutSelection ?? await CaptureSelection.SelectAsync(mode, freezeDesktop: !delayedRegion);
         if (mode != ScreenshotMode.Full && selection is null) return null;
 
         var captureBounds = mode == ScreenshotMode.Full
@@ -109,7 +121,7 @@ internal sealed class ScreenshotCaptureService
 
     private static WindowCapture CaptureWindow(ScreenshotSelection selection, CancellationToken cancellationToken)
     {
-        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
+        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("撮影するウィンドウはすでに閉じられています。");
         if (!TryGetWindowBounds(selection.Window, out var windowBounds)) throw new InvalidOperationException("ウィンドウの撮影範囲を取得できませんでした。");
         using (var printed = DesktopCapture.CaptureWindow(selection.Window, windowBounds, out var succeeded))
         {
@@ -126,7 +138,7 @@ internal sealed class ScreenshotCaptureService
 
         DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"ウィンドウ撮影で代替のキャプチャ方法を使用します: hwnd={selection.Window}。");
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("選択したウィンドウはすでに閉じられています。");
+        if (!NativeMethods.IsWindow(selection.Window)) throw new InvalidOperationException("撮影するウィンドウはすでに閉じられています。");
         cancellationToken.ThrowIfCancellationRequested();
         if (NativeMethods.IsIconic(selection.Window)) NativeMethods.ShowWindow(selection.Window, NativeMethods.SwRestore);
         cancellationToken.ThrowIfCancellationRequested();

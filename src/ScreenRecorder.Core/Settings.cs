@@ -3,6 +3,7 @@ namespace ScreenRecorder.Core;
 public enum StillImageFormat { Jpeg, Png }
 public enum PngCompression { Fast, Standard, Smallest }
 public enum CaptureAfterAction { None, OpenFile, OpenFolder }
+public enum WindowScreenshotShortcutTarget { ActiveWindow, SelectWindow }
 public enum AudioFormat { Aac, Mp3 }
 public enum EncoderMode { Automatic, SoftwareOnly }
 
@@ -23,6 +24,7 @@ public sealed class Settings
     public PngCompression PngCompression { get; set; } = PngCompression.Standard;
     public bool CopyImageToClipboard { get; set; } = true;
     public bool CaptureImageCursor { get; set; }
+    public WindowScreenshotShortcutTarget WindowScreenshotShortcutTarget { get; set; } = WindowScreenshotShortcutTarget.ActiveWindow;
     public int CaptureDelaySeconds { get; set; } = SettingsSchema.CaptureDelaySeconds.Default;
     public CaptureAfterAction AfterCaptureAction { get; set; } = CaptureAfterAction.None;
 
@@ -76,6 +78,7 @@ public sealed class Settings
         PngCompression = PngCompression,
         CopyImageToClipboard = CopyImageToClipboard,
         CaptureImageCursor = CaptureImageCursor,
+        WindowScreenshotShortcutTarget = WindowScreenshotShortcutTarget,
         CaptureDelaySeconds = CaptureDelaySeconds,
         AfterCaptureAction = AfterCaptureAction,
         VideoDirectory = VideoDirectory,

@@ -172,7 +172,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         var assignment = ShortcutSettingsValidator.GetAssignments(_settings).FirstOrDefault(item => item.Action == action);
         if (assignment is null || !assignment.Enabled) return;
-        PerformAction(action);
+        var targetWindow = action == RecorderAction.ScreenshotWindow
+            && _settings.WindowScreenshotShortcutTarget == WindowScreenshotShortcutTarget.ActiveWindow
+                ? NativeMethods.GetForegroundWindow()
+                : (IntPtr?)null;
+        PerformAction(action, targetWindow);
     }
 
     private void PerformMenuCommand(TrayMenuCommand command)
@@ -233,7 +237,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ShowNotification(NotificationDuration.Standard, UiLabels.StartupHotkeyFailureTitle, body, ToolTipIcon.Warning);
     }
 
-    private async void PerformAction(RecorderAction action)
+    private void PerformAction(RecorderAction action) => PerformAction(action, null);
+
+    private async void PerformAction(RecorderAction action, IntPtr? targetWindow)
     {
         DiagnosticLog.Info(DiagnosticLogTags.App, $"操作を受け付けました: {UiLabels.ShortcutActionName(action)}。");
         var recordingMode = action switch
@@ -277,7 +283,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var captureSettings = _settings.Clone();
             try
             {
-                using var result = await _screenshotCaptureService.CaptureAsync(screenshotMode, captureSettings);
+                using var result = await _screenshotCaptureService.CaptureAsync(screenshotMode, captureSettings,
+                    action == RecorderAction.ScreenshotWindow ? targetWindow : null);
                 if (result is null) return;
                 if (!SaveDirectoryRules.IsConfirmed(captureSettings.ConfirmedStillImageDirectory, captureSettings.StillImageDirectory))
                 {

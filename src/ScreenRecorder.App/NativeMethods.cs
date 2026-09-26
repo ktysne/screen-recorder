@@ -107,6 +107,12 @@ internal static class NativeMethods
     internal static extern bool IsIconic(IntPtr window);
 
     [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int GetClassName(IntPtr window, StringBuilder className, int maximumCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
     internal static extern int GetWindowTextLength(IntPtr window);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

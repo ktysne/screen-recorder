@@ -162,6 +162,10 @@ internal sealed class SettingsForm : Form
         _pngControls.Add(pngCompression);
         BindCheck(capture, UiLabels.CopyImageToClipboard, settings => settings.CopyImageToClipboard, (settings, value) => settings.CopyImageToClipboard = value);
         BindCheck(capture, UiLabels.CaptureImageCursor, settings => settings.CaptureImageCursor, (settings, value) => settings.CaptureImageCursor = value);
+        BindChoice(capture, UiLabels.WindowScreenshotShortcutTarget,
+            [(UiLabels.WindowScreenshotActiveWindow, WindowScreenshotShortcutTarget.ActiveWindow), (UiLabels.WindowScreenshotSelectWindow, WindowScreenshotShortcutTarget.SelectWindow)],
+            settings => settings.WindowScreenshotShortcutTarget, (settings, value) => settings.WindowScreenshotShortcutTarget = value,
+            UiLabels.WindowScreenshotShortcutTargetHelp);
         BindChoice(capture, UiLabels.CaptureDelay,
             SettingsSchema.CaptureDelaySeconds.Choices.Select(value => (UiLabels.Seconds(value), value)).ToArray(),
             settings => settings.CaptureDelaySeconds, (settings, value) => settings.CaptureDelaySeconds = value, UiLabels.CaptureDelayHelp);

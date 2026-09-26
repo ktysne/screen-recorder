@@ -10,6 +10,8 @@ const BASE_URL = 'https://ktysne.info/screen-recorder';
 const REMOTE_ROOT_DEFAULT = '/ktysne.info/screen-recorder';
 const DEFAULT_OUT = 'build/release';
 const PAGE_NAMES = ['index.html', 'manual.html', 'license.html'];
+// ページが相対パスで参照する画像。site/assets から出力先の assets へ写し、公開先でも同じ位置に置く。
+const SITE_ASSET_NAMES = ['app-icon-256.png'];
 
 function isValidVersion(version) {
   return /^\d+\.\d+\.\d+$/.test(version);
@@ -86,6 +88,17 @@ function readFfmpegBuildInfo(ffmpegInfo) {
   return ffmpegBuildInfoFrom(fs.readFileSync(path.resolve(ROOT, ffmpegInfo), 'utf8'));
 }
 
+function writeSite(output, values) {
+  for (const name of PAGE_NAMES) {
+    const source = path.join(ROOT, 'site', name.replace('.html', '.template.html'));
+    fs.writeFileSync(path.join(output, name), renderTemplate(fs.readFileSync(source, 'utf8'), values), 'utf8');
+  }
+  fs.mkdirSync(path.join(output, 'assets'), { recursive: true });
+  for (const name of SITE_ASSET_NAMES) {
+    fs.copyFileSync(path.join(ROOT, 'site', 'assets', name), path.join(output, 'assets', name));
+  }
+}
+
 function generateFiles({ version, zip, out, releasedAt, ffmpegInfo }) {
   if (!isValidVersion(version)) throw new Error(`版は X.Y.Z 形式で指定してください: ${version}`);
   const zipPath = path.resolve(ROOT, zip);
@@ -100,10 +113,7 @@ function generateFiles({ version, zip, out, releasedAt, ffmpegInfo }) {
     RELEASED_AT: manifest.latest.releasedAt,
     FFMPEG_BUILD_INFO: readFfmpegBuildInfo(ffmpegInfo),
   };
-  for (const name of PAGE_NAMES) {
-    const source = path.join(ROOT, 'site', name.replace('.html', '.template.html'));
-    fs.writeFileSync(path.join(output, name), renderTemplate(fs.readFileSync(source, 'utf8'), values), 'utf8');
-  }
+  writeSite(output, values);
   fs.writeFileSync(path.join(output, 'update.json'), serializeUpdateManifest(manifest), 'utf8');
   return { output, manifest };
 }
@@ -113,10 +123,7 @@ function generatePages({ version, out, releasedAt = localDateString(), ffmpegInf
   const output = path.resolve(ROOT, out);
   fs.mkdirSync(output, { recursive: true });
   const values = { VERSION: version, DOWNLOAD_URL: downloadUrlOf(version), ZIP_NAME: zipFileName(version), RELEASED_AT: releasedAt, FFMPEG_BUILD_INFO: readFfmpegBuildInfo(ffmpegInfo) };
-  for (const name of PAGE_NAMES) {
-    const source = path.join(ROOT, 'site', name.replace('.html', '.template.html'));
-    fs.writeFileSync(path.join(output, name), renderTemplate(fs.readFileSync(source, 'utf8'), values), 'utf8');
-  }
+  writeSite(output, values);
   return output;
 }
 
@@ -125,6 +132,7 @@ function buildUploadItems({ version, out = DEFAULT_OUT, zip }) {
   const zipPath = path.resolve(ROOT, zip || path.join(out, zipFileName(version)));
   return [
     { name: zipFileName(version), localPath: zipPath, remoteDir: 'archives' },
+    ...SITE_ASSET_NAMES.map(name => ({ name, localPath: path.join(output, 'assets', name), remoteDir: 'assets' })),
     { name: 'manual.html', localPath: path.join(output, 'manual.html'), remoteDir: '' },
     { name: 'license.html', localPath: path.join(output, 'license.html'), remoteDir: '' },
     { name: 'index.html', localPath: path.join(output, 'index.html'), remoteDir: '' },

@@ -21,4 +21,12 @@ public sealed class SettingsValidatorTests
     {
         Assert.Empty(SettingsValidator.Validate(new Settings()));
     }
+
+    [Fact]
+    public void UndefinedWindowScreenshotShortcutTargetIsInvalid()
+    {
+        var issues = SettingsValidator.Validate(new Settings { WindowScreenshotShortcutTarget = (WindowScreenshotShortcutTarget)(-1) });
+
+        Assert.Contains(new SettingsIssue(nameof(Settings.WindowScreenshotShortcutTarget), SettingsIssueKind.InvalidValue), issues);
+    }
 }
