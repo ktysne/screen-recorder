@@ -14,6 +14,18 @@ public enum VideoRecordingState
     Saving
 }
 
+public static class RecordingUiActions
+{
+    public static bool CanRequestPauseOrResume(VideoRecordingState state) =>
+        state is VideoRecordingState.Recording or VideoRecordingState.Paused;
+
+    // カウントダウン中の停止要求は、カウントダウンの取り消しとして扱う。
+    public static bool CanRequestStop(VideoRecordingState state) =>
+        state is VideoRecordingState.Countdown or VideoRecordingState.Preparing or VideoRecordingState.Recording or VideoRecordingState.Paused;
+
+    public static bool ShowsResume(VideoRecordingState state) => state == VideoRecordingState.Paused;
+}
+
 public enum RecordingEngineCommand
 {
     None,

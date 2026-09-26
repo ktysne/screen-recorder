@@ -355,15 +355,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var state = _recording.State;
         _menu.ApplyRecordingState(state);
         _tray.Icon = _trayIcons.For(state);
-        _tray.Text = state switch
-        {
-            VideoRecordingState.Recording => "ScreenRecorder (録画中)",
-            VideoRecordingState.Preparing => $"ScreenRecorder ({UiLabels.RecordingPreparing})",
-            VideoRecordingState.Paused => "ScreenRecorder (一時停止中)",
-            VideoRecordingState.Saving => "ScreenRecorder (保存中)",
-            VideoRecordingState.Countdown => "ScreenRecorder (録画開始前)",
-            _ => UiLabels.AppName
-        };
+        _tray.Text = UiLabels.TrayRecordingStatus(state);
         _settingsForm?.RefreshRecordingState();
         _updateController?.RefreshBusyState();
     }

@@ -65,19 +65,12 @@ internal sealed class RecordingToolbarForm : CaptureExcludedOverlayForm
 
     public void UpdateStatus(VideoRecordingState state, TimeSpan elapsed)
     {
-        var duration = $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
-        _status.Text = state switch
-        {
-            VideoRecordingState.Preparing => UiLabels.RecordingPreparing,
-            VideoRecordingState.Paused => $"一時停止中  {duration}",
-            VideoRecordingState.Saving => "保存中",
-            _ => $"録画中  {duration}"
-        };
+        _status.Text = UiLabels.RecordingToolbarStatus(state, elapsed);
         _status.AccessibleDescription = _status.Text;
-        _pauseResume.Text = state == VideoRecordingState.Paused ? UiLabels.ResumeRecording : UiLabels.PauseRecording;
+        _pauseResume.Text = RecordingUiActions.ShowsResume(state) ? UiLabels.ResumeRecording : UiLabels.PauseRecording;
         _pauseResume.AccessibleName = _pauseResume.Text;
-        _pauseResume.Enabled = state is VideoRecordingState.Recording or VideoRecordingState.Paused;
-        _stop.Enabled = state is VideoRecordingState.Preparing or VideoRecordingState.Recording or VideoRecordingState.Paused;
+        _pauseResume.Enabled = RecordingUiActions.CanRequestPauseOrResume(state);
+        _stop.Enabled = RecordingUiActions.CanRequestStop(state);
         AccessibilityNotifyClients(AccessibleEvents.NameChange, -1);
     }
 }

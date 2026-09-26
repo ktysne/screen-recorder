@@ -63,9 +63,9 @@ internal sealed class TrayMenu : IDisposable
 
     public void ApplyRecordingState(VideoRecordingState state)
     {
-        _pauseResumeItem.Text = state == VideoRecordingState.Paused ? UiLabels.ResumeRecording : UiLabels.PauseRecording;
-        _pauseResumeItem.Enabled = state is VideoRecordingState.Recording or VideoRecordingState.Paused;
-        _stopRecordingItem.Enabled = state is VideoRecordingState.Countdown or VideoRecordingState.Preparing or VideoRecordingState.Recording or VideoRecordingState.Paused;
+        _pauseResumeItem.Text = RecordingUiActions.ShowsResume(state) ? UiLabels.ResumeRecording : UiLabels.PauseRecording;
+        _pauseResumeItem.Enabled = RecordingUiActions.CanRequestPauseOrResume(state);
+        _stopRecordingItem.Enabled = RecordingUiActions.CanRequestStop(state);
     }
 
     public void Dispose() => Strip.Dispose();
