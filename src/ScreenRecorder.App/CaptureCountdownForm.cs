@@ -21,26 +21,52 @@ internal sealed class CaptureCountdownForm : CaptureExcludedOverlayForm
         BackColor = Color.FromArgb(35, 35, 35)
     };
 
-    public CaptureCountdownForm(Rectangle displayBounds, CaptureCountdownKind kind)
+    private static readonly Size TextPaddingLogical = new(16, 8);
+    private const int ScreenshotCountdownEdgeMarginLogical = 20;
+    private readonly Rectangle _displayBounds;
+    private readonly bool _forRecording;
+    private readonly int _maxSeconds;
+
+    public CaptureCountdownForm(Rectangle displayBounds, CaptureCountdownKind kind, int maxSeconds)
     {
-        var forRecording = kind == CaptureCountdownKind.Recording;
-        _countdownLabel = forRecording ? UiLabels.RecordingCountdownPrefix : UiLabels.ScreenshotCountdownPrefix;
-        _message.AccessibleName = forRecording ? UiLabels.RecordingCountdownAccessibleName : UiLabels.ScreenshotCountdownAccessibleName;
+        _forRecording = kind == CaptureCountdownKind.Recording;
+        _displayBounds = displayBounds;
+        _maxSeconds = maxSeconds;
+        _countdownLabel = _forRecording ? UiLabels.RecordingCountdownPrefix : UiLabels.ScreenshotCountdownPrefix;
+        _message.AccessibleName = _forRecording ? UiLabels.RecordingCountdownAccessibleName : UiLabels.ScreenshotCountdownAccessibleName;
         _message.Font = _messageFont;
         FormBorderStyle = FormBorderStyle.None;
         AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(180, 52);
-        Location = forRecording
-            ? new Point(displayBounds.Left + (displayBounds.Width - Width) / 2, displayBounds.Top + (displayBounds.Height - Height) / 2)
-            : new Point(displayBounds.Right - Width - 20, displayBounds.Top + 20);
         BackColor = Color.FromArgb(35, 35, 35);
         TopMost = true;
         ShowInTaskbar = false;
         Controls.Add(_message);
+        FitToText();
     }
 
-    public void SetRemainingSeconds(int seconds) => _message.Text = $"{_countdownLabel} {seconds} 秒";
+    // 窓の大きさを固定すると、表示倍率を上げたときに文字が折り返して切れるため、文字の幅から決める。
+    private void FitToText()
+    {
+        var textSize = TextRenderer.MeasureText(FormatMessage(_maxSeconds), _message.Font);
+        Size = new Size(
+            textSize.Width + LogicalToDeviceUnits(TextPaddingLogical.Width) * 2,
+            textSize.Height + LogicalToDeviceUnits(TextPaddingLogical.Height) * 2);
+        var margin = LogicalToDeviceUnits(ScreenshotCountdownEdgeMarginLogical);
+        Location = _forRecording
+            ? new Point(_displayBounds.Left + (_displayBounds.Width - Width) / 2, _displayBounds.Top + (_displayBounds.Height - Height) / 2)
+            : new Point(_displayBounds.Right - Width - margin, _displayBounds.Top + margin);
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        FitToText();
+    }
+
+    private string FormatMessage(int seconds) => $"{_countdownLabel} {seconds} 秒";
+
+    public void SetRemainingSeconds(int seconds) => _message.Text = FormatMessage(seconds);
 
     protected override void Dispose(bool disposing)
     {
@@ -58,7 +84,7 @@ internal static class CaptureCountdown
         CancellationToken cancellationToken,
         Action<CaptureCountdownForm>? onShown = null)
     {
-        using var countdown = new CaptureCountdownForm(displayBounds, kind);
+        using var countdown = new CaptureCountdownForm(displayBounds, kind, seconds);
         try
         {
             countdown.Show();
