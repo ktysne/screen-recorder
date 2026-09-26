@@ -40,7 +40,8 @@ public enum RecordingTerminationOutcome
     Completed,
     Failed,
     Idle,
-    TimedOut
+    TimedOut,
+    ProcessExited
 }
 
 public enum RecordingTerminationDecision
@@ -56,7 +57,7 @@ public static class RecordingTerminationRules
     {
         RecordingTerminationOutcome.Waiting => RecordingTerminationDecision.Wait,
         RecordingTerminationOutcome.Completed => RecordingTerminationDecision.ContinueCompletedSave,
-        RecordingTerminationOutcome.Failed or RecordingTerminationOutcome.Idle or RecordingTerminationOutcome.TimedOut => RecordingTerminationDecision.NotifyIncompleteThenDispose,
+        RecordingTerminationOutcome.Failed or RecordingTerminationOutcome.Idle or RecordingTerminationOutcome.TimedOut or RecordingTerminationOutcome.ProcessExited => RecordingTerminationDecision.NotifyIncompleteThenDispose,
         _ => throw new ArgumentOutOfRangeException(nameof(outcome))
     };
 }
