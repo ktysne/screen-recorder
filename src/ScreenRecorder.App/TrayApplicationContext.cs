@@ -252,7 +252,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 using var result = await _screenshotCaptureService.CaptureAsync(screenshotMode, captureSettings);
                 if (result is null) return;
-                CompleteScreenshot(result, screenshotMode, captureSettings);
+                await CompleteScreenshotAsync(result, screenshotMode, captureSettings);
             }
             catch (Exception exception)
             {
@@ -436,12 +436,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
     };
 
 
-    private void CompleteScreenshot(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings)
+    private async Task CompleteScreenshotAsync(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings)
     {
         string? warning = null;
         if (settings.CopyImageToClipboard)
         {
-            try { Clipboard.SetImage(result.Image); }
+            try { await ClipboardImageWriter.SetImageAsync(result.Image); }
             catch (Exception exception)
             {
                 DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"静止画をクリップボードへコピーできませんでした: {exception}");
