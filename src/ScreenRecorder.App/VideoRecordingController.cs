@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Media;
 using System.Runtime.InteropServices;
 using ScreenRecorder.Core;
 
@@ -254,7 +253,7 @@ internal sealed class VideoRecordingController : IDisposable
             }
             _ = FinishRecordingStartFailureAfterTimeoutAsync(engine);
 
-            DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画の開始を要求しました: 方法={RecordingShared.CaptureMethodName(mode)}。");
+            DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画の開始を要求しました: 方法={CaptureText.CaptureMethodName(mode)}。");
             ShowRecordingOverlays();
             StartRecordingTimers(_activeRecording);
             UpdateRecordingUi();
@@ -266,7 +265,7 @@ internal sealed class VideoRecordingController : IDisposable
         }
         catch (Exception exception)
         {
-            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画を開始できませんでした: 方法={RecordingShared.CaptureMethodName(mode)}; {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画を開始できませんでした: 方法={CaptureText.CaptureMethodName(mode)}; {exception}");
             if (engineStarted)
             {
                 StopRecording();
@@ -276,7 +275,7 @@ internal sealed class VideoRecordingController : IDisposable
                 _recordingState.TryFail();
                 CleanupRecordingSession();
                 UpdateRecordingUi();
-                _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingStartFailed, RecordingShared.ShortError(exception.Message)), ToolTipIcon.Error);
+                _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingStartFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Error);
             }
         }
         finally
@@ -338,7 +337,7 @@ internal sealed class VideoRecordingController : IDisposable
             if (wasRecording) _recordingState.RequestResume();
             else _recordingState.RequestPause();
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画の一時停止または再開に失敗しました: {exception}");
-            _notifier.Show(3500, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, RecordingShared.ShortError(exception.Message)), ToolTipIcon.Warning);
+            _notifier.Show(3500, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Warning);
             UpdateRecordingUi();
         }
     }
@@ -404,7 +403,7 @@ internal sealed class VideoRecordingController : IDisposable
                         ? "なし"
                         : $"{(captureSettings.AudioFormat == AudioFormat.Mp3 ? "MP3" : "AAC")} ({(captureSettings.AudioFormat == AudioFormat.Mp3 ? captureSettings.Mp3BitrateKbps : captureSettings.AacBitrateKbps)} kbps)";
                     DiagnosticLog.Info(DiagnosticLogTags.Record,
-                        $"録画を開始しました: 方法={RecordingShared.CaptureMethodName(active.Mode)}、範囲=({active.TargetBounds.X},{active.TargetBounds.Y}) {active.TargetBounds.Width}x{active.TargetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
+                        $"録画を開始しました: 方法={CaptureText.CaptureMethodName(active.Mode)}、範囲=({active.TargetBounds.X},{active.TargetBounds.Y}) {active.TargetBounds.Width}x{active.TargetBounds.Height}、フレームレート={captureSettings.FrameRate} fps、ビットレート={captureSettings.VideoBitrateMbps} Mbps、音声形式={audioFormat}。");
                 }
             }
             try
@@ -558,13 +557,13 @@ internal sealed class VideoRecordingController : IDisposable
         var retainedPath = !string.IsNullOrWhiteSpace(temporaryPath) && File.Exists(temporaryPath) ? temporaryPath : null;
         var message = recordingStartFailure
             ? retainedPath is null
-                ? string.Format(UiLabels.RecordingStartFailed, RecordingShared.ShortError(error))
-                : string.Format(UiLabels.RecordingStartTemporaryFileRetained, RecordingShared.ShortPath(retainedPath, 150))
+                ? string.Format(UiLabels.RecordingStartFailed, CaptureText.ShortError(error))
+                : string.Format(UiLabels.RecordingStartTemporaryFileRetained, CaptureText.ShortPath(retainedPath, 150))
             : retainedPath is null
-                ? string.Format(UiLabels.RecordingFailed, RecordingShared.ShortError(error))
+                ? string.Format(UiLabels.RecordingFailed, CaptureText.ShortError(error))
                 : string.Format(
                     finalizationConfirmed ? UiLabels.RecordingTemporaryFileRetained : UiLabels.RecordingTemporaryFileIncomplete,
-                    RecordingShared.ShortPath(retainedPath, 150));
+                    CaptureText.ShortPath(retainedPath, 150));
         _notifier.ShowForCapture(5000, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
     }
 
@@ -583,33 +582,15 @@ internal sealed class VideoRecordingController : IDisposable
 
     private void CompleteRecordingSave(string finalPath, Settings settings)
     {
-        string? warning = null;
-        if (settings.PlayCaptureSound)
-        {
-            try { SystemSounds.Asterisk.Play(); }
-            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画完了時の効果音を再生できませんでした: {exception}"); }
-        }
-        try
-        {
-            switch (settings.AfterCaptureAction)
-            {
-                case CaptureAfterAction.OpenFile:
-                    using (Process.Start(new ProcessStartInfo(finalPath) { UseShellExecute = true })) { }
-                    break;
-                case CaptureAfterAction.OpenFolder:
-                    if (!_openFolderQuietly(Path.GetDirectoryName(finalPath) ?? settings.VideoDirectory))
-                        warning = UiLabels.RecordingAfterActionFailed;
-                    break;
-            }
-        }
-        catch (Exception exception)
-        {
-            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画後の動作に失敗しました: 動作={settings.AfterCaptureAction}、ファイル={finalPath}; {exception}");
-            warning = UiLabels.RecordingAfterActionFailed;
-        }
-
-        if (warning is not null) _notifier.ShowForCapture(4000, UiLabels.AppName, warning, ToolTipIcon.Warning, finalPath);
-        else if (settings.NotifyWhenSaved) _notifier.ShowForCapture(4000, UiLabels.AppName, UiLabels.RecordingSavedNotification, ToolTipIcon.Info, finalPath);
+        CaptureCompletion.Execute(
+            CaptureCompletionKind.Recording,
+            settings,
+            finalPath,
+            settings.VideoDirectory,
+            $"動作={settings.AfterCaptureAction}、ファイル={finalPath}",
+            warning: null,
+            _openFolderQuietly,
+            _notifier.ShowForCapture);
     }
 
     private void DeleteSupersededRecording(string path)
@@ -628,7 +609,7 @@ internal sealed class VideoRecordingController : IDisposable
                 File.Move(completedPath, finalPath);
                 return finalPath;
             }
-            catch (IOException exception) when (RecordingShared.IsAlreadyExists(exception))
+            catch (IOException exception) when (CaptureText.IsAlreadyExists(exception))
             {
                 finalPath = VideoRecordingFileNaming.GetAvailablePath(
                     active.Settings.VideoDirectory,
@@ -747,7 +728,7 @@ internal sealed class VideoRecordingController : IDisposable
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画先の空き容量を確認できませんでした: フォルダー={videoDirectory}; {exception}");
-            _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, RecordingShared.ShortError(exception.Message)), ToolTipIcon.Error);
+            _notifier.Show(4000, UiLabels.AppName, string.Format(UiLabels.RecordingSpaceCheckFailed, CaptureText.ShortError(exception.Message)), ToolTipIcon.Error);
             return false;
         }
     }
@@ -811,20 +792,4 @@ internal sealed class VideoRecordingController : IDisposable
     }
 
     private void DispatchToUi(Action action) => _dispatcher.Post(action);
-}
-
-internal static class RecordingShared
-{
-    internal static string ShortError(string value) => value.Length > 180 ? value[..180] : value;
-    internal static string CaptureMethodName(ScreenshotMode mode) => mode switch
-    {
-        ScreenshotMode.Full => "ディスプレイ全体",
-        ScreenshotMode.Region => "範囲指定",
-        ScreenshotMode.Window => "ウィンドウ指定",
-        _ => mode.ToString()
-    };
-    internal static string ShortPath(string value, int maximumLength) => value.Length > maximumLength
-        ? $"…{value[^maximumLength..]}"
-        : value;
-    internal static bool IsAlreadyExists(IOException exception) => (exception.HResult & 0xffff) is 80 or 183;
 }
