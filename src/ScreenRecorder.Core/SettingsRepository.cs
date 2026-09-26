@@ -60,6 +60,13 @@ public sealed class SettingsRepository(string? baseDirectory = null)
             result.RecordingFullScreenShortcut = Shortcut(root, nameof(result.RecordingFullScreenShortcut), defaults.RecordingFullScreenShortcut);
             result.RecordingWindowShortcut = Shortcut(root, nameof(result.RecordingWindowShortcut), defaults.RecordingWindowShortcut);
             result.PauseRecordingShortcut = Shortcut(root, nameof(result.PauseRecordingShortcut), defaults.PauseRecordingShortcut);
+            result.ScreenshotRegionEnabled = Bool(root, nameof(result.ScreenshotRegionEnabled), defaults.ScreenshotRegionEnabled);
+            result.ScreenshotFullScreenEnabled = Bool(root, nameof(result.ScreenshotFullScreenEnabled), defaults.ScreenshotFullScreenEnabled);
+            result.ScreenshotWindowEnabled = Bool(root, nameof(result.ScreenshotWindowEnabled), defaults.ScreenshotWindowEnabled);
+            result.RecordingRegionEnabled = Bool(root, nameof(result.RecordingRegionEnabled), defaults.RecordingRegionEnabled);
+            result.RecordingFullScreenEnabled = Bool(root, nameof(result.RecordingFullScreenEnabled), defaults.RecordingFullScreenEnabled);
+            result.RecordingWindowEnabled = Bool(root, nameof(result.RecordingWindowEnabled), defaults.RecordingWindowEnabled);
+            result.PauseRecordingEnabled = Bool(root, nameof(result.PauseRecordingEnabled), defaults.PauseRecordingEnabled);
             result.SkippedUpdateVersion = NullableString(root, nameof(result.SkippedUpdateVersion), defaults.SkippedUpdateVersion);
             return result;
         }

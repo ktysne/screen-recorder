@@ -21,6 +21,7 @@ internal sealed class SettingsForm : Form
     private readonly List<Action<Settings>> _readers = [];
     private readonly Dictionary<RecorderAction, TextBox> _shortcutInputs = [];
     private readonly Dictionary<RecorderAction, Label> _shortcutStatuses = [];
+    private readonly Dictionary<RecorderAction, CheckBox> _shortcutEnabled = [];
     private readonly Dictionary<string, Label> _directoryIssues = [];
     private readonly Label _formStatus = new() { AutoSize = true };
     private readonly Label _shortcutStatus = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
@@ -243,21 +244,25 @@ internal sealed class SettingsForm : Form
         });
 
         var grid = AddSection(root, UiLabels.ShortcutAssignments);
-        grid.ColumnStyles[0].SizeType = SizeType.Percent;
-        grid.ColumnStyles[0].Width = 32;
-        grid.ColumnStyles[1].SizeType = SizeType.Percent;
-        grid.ColumnStyles[1].Width = 44;
-        grid.ColumnStyles[2].SizeType = SizeType.Percent;
-        grid.ColumnStyles[2].Width = 24;
-        AddHeadingRow(grid, UiLabels.ShortcutColumnAction, UiLabels.ShortcutColumnKey, UiLabels.ShortcutColumnStatus);
+        grid.ColumnCount = 4;
+        grid.ColumnStyles.Clear();
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 10));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
+        AddHeadingRow(grid, UiLabels.ShortcutColumnEnabled, UiLabels.ShortcutColumnAction, UiLabels.ShortcutColumnKey, UiLabels.ShortcutColumnStatus);
         foreach (var assignment in ShortcutSettingsValidator.GetAssignments(_initialSettings))
         {
             var action = assignment.Action;
+            var enabled = new CheckBox { AutoSize = true, Checked = assignment.Enabled, AccessibleName = UiLabels.ShortcutEnabledAccessibleName(action), Anchor = AnchorStyles.Left, Margin = new Padding(4, 3, 4, 3) };
+            enabled.CheckedChanged += (_, _) => { if (!_loading) RefreshValidation(); };
+            _loaders.Add(settings => enabled.Checked = GetShortcutEnabled(settings, action));
             var input = new TextBox { ReadOnly = true, Dock = DockStyle.Fill, AccessibleName = UiLabels.ShortcutActionName(action), TabStop = true };
             var status = new Label { AutoSize = true, ForeColor = SystemColors.GrayText, Text = string.Empty, Margin = new Padding(4, 6, 4, 4) };
             input.KeyDown += (_, eventArgs) => CaptureShortcut(action, input, eventArgs);
             input.TextChanged += (_, _) => { if (!_loading) RefreshValidation(); };
-            AddShortcutRow(grid, UiLabels.ShortcutActionName(action), input, status);
+            AddShortcutRow(grid, enabled, UiLabels.ShortcutActionName(action), input, status);
+            _shortcutEnabled.Add(action, enabled);
             _shortcutInputs.Add(action, input);
             _shortcutStatuses.Add(action, status);
         }
@@ -440,20 +445,21 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private static void AddShortcutRow(TableLayoutPanel table, string label, Control input, Control status)
+    private static void AddShortcutRow(TableLayoutPanel table, Control enabled, string label, Control input, Control status)
     {
         var row = table.RowCount++;
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(4, 7, 6, 4) }, 0, row);
-        table.Controls.Add(input, 1, row);
-        table.Controls.Add(status, 2, row);
+        table.Controls.Add(enabled, 0, row);
+        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(4, 7, 6, 4) }, 1, row);
+        table.Controls.Add(input, 2, row);
+        table.Controls.Add(status, 3, row);
     }
 
-    private static void AddHeadingRow(TableLayoutPanel table, string action, string key, string status)
+    private static void AddHeadingRow(TableLayoutPanel table, string enabled, string action, string key, string status)
     {
         var row = table.RowCount++;
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        foreach (var (text, column) in new[] { (action, 0), (key, 1), (status, 2) })
+        foreach (var (text, column) in new[] { (enabled, 0), (action, 1), (key, 2), (status, 3) })
             table.Controls.Add(new Label { Text = text, AutoSize = true, Font = SystemFonts.MessageBoxFont, Margin = new Padding(4, 4, 4, 6) }, column, row);
     }
 
@@ -482,6 +488,8 @@ internal sealed class SettingsForm : Form
         SetShortcut(result, RecorderAction.RecordingFullScreen, _shortcutInputs[RecorderAction.RecordingFullScreen].Text);
         SetShortcut(result, RecorderAction.RecordingWindow, _shortcutInputs[RecorderAction.RecordingWindow].Text);
         SetShortcut(result, RecorderAction.PauseResume, _shortcutInputs[RecorderAction.PauseResume].Text);
+        foreach (var (action, enabled) in _shortcutEnabled)
+            SetShortcutEnabled(result, action, enabled.Checked);
         return result;
     }
 
@@ -504,6 +512,12 @@ internal sealed class SettingsForm : Form
         foreach (var (action, input) in _shortcutInputs)
         {
             var status = _shortcutStatuses[action];
+            if (!_shortcutEnabled[action].Checked)
+            {
+                status.Text = UiLabels.ShortcutStatusDisabled;
+                status.ForeColor = SystemColors.GrayText;
+                continue;
+            }
             if (shortcutIssues.TryGetValue(action, out var issue))
             {
                 var duplicate = issue.Kind == ShortcutValidationIssueKind.Duplicate;
@@ -716,6 +730,32 @@ internal sealed class SettingsForm : Form
             case RecorderAction.PauseResume: settings.PauseRecordingShortcut = notation; break;
         }
     }
+
+    private static void SetShortcutEnabled(Settings settings, RecorderAction action, bool enabled)
+    {
+        switch (action)
+        {
+            case RecorderAction.ScreenshotRegion: settings.ScreenshotRegionEnabled = enabled; break;
+            case RecorderAction.ScreenshotFullScreen: settings.ScreenshotFullScreenEnabled = enabled; break;
+            case RecorderAction.ScreenshotWindow: settings.ScreenshotWindowEnabled = enabled; break;
+            case RecorderAction.RecordingRegion: settings.RecordingRegionEnabled = enabled; break;
+            case RecorderAction.RecordingFullScreen: settings.RecordingFullScreenEnabled = enabled; break;
+            case RecorderAction.RecordingWindow: settings.RecordingWindowEnabled = enabled; break;
+            case RecorderAction.PauseResume: settings.PauseRecordingEnabled = enabled; break;
+        }
+    }
+
+    private static bool GetShortcutEnabled(Settings settings, RecorderAction action) => action switch
+    {
+        RecorderAction.ScreenshotRegion => settings.ScreenshotRegionEnabled,
+        RecorderAction.ScreenshotFullScreen => settings.ScreenshotFullScreenEnabled,
+        RecorderAction.ScreenshotWindow => settings.ScreenshotWindowEnabled,
+        RecorderAction.RecordingRegion => settings.RecordingRegionEnabled,
+        RecorderAction.RecordingFullScreen => settings.RecordingFullScreenEnabled,
+        RecorderAction.RecordingWindow => settings.RecordingWindowEnabled,
+        RecorderAction.PauseResume => settings.PauseRecordingEnabled,
+        _ => throw new ArgumentOutOfRangeException(nameof(action))
+    };
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int virtualKey);
