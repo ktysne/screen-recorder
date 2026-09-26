@@ -46,11 +46,12 @@ internal sealed class RecordingEngineCompletedEventArgs(string filePath) : Event
     public string FilePath { get; } = filePath;
 }
 
-internal sealed class RecordingEngineFailedEventArgs(string filePath, string error, RecordingTerminationOutcome outcome) : EventArgs
+internal sealed class RecordingEngineFailedEventArgs(string filePath, string error, RecordingTerminationOutcome outcome, bool beforeRecordingStarted) : EventArgs
 {
     public string FilePath { get; } = filePath;
     public string Error { get; } = error;
     public RecordingTerminationOutcome Outcome { get; } = outcome;
+    public bool BeforeRecordingStarted { get; } = beforeRecordingStarted;
 }
 
 internal sealed class RecordingEngineWarningEventArgs(string message) : EventArgs

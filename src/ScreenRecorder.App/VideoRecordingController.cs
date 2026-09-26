@@ -543,7 +543,8 @@ internal sealed class VideoRecordingController : IDisposable
         _ = FinishRecordingFailureAsync(
             eventArgs.Error,
             eventArgs.FilePath,
-            finalizationConfirmed: false);
+            finalizationConfirmed: false,
+            recordingStartFailure: eventArgs.BeforeRecordingStarted);
     }
 
     private async Task FinishRecordingStartFailureAfterTimeoutAsync(IRecordingEngine engine)
