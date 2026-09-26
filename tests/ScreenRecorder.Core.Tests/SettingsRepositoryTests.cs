@@ -42,6 +42,12 @@ public sealed class SettingsRepositoryTests : IDisposable
             settings.ScreenshotRegionShortcut, settings.ScreenshotFullScreenShortcut, settings.ScreenshotWindowShortcut,
             settings.RecordingRegionShortcut, settings.RecordingFullScreenShortcut, settings.RecordingWindowShortcut, settings.PauseRecordingShortcut,
         });
+        Assert.All(new[]
+        {
+            settings.ScreenshotRegionEnabled, settings.ScreenshotFullScreenEnabled, settings.ScreenshotWindowEnabled,
+            settings.RecordingRegionEnabled, settings.RecordingFullScreenEnabled, settings.RecordingWindowEnabled,
+            settings.PauseRecordingEnabled
+        }, Assert.True);
         Assert.Null(settings.SkippedUpdateVersion);
         Assert.EndsWith("ScreenRecorder", settings.StillImageDirectory);
         Assert.EndsWith("ScreenRecorder", settings.VideoDirectory);
@@ -80,6 +86,54 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(98, settings.JpegQuality);
         Assert.True(settings.PlayCaptureSound);
         Assert.Equal(30, settings.FrameRate);
+    }
+
+    [Fact]
+    public void MissingAndMalformedShortcutEnabledPropertiesDefaultToTrue()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "settings.json"), "{\"screenshotRegionEnabled\":false,\"screenshotFullScreenEnabled\":\"bad\",\"screenshotWindowEnabled\":1,\"recordingRegionEnabled\":null}");
+
+        var settings = new SettingsRepository(_directory).Load();
+
+        Assert.False(settings.ScreenshotRegionEnabled);
+        Assert.All(new[]
+        {
+            settings.ScreenshotFullScreenEnabled, settings.ScreenshotWindowEnabled, settings.RecordingRegionEnabled,
+            settings.RecordingFullScreenEnabled, settings.RecordingWindowEnabled, settings.PauseRecordingEnabled
+        }, Assert.True);
+    }
+
+    [Fact]
+    public void DisabledShortcutSettingsSurviveSaveLoadAndClone()
+    {
+        var settings = new Settings
+        {
+            ScreenshotRegionEnabled = false,
+            ScreenshotFullScreenEnabled = false,
+            ScreenshotWindowEnabled = false,
+            RecordingRegionEnabled = false,
+            RecordingFullScreenEnabled = false,
+            RecordingWindowEnabled = false,
+            PauseRecordingEnabled = false
+        };
+        var repository = new SettingsRepository(_directory);
+        repository.Save(settings);
+
+        var loaded = repository.Load();
+        Assert.All(new[]
+        {
+            loaded.ScreenshotRegionEnabled, loaded.ScreenshotFullScreenEnabled, loaded.ScreenshotWindowEnabled,
+            loaded.RecordingRegionEnabled, loaded.RecordingFullScreenEnabled, loaded.RecordingWindowEnabled,
+            loaded.PauseRecordingEnabled
+        }, Assert.False);
+        var clone = loaded.Clone();
+        Assert.All(new[]
+        {
+            clone.ScreenshotRegionEnabled, clone.ScreenshotFullScreenEnabled, clone.ScreenshotWindowEnabled,
+            clone.RecordingRegionEnabled, clone.RecordingFullScreenEnabled, clone.RecordingWindowEnabled,
+            clone.PauseRecordingEnabled
+        }, Assert.False);
     }
 
     [Theory]

@@ -25,6 +25,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly VideoRecordingStateMachine _recordingState = new();
     private readonly IVideoRecordingPostProcessor _videoPostProcessor;
     private readonly Dictionary<RecorderAction, ToolStripMenuItem> _shortcutMenuItems = [];
+    private readonly Dictionary<RecorderAction, ToolStripMenuItem> _captureMenuParents = [];
     private Settings _settings;
     private SettingsForm? _settingsForm;
     private bool _screenshotCaptureInProgress;
@@ -84,7 +85,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = _idleTrayIcon, ContextMenuStrip = _menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowSettings();
         _tray.BalloonTipClicked += (_, _) => HandleBalloonClicked();
-        _hotkeyManager = new HotkeyManager(PerformAction);
+        _hotkeyManager = new HotkeyManager(PerformHotkeyAction);
         var failures = _hotkeyManager.Replace(_settings);
         UpdateShortcutMenuLabels();
         ReportHotkeyFailures(failures, startup: true);
@@ -139,7 +140,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private ContextMenuStrip CreateMenu()
     {
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip { ShowItemToolTips = true };
         menu.Items.Add(CreateCaptureMenu(UiLabels.Screenshot,
             RecorderAction.ScreenshotFullScreen, RecorderAction.ScreenshotRegion, RecorderAction.ScreenshotWindow));
         menu.Items.Add(CreateCaptureMenu(UiLabels.Record,
@@ -165,6 +166,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private ToolStripMenuItem CreateCaptureMenu(string label, RecorderAction full, RecorderAction region, RecorderAction window)
     {
         var item = new ToolStripMenuItem(label);
+        foreach (var action in new[] { full, region, window }) _captureMenuParents[action] = item;
         item.DropDownItems.Add(CreateActionItem(UiLabels.FullDisplay, full));
         item.DropDownItems.Add(CreateActionItem(UiLabels.SelectRegion, region));
         item.DropDownItems.Add(CreateActionItem(UiLabels.SelectWindow, window));
@@ -228,10 +230,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
         foreach (var assignment in ShortcutSettingsValidator.GetAssignments(_settings))
         {
             if (!_shortcutMenuItems.TryGetValue(assignment.Action, out var item)) continue;
+            if (assignment.Action != RecorderAction.PauseResume)
+            {
+                item.Enabled = assignment.Enabled;
+                item.ToolTipText = assignment.Enabled ? string.Empty : UiLabels.ShortcutDisabledToolTip;
+            }
             item.ShortcutKeyDisplayString = HotkeyShortcut.TryParse(assignment.Notation, out var shortcut) && shortcut is not null
                 ? shortcut.ToDisplayString()
                 : string.Empty;
         }
+        foreach (var parent in _captureMenuParents.Values.Distinct())
+            parent.Enabled = parent.DropDownItems.Cast<ToolStripMenuItem>().Any(item => item.Enabled);
+    }
+
+    private void PerformHotkeyAction(RecorderAction action)
+    {
+        var assignment = ShortcutSettingsValidator.GetAssignments(_settings).FirstOrDefault(item => item.Action == action);
+        if (assignment is null || !assignment.Enabled) return;
+        PerformAction(action);
     }
 
     private void ReportHotkeyFailures(IReadOnlyList<HotkeyFailure> failures, bool startup)

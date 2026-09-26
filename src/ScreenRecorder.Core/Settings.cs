@@ -48,6 +48,13 @@ public sealed class Settings
     public string RecordingFullScreenShortcut { get; set; } = "Ctrl+Shift+PrtSc";
     public string RecordingWindowShortcut { get; set; } = "Alt+Shift+PrtSc";
     public string PauseRecordingShortcut { get; set; } = "";
+    public bool ScreenshotRegionEnabled { get; set; } = true;
+    public bool ScreenshotFullScreenEnabled { get; set; } = true;
+    public bool ScreenshotWindowEnabled { get; set; } = true;
+    public bool RecordingRegionEnabled { get; set; } = true;
+    public bool RecordingFullScreenEnabled { get; set; } = true;
+    public bool RecordingWindowEnabled { get; set; } = true;
+    public bool PauseRecordingEnabled { get; set; } = true;
 
     public string? SkippedUpdateVersion { get; set; }
 
@@ -89,6 +96,13 @@ public sealed class Settings
         RecordingFullScreenShortcut = RecordingFullScreenShortcut,
         RecordingWindowShortcut = RecordingWindowShortcut,
         PauseRecordingShortcut = PauseRecordingShortcut,
+        ScreenshotRegionEnabled = ScreenshotRegionEnabled,
+        ScreenshotFullScreenEnabled = ScreenshotFullScreenEnabled,
+        ScreenshotWindowEnabled = ScreenshotWindowEnabled,
+        RecordingRegionEnabled = RecordingRegionEnabled,
+        RecordingFullScreenEnabled = RecordingFullScreenEnabled,
+        RecordingWindowEnabled = RecordingWindowEnabled,
+        PauseRecordingEnabled = PauseRecordingEnabled,
         SkippedUpdateVersion = SkippedUpdateVersion
     };
 }

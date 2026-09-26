@@ -146,8 +146,11 @@ public static class UiLabels
     public const string ShortcutEntryHelp = "入力欄を選んでキーを押すと登録します。Backspace または Delete で割り当てを解除します。";
     public const string ShortcutRegistrationStatus = "登録状態";
     public const string ShortcutColumnAction = "操作";
+    public const string ShortcutColumnEnabled = "有効";
     public const string ShortcutColumnKey = "キー";
     public const string ShortcutColumnStatus = "状態";
+    public const string ShortcutStatusDisabled = "無効";
+    public const string ShortcutDisabledToolTip = "設定のショートカットタブで無効にしています";
     public const string FilenameTemplateHelp = "{date} は日付、{time} は時刻、{mode} は撮影方法、{window} はウィンドウ名に置き換わります。";
     public const string CaptureDelayHelp = "撮影の操作をしてから撮影するまで待つ時間です。範囲やウィンドウを指定する場合は、選び終えてから数えます。";
     public const string DirectoryRequired = "保存先のフォルダーを指定してください。";
@@ -217,4 +220,6 @@ public static class UiLabels
         RecorderAction.PauseResume => PauseResume,
         _ => StopRecording
     };
+
+    public static string ShortcutEnabledAccessibleName(RecorderAction action) => $"{ShortcutActionName(action)}を有効にする";
 }

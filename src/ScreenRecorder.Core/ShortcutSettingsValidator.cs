@@ -1,6 +1,6 @@
 namespace ScreenRecorder.Core;
 
-public sealed record ShortcutAssignment(RecorderAction Action, string Notation);
+public sealed record ShortcutAssignment(RecorderAction Action, string Notation, bool Enabled);
 
 public enum ShortcutValidationIssueKind
 {
@@ -26,13 +26,13 @@ public static class ShortcutSettingsValidator
 
     public static IReadOnlyList<ShortcutAssignment> GetAssignments(Settings settings) =>
     [
-        new(RecorderAction.ScreenshotRegion, settings.ScreenshotRegionShortcut),
-        new(RecorderAction.ScreenshotFullScreen, settings.ScreenshotFullScreenShortcut),
-        new(RecorderAction.ScreenshotWindow, settings.ScreenshotWindowShortcut),
-        new(RecorderAction.RecordingRegion, settings.RecordingRegionShortcut),
-        new(RecorderAction.RecordingFullScreen, settings.RecordingFullScreenShortcut),
-        new(RecorderAction.RecordingWindow, settings.RecordingWindowShortcut),
-        new(RecorderAction.PauseResume, settings.PauseRecordingShortcut)
+        new(RecorderAction.ScreenshotRegion, settings.ScreenshotRegionShortcut, settings.ScreenshotRegionEnabled),
+        new(RecorderAction.ScreenshotFullScreen, settings.ScreenshotFullScreenShortcut, settings.ScreenshotFullScreenEnabled),
+        new(RecorderAction.ScreenshotWindow, settings.ScreenshotWindowShortcut, settings.ScreenshotWindowEnabled),
+        new(RecorderAction.RecordingRegion, settings.RecordingRegionShortcut, settings.RecordingRegionEnabled),
+        new(RecorderAction.RecordingFullScreen, settings.RecordingFullScreenShortcut, settings.RecordingFullScreenEnabled),
+        new(RecorderAction.RecordingWindow, settings.RecordingWindowShortcut, settings.RecordingWindowEnabled),
+        new(RecorderAction.PauseResume, settings.PauseRecordingShortcut, settings.PauseRecordingEnabled)
     ];
 
     public static IReadOnlyList<ShortcutValidationIssue> Validate(Settings settings)
@@ -42,6 +42,7 @@ public static class ShortcutSettingsValidator
         var issues = new List<ShortcutValidationIssue>();
         foreach (var assignment in assignments)
         {
+            if (!assignment.Enabled) continue;
             if (!HotkeyShortcut.TryParse(assignment.Notation, out var shortcut))
             {
                 issues.Add(new ShortcutValidationIssue(assignment.Action, ShortcutValidationIssueKind.InvalidNotation, assignment.Notation));

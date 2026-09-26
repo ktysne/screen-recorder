@@ -60,6 +60,26 @@ public sealed class HotkeyShortcutTests
     }
 
     [Fact]
+    public void DisabledAssignmentsAreExcludedFromDuplicateValidation()
+    {
+        var settings = new Settings
+        {
+            ScreenshotRegionShortcut = "Ctrl+F2",
+            ScreenshotRegionEnabled = false,
+            RecordingRegionShortcut = "Ctrl+F2",
+            RecordingFullScreenShortcut = "Ctrl+F2"
+        };
+
+        var assignments = ShortcutSettingsValidator.GetAssignments(settings);
+        var issues = ShortcutSettingsValidator.Validate(settings);
+
+        Assert.False(assignments.Single(item => item.Action == RecorderAction.ScreenshotRegion).Enabled);
+        Assert.Contains(issues, issue => issue.Action == RecorderAction.RecordingRegion && issue.Kind == ShortcutValidationIssueKind.Duplicate);
+        Assert.Contains(issues, issue => issue.Action == RecorderAction.RecordingFullScreen && issue.Kind == ShortcutValidationIssueKind.Duplicate);
+        Assert.DoesNotContain(issues, issue => issue.Action == RecorderAction.ScreenshotRegion);
+    }
+
+    [Fact]
     public void SettingsValidationRejectsInvalidValuesAndShortcutNotation()
     {
         var settings = new Settings { VideoBitrateMbps = 101, ScreenshotRegionShortcut = "Ctrl+UnknownKey" };

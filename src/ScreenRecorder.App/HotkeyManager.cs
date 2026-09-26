@@ -39,6 +39,7 @@ internal sealed class HotkeyManager : IDisposable
         for (var index = 0; index < assignments.Count; index++)
         {
             var assignment = assignments[index];
+            if (!assignment.Enabled) continue;
             if (!HotkeyShortcut.TryParse(assignment.Notation, out var shortcut))
             {
                 failures.Add(new HotkeyFailure(assignment.Action, assignment.Notation, HotkeyFailureReason.InvalidNotation, null, false));
