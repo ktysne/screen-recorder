@@ -44,7 +44,7 @@ internal static class RecordingWorkerProgram
 internal sealed class RecordingWorkerRuntime : ApplicationContext
 {
     private static readonly TimeSpan IdleTerminationGrace = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan StopFailureTerminationWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan StopFailureTerminationWait = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan SaveWaitAfterDisconnect = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan DisconnectedExitDeadline = SaveWaitAfterDisconnect + TimeSpan.FromSeconds(15);
     private readonly NamedPipeClientStream _pipe;
