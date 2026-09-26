@@ -9,9 +9,10 @@ internal static class RecordingWorkerProgram
 {
     private static readonly TimeSpan PipeConnectTimeout = TimeSpan.FromSeconds(10);
 
-    public static int Run(string pipeName)
+    // 記録しない設定で固定名のログを作らないよう、本体の記録レベルを起動の引数で受け取り、接続前から従う。
+    public static int Run(string pipeName, DiagnosticLogLevel logLevel)
     {
-        OrphanDiagnosticLog.Activate(DiagnosticLog.Level);
+        OrphanDiagnosticLog.Activate(logLevel);
         try
         {
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
@@ -32,7 +33,7 @@ internal static class RecordingWorkerProgram
                 return RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.StartFailed);
             }
 
-            using var runtime = new RecordingWorkerRuntime(pipe);
+            using var runtime = new RecordingWorkerRuntime(pipe, logLevel);
             try
             {
                 return runtime.Run();
@@ -73,7 +74,7 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
     private RecordingWorkerStartData? _startData;
     private RecordingWorkerRecordingState? _recordingState;
     private int _readyResponseReceived;
-    private DiagnosticLogLevel _workerLogLevel = DiagnosticLog.Level;
+    private DiagnosticLogLevel _workerLogLevel;
     private int _hasObservedRecording;
     private int _disconnected;
     private int _disconnectHandling;
@@ -83,8 +84,9 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
 
     private sealed record OutgoingMessage(RecordingWorkerMessage Message, TaskCompletionSource<bool>? Written);
 
-    public RecordingWorkerRuntime(NamedPipeClientStream pipe)
+    public RecordingWorkerRuntime(NamedPipeClientStream pipe, DiagnosticLogLevel logLevel)
     {
+        _workerLogLevel = logLevel;
         _pipe = pipe;
         Application.Idle += CaptureUiContext;
     }

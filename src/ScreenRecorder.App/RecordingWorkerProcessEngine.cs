@@ -197,6 +197,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
         };
         startInfo.ArgumentList.Add("--record-worker");
         startInfo.ArgumentList.Add(pipeName);
+        startInfo.ArgumentList.Add(DiagnosticLog.Level.ToSettingName());
         return startInfo;
     }
 
