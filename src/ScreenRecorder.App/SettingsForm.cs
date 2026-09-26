@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using ScreenRecorderLib;
 using ScreenRecorder.Core;
@@ -678,8 +677,7 @@ internal sealed class SettingsForm : Form
     {
         try
         {
-            Directory.CreateDirectory(path);
-            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+            ShellLauncher.OpenFolder(path);
         }
         catch (Exception exception)
         {

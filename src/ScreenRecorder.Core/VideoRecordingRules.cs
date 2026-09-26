@@ -188,6 +188,8 @@ public sealed class VideoRecordingStateMachine
 
 public static class VideoRecordingFileNaming
 {
+    public const string TemporaryFileSuffix = ".recording.mp4";
+    public const string TemporaryFileSearchPattern = "*" + TemporaryFileSuffix;
     public static string GetAvailablePath(
         string baseDirectory,
         bool organizeByMonth,
@@ -214,6 +216,6 @@ public static class VideoRecordingFileNaming
 
         var directory = Path.GetDirectoryName(finalPath) ?? string.Empty;
         var baseName = Path.GetFileNameWithoutExtension(finalPath);
-        return Path.Combine(directory, $"{baseName}.recording.mp4");
+        return Path.Combine(directory, baseName + TemporaryFileSuffix);
     }
 }

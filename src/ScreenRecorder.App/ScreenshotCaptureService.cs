@@ -28,7 +28,7 @@ internal sealed class ScreenshotCaptureService
         var captureBounds = mode == ScreenshotMode.Full
             ? Screen.FromPoint(Cursor.Position).Bounds
             : selection!.Bounds;
-        DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画の撮影を開始しました: 方法={CaptureMethodName(mode)}, 範囲=({captureBounds.X},{captureBounds.Y}) {captureBounds.Width}x{captureBounds.Height}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Capture, $"静止画の撮影を開始しました: 方法={CaptureText.CaptureMethodName(mode)}、範囲=({captureBounds.X},{captureBounds.Y}) {captureBounds.Width}x{captureBounds.Height}。");
         var displayBounds = mode == ScreenshotMode.Full ? captureBounds : Screen.FromRectangle(captureBounds).Bounds;
         if (settings.CaptureDelaySeconds > 0)
             await WaitWithCountdownAsync(settings.CaptureDelaySeconds, displayBounds);
@@ -189,7 +189,7 @@ internal sealed class ScreenshotCaptureService
                     else WriteJpeg(stream, image, settings.JpegQuality);
                     stream.Flush(flushToDisk: true);
                 }
-                catch (IOException exception) when (!temporaryCreated && IsAlreadyExists(exception))
+                catch (IOException exception) when (!temporaryCreated && CaptureText.IsAlreadyExists(exception))
                 {
                     continue;
                 }
@@ -204,7 +204,7 @@ internal sealed class ScreenshotCaptureService
                     File.Move(temporaryPath, path);
                     return path;
                 }
-                catch (IOException exception) when (IsAlreadyExists(exception))
+                catch (IOException exception) when (CaptureText.IsAlreadyExists(exception))
                 {
                     TryDeleteTemporaryFile(temporaryPath);
                     retryWithAvailableFinalPath = true;
@@ -225,20 +225,6 @@ internal sealed class ScreenshotCaptureService
     {
         try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
-
-    private static bool IsAlreadyExists(IOException exception)
-    {
-        var errorCode = exception.HResult & 0xffff;
-        return errorCode is 80 or 183;
-    }
-
-    private static string CaptureMethodName(ScreenshotMode mode) => mode switch
-    {
-        ScreenshotMode.Full => "ディスプレイ全体",
-        ScreenshotMode.Region => "範囲指定",
-        ScreenshotMode.Window => "ウィンドウ指定",
-        _ => mode.ToString()
-    };
 
     private static void WritePng(Stream stream, Bitmap image, PngCompression compression)
     {

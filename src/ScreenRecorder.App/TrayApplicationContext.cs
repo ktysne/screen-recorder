@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Media;
 using Microsoft.Win32;
 using ScreenRecorder.Core;
 
@@ -26,6 +24,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private System.Windows.Forms.Timer? _leftoverRecordingNotificationTimer;
     private readonly UpdateController _updateController;
     private System.Windows.Forms.Timer? _updateCompletedNotificationTimer;
+
+    private bool IsCaptureOrRecordingSelectionInProgress => _screenshotCaptureInProgress || _recording.SelectionInProgress;
 
 
     public TrayApplicationContext(
@@ -218,6 +218,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         if (recordingMode is { } requestedRecordingMode)
         {
+            if (_recording.State == VideoRecordingState.Idle && IsCaptureOrRecordingSelectionInProgress) return;
             await _recording.HandleRecordActionAsync(requestedRecordingMode);
             return;
         }
@@ -242,8 +243,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         if (mode is { } screenshotMode)
         {
-            if (_recording.State == VideoRecordingState.Saving) return;
-            if (_screenshotCaptureInProgress) return;
+            if (_recording.State == VideoRecordingState.Saving || IsCaptureOrRecordingSelectionInProgress) return;
             _screenshotCaptureInProgress = true;
             _updateController.RefreshBusyState();
             _captureNotifier.ClearPendingCapture();
@@ -256,8 +256,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
             catch (Exception exception)
             {
-                DiagnosticLog.Error(DiagnosticLogTags.Capture, $"静止画の撮影に失敗しました: 方法={RecordingShared.CaptureMethodName(screenshotMode)}; {exception}");
-                var reason = RecordingShared.ShortError(exception.Message);
+                DiagnosticLog.Error(DiagnosticLogTags.Capture, $"静止画の撮影に失敗しました: 方法={CaptureText.CaptureMethodName(screenshotMode)}; {exception}");
+                var reason = CaptureText.ShortError(exception.Message);
                 ShowNotification(4000, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
             }
             finally
@@ -386,7 +386,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 if (!Directory.Exists(videoDirectory)) return (Count: 0, Folder: (string?)null, Error: (Exception?)null);
                 var count = 0;
                 string? firstFolder = null;
-                foreach (var path in Directory.EnumerateFiles(videoDirectory, "*.recording.mp4", SearchOption.AllDirectories))
+                foreach (var path in Directory.EnumerateFiles(videoDirectory, VideoRecordingFileNaming.TemporaryFileSearchPattern, SearchOption.AllDirectories))
                 {
                     count++;
                     firstFolder ??= Path.GetDirectoryName(path) ?? videoDirectory;
@@ -406,7 +406,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 return;
             }
             if (result.Count == 0 || result.Folder is null) return;
-            var message = string.Format(UiLabels.IncompleteRecordingsFound, result.Count, RecordingShared.ShortPath(result.Folder, 190));
+            var message = string.Format(UiLabels.IncompleteRecordingsFound, result.Count, CaptureText.ShortPath(result.Folder, 190));
             _leftoverRecordingNotificationTimer = new System.Windows.Forms.Timer { Interval = StartupNotificationDelayMilliseconds * 2 };
             _leftoverRecordingNotificationTimer.Tick += (_, _) =>
             {
@@ -451,32 +451,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
         }
 
-        if (settings.PlayCaptureSound)
-        {
-            try { SystemSounds.Asterisk.Play(); }
-            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"撮影時の効果音を再生できませんでした: {exception}"); }
-        }
-        try
-        {
-            switch (settings.AfterCaptureAction)
-            {
-                case CaptureAfterAction.OpenFile:
-                    using (Process.Start(new ProcessStartInfo(result.FilePath) { UseShellExecute = true })) { }
-                    break;
-                case CaptureAfterAction.OpenFolder:
-                    if (!OpenFolder(Path.GetDirectoryName(result.FilePath) ?? settings.StillImageDirectory, notifyFailure: false))
-                        warning = UiLabels.ScreenshotAfterActionFailed;
-                    break;
-            }
-        }
-        catch (Exception exception)
-        {
-            DiagnosticLog.Warn(DiagnosticLogTags.Capture, $"撮影後の動作に失敗しました: 方法={RecordingShared.CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={result.FilePath}; {exception}");
-            warning = UiLabels.ScreenshotAfterActionFailed;
-        }
-
-        if (warning is not null) ShowCaptureNotification(4000, UiLabels.AppName, warning, ToolTipIcon.Warning, result.FilePath);
-        else if (settings.NotifyWhenSaved) ShowCaptureNotification(4000, UiLabels.AppName, UiLabels.ScreenshotSavedNotification, ToolTipIcon.Info, result.FilePath);
+        CaptureCompletion.Execute(
+            CaptureCompletionKind.Screenshot,
+            settings,
+            result.FilePath,
+            settings.StillImageDirectory,
+            $"方法={CaptureText.CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={result.FilePath}",
+            warning,
+            path => OpenFolder(path, notifyFailure: false),
+            ShowCaptureNotification);
     }
 
     private void OpenManual()
@@ -493,9 +476,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         try
         {
-            Directory.CreateDirectory(path);
-            var start = new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true };
-            using (Process.Start(start)) { }
+            ShellLauncher.OpenFolder(path);
             return true;
         }
         catch (Exception exception)
