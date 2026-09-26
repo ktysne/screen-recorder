@@ -468,8 +468,8 @@ internal sealed class SettingsForm : Form
         foreach (var loader in _loaders) loader(settings);
         foreach (var (action, input) in _shortcutInputs)
         {
-            var notation = ShortcutSettingsValidator.GetAssignments(settings).First(assignment => assignment.Action == action).Notation;
-            input.Text = HotkeyShortcut.TryParse(notation, out var shortcut) && shortcut is not null ? shortcut.ToDisplayString() : notation;
+            var notation = ShortcutBindings.For(action).GetNotation(settings);
+            input.Text = HotkeyShortcut.ToDisplayNotation(notation) ?? notation;
         }
         _loading = false;
         RefreshValidation();
@@ -480,13 +480,8 @@ internal sealed class SettingsForm : Form
     {
         var result = _initialSettings.Clone();
         foreach (var reader in _readers) reader(result);
-        SetShortcut(result, RecorderAction.ScreenshotRegion, _shortcutInputs[RecorderAction.ScreenshotRegion].Text);
-        SetShortcut(result, RecorderAction.ScreenshotFullScreen, _shortcutInputs[RecorderAction.ScreenshotFullScreen].Text);
-        SetShortcut(result, RecorderAction.ScreenshotWindow, _shortcutInputs[RecorderAction.ScreenshotWindow].Text);
-        SetShortcut(result, RecorderAction.RecordingRegion, _shortcutInputs[RecorderAction.RecordingRegion].Text);
-        SetShortcut(result, RecorderAction.RecordingFullScreen, _shortcutInputs[RecorderAction.RecordingFullScreen].Text);
-        SetShortcut(result, RecorderAction.RecordingWindow, _shortcutInputs[RecorderAction.RecordingWindow].Text);
-        SetShortcut(result, RecorderAction.PauseResume, _shortcutInputs[RecorderAction.PauseResume].Text);
+        foreach (var (action, input) in _shortcutInputs)
+            SetShortcut(result, action, input.Text);
         foreach (var (action, enabled) in _shortcutEnabled)
             SetShortcutEnabled(result, action, enabled.Checked);
         return result;
@@ -724,44 +719,16 @@ internal sealed class SettingsForm : Form
 
     private static void SetShortcut(Settings settings, RecorderAction action, string notation)
     {
-        if (HotkeyShortcut.TryParse(notation, out var shortcut) && shortcut is not null) notation = shortcut.ToDisplayString();
-        switch (action)
-        {
-            case RecorderAction.ScreenshotRegion: settings.ScreenshotRegionShortcut = notation; break;
-            case RecorderAction.ScreenshotFullScreen: settings.ScreenshotFullScreenShortcut = notation; break;
-            case RecorderAction.ScreenshotWindow: settings.ScreenshotWindowShortcut = notation; break;
-            case RecorderAction.RecordingRegion: settings.RecordingRegionShortcut = notation; break;
-            case RecorderAction.RecordingFullScreen: settings.RecordingFullScreenShortcut = notation; break;
-            case RecorderAction.RecordingWindow: settings.RecordingWindowShortcut = notation; break;
-            case RecorderAction.PauseResume: settings.PauseRecordingShortcut = notation; break;
-        }
+        notation = HotkeyShortcut.ToDisplayNotation(notation) ?? notation;
+        ShortcutBindings.For(action).SetNotation(settings, notation);
     }
 
     private static void SetShortcutEnabled(Settings settings, RecorderAction action, bool enabled)
     {
-        switch (action)
-        {
-            case RecorderAction.ScreenshotRegion: settings.ScreenshotRegionEnabled = enabled; break;
-            case RecorderAction.ScreenshotFullScreen: settings.ScreenshotFullScreenEnabled = enabled; break;
-            case RecorderAction.ScreenshotWindow: settings.ScreenshotWindowEnabled = enabled; break;
-            case RecorderAction.RecordingRegion: settings.RecordingRegionEnabled = enabled; break;
-            case RecorderAction.RecordingFullScreen: settings.RecordingFullScreenEnabled = enabled; break;
-            case RecorderAction.RecordingWindow: settings.RecordingWindowEnabled = enabled; break;
-            case RecorderAction.PauseResume: settings.PauseRecordingEnabled = enabled; break;
-        }
+        ShortcutBindings.For(action).SetEnabled(settings, enabled);
     }
 
-    private static bool GetShortcutEnabled(Settings settings, RecorderAction action) => action switch
-    {
-        RecorderAction.ScreenshotRegion => settings.ScreenshotRegionEnabled,
-        RecorderAction.ScreenshotFullScreen => settings.ScreenshotFullScreenEnabled,
-        RecorderAction.ScreenshotWindow => settings.ScreenshotWindowEnabled,
-        RecorderAction.RecordingRegion => settings.RecordingRegionEnabled,
-        RecorderAction.RecordingFullScreen => settings.RecordingFullScreenEnabled,
-        RecorderAction.RecordingWindow => settings.RecordingWindowEnabled,
-        RecorderAction.PauseResume => settings.PauseRecordingEnabled,
-        _ => throw new ArgumentOutOfRangeException(nameof(action))
-    };
+    private static bool GetShortcutEnabled(Settings settings, RecorderAction action) => ShortcutBindings.For(action).GetEnabled(settings);
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int virtualKey);

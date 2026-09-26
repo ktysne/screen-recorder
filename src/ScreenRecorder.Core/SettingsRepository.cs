@@ -55,20 +55,11 @@ public sealed class SettingsRepository(string? baseDirectory = null)
                         : setting.Default;
                 setting.Set(result, value);
             }
-            result.ScreenshotRegionShortcut = Shortcut(root, nameof(result.ScreenshotRegionShortcut), defaults.ScreenshotRegionShortcut);
-            result.ScreenshotFullScreenShortcut = Shortcut(root, nameof(result.ScreenshotFullScreenShortcut), defaults.ScreenshotFullScreenShortcut);
-            result.ScreenshotWindowShortcut = Shortcut(root, nameof(result.ScreenshotWindowShortcut), defaults.ScreenshotWindowShortcut);
-            result.RecordingRegionShortcut = Shortcut(root, nameof(result.RecordingRegionShortcut), defaults.RecordingRegionShortcut);
-            result.RecordingFullScreenShortcut = Shortcut(root, nameof(result.RecordingFullScreenShortcut), defaults.RecordingFullScreenShortcut);
-            result.RecordingWindowShortcut = Shortcut(root, nameof(result.RecordingWindowShortcut), defaults.RecordingWindowShortcut);
-            result.PauseRecordingShortcut = Shortcut(root, nameof(result.PauseRecordingShortcut), defaults.PauseRecordingShortcut);
-            result.ScreenshotRegionEnabled = Bool(root, nameof(result.ScreenshotRegionEnabled), defaults.ScreenshotRegionEnabled);
-            result.ScreenshotFullScreenEnabled = Bool(root, nameof(result.ScreenshotFullScreenEnabled), defaults.ScreenshotFullScreenEnabled);
-            result.ScreenshotWindowEnabled = Bool(root, nameof(result.ScreenshotWindowEnabled), defaults.ScreenshotWindowEnabled);
-            result.RecordingRegionEnabled = Bool(root, nameof(result.RecordingRegionEnabled), defaults.RecordingRegionEnabled);
-            result.RecordingFullScreenEnabled = Bool(root, nameof(result.RecordingFullScreenEnabled), defaults.RecordingFullScreenEnabled);
-            result.RecordingWindowEnabled = Bool(root, nameof(result.RecordingWindowEnabled), defaults.RecordingWindowEnabled);
-            result.PauseRecordingEnabled = Bool(root, nameof(result.PauseRecordingEnabled), defaults.PauseRecordingEnabled);
+            foreach (var binding in ShortcutBindings.All)
+            {
+                binding.SetNotation(result, Shortcut(root, binding.SettingName, binding.GetNotation(defaults)));
+                binding.SetEnabled(result, Bool(root, binding.EnabledSettingName, binding.GetEnabled(defaults)));
+            }
             result.SkippedUpdateVersion = NullableString(root, nameof(result.SkippedUpdateVersion), defaults.SkippedUpdateVersion);
             return result;
         }

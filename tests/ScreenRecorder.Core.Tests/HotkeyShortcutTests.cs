@@ -22,6 +22,23 @@ public sealed class HotkeyShortcutTests
     }
 
     [Theory]
+    [InlineData("ctrl+shift+prtsc", "Ctrl+Shift+PrtSc")]
+    [InlineData(" sHiFt + cTrL + printscreen ", "Ctrl+Shift+PrtSc")]
+    public void ToDisplayNotationNormalizesValidNotation(string notation, string expected)
+    {
+        Assert.Equal(expected, HotkeyShortcut.ToDisplayNotation(notation));
+    }
+
+    [Theory]
+    [InlineData("Ctrl+UnknownKey")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ToDisplayNotationReturnsNullWhenNotationIsInvalidOrUnassigned(string notation)
+    {
+        Assert.Null(HotkeyShortcut.ToDisplayNotation(notation));
+    }
+
+    [Theory]
     [InlineData("Ctrl+")]
     [InlineData("Ctrl+Shift")]
     [InlineData("Ctrl++PrtSc")]

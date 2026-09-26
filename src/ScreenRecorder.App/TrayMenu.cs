@@ -55,9 +55,7 @@ internal sealed class TrayMenu : IDisposable
                 item.Enabled = assignment.Enabled;
                 item.ToolTipText = assignment.Enabled ? string.Empty : UiLabels.ShortcutDisabledToolTip;
             }
-            item.ShortcutKeyDisplayString = HotkeyShortcut.TryParse(assignment.Notation, out var shortcut) && shortcut is not null
-                ? shortcut.ToDisplayString()
-                : string.Empty;
+            item.ShortcutKeyDisplayString = HotkeyShortcut.ToDisplayNotation(assignment.Notation) ?? string.Empty;
         }
         foreach (var parent in _captureMenuParents.Values.Distinct())
             parent.Enabled = parent.DropDownItems.Cast<ToolStripMenuItem>().Any(item => item.Enabled);
