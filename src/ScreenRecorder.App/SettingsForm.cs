@@ -14,6 +14,8 @@ internal sealed class SettingsForm : Form
     private readonly DailyLog _log;
     private readonly Func<Settings, bool> _saveSettings;
     private readonly Func<bool> _isRecording;
+    // Form はタイトルバーに設定したアイコンを破棄しないため、自分で破棄する。
+    private readonly Icon _appIcon = AppIcon.Create(SystemInformation.IconSize);
     private (string Label, string? Value)[] _microphoneChoices = [];
     private bool _microphoneEnumerationFailed;
     private readonly List<Action<Settings>> _loaders = [];
@@ -63,7 +65,7 @@ internal sealed class SettingsForm : Form
         ClientSize = new Size(960, 760);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = false;
-        Icon = AppIcon.Create(SystemInformation.IconSize);
+        Icon = _appIcon;
         BuildLayout();
         LoadSettings(_initialSettings);
         Activated += (_, _) => UpdateEnablement();
@@ -636,6 +638,12 @@ internal sealed class SettingsForm : Form
             _log.Write($"Open keyboard settings failed: {exception}");
             _formStatus.Text = UiLabels.KeyboardSettingsOpenFailed;
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _appIcon.Dispose();
     }
 
     private void UpdateEnablement()
