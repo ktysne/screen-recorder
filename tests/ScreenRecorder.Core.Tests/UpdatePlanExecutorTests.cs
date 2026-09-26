@@ -174,14 +174,15 @@ public sealed class UpdatePlanExecutorTests : IDisposable
     }
 
     [Fact]
-    public void CleanupRecordRoundTripsAndOnlyAppliesToSameInstallationAndVersion()
+    public void CleanupRecordRoundTripsAndAppliesToSameInstallationAndOlderVersions()
     {
         var record = new UpdateCleanupRecord(_install, "0.2.0", ["ScreenRecorder.exe.old", "../outside.old", "manual.html"]);
         var restored = UpdateCleanupRecord.TryDeserialize(record.Serialize())!;
 
-        Assert.True(restored.AppliesTo(_install + Path.DirectorySeparatorChar, "0.2.0"));
-        Assert.False(restored.AppliesTo(_install, "0.1.0"));
-        Assert.False(restored.AppliesTo(_source, "0.2.0"));
+        Assert.True(restored.CanBeCleanedBy(_install + Path.DirectorySeparatorChar, "0.2.0"));
+        Assert.True(restored.CanBeCleanedBy(_install, "0.3.0"));
+        Assert.False(restored.CanBeCleanedBy(_install, "0.1.0"));
+        Assert.False(restored.CanBeCleanedBy(_source, "0.2.0"));
         Assert.Equal([Path.Combine(_install, "ScreenRecorder.exe.old")], restored.GetBackupFilePaths());
         Assert.Null(UpdateCleanupRecord.TryDeserialize("{"));
         Assert.Null(UpdateCleanupRecord.TryDeserialize("{}"));

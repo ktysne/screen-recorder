@@ -39,6 +39,8 @@ public sealed class UpdateApplyPlannerTests
         var first = CreatePlan(PackageFiles, "ScreenRecorder.exe");
         var second = CreatePlan(PackageFiles, "ScreenRecorder.exe");
 
+        Assert.Matches("^[0-9a-f]{32}$", first.UpdateId);
+        Assert.All(first.BackupPaths, path => Assert.Contains($".{first.UpdateId}.old", path, StringComparison.Ordinal));
         Assert.NotEqual(first.BackupPaths[0], second.BackupPaths[0]);
     }
 

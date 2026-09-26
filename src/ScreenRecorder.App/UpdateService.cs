@@ -24,7 +24,8 @@ internal static class UpdatePaths
     public const string SingletonMutexName = "Local\\ScreenRecorder.Singleton";
     public const string ApplierMutexName = "Local\\ScreenRecorder.UpdateApplier";
     public static string UpdateDirectory { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScreenRecorder", "update");
-    public static string CleanupRecordPath => Path.Combine(UpdateDirectory, UpdateCleanupRecord.FileName);
+    public static string GetCleanupRecordPath(string updateId) => Path.Combine(UpdateDirectory, UpdateCleanupRecord.GetFileName(updateId));
+    public static string LegacyCleanupRecordPath => Path.Combine(UpdateDirectory, UpdateCleanupRecord.FileName);
     public static string GetZipPath(UpdateVersion version) => Path.Combine(UpdateDirectory, $"ScreenRecorder-{version}-win-x64.zip");
     public static string GetExtractDirectory(UpdateVersion version) => Path.Combine(UpdateDirectory, $"ScreenRecorder-{version}");
 }

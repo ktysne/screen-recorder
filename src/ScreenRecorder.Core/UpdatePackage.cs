@@ -75,6 +75,9 @@ public static class UpdatePackage
 public sealed record UpdateCleanupRecord(string InstallDirectory, string Version, IReadOnlyList<string> BackupFiles)
 {
     public const string FileName = "cleanup.json";
+    public const string FileNamePrefix = "cleanup-";
+
+    public static string GetFileName(string updateId) => $"{FileNamePrefix}{updateId}.json";
 
     public string Serialize() => JsonSerializer.Serialize(this);
 
@@ -91,13 +94,15 @@ public sealed record UpdateCleanupRecord(string InstallDirectory, string Version
         }
     }
 
-    /// <summary>記録がこのインストール先のこの版のものなら、<c>.old</c> を消してよい。</summary>
-    public bool AppliesTo(string installDirectory, string version) =>
+    /// <summary>記録のインストール先が一致し、記録の版が実行中の版以下なら後始末できる。</summary>
+    public bool CanBeCleanedBy(string installDirectory, string currentVersion) =>
         string.Equals(
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(InstallDirectory)),
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(installDirectory)),
             StringComparison.OrdinalIgnoreCase)
-        && string.Equals(Version, version, StringComparison.Ordinal);
+        && UpdateVersion.TryParse(Version, out var recordVersion)
+        && UpdateVersion.TryParseApplicationVersion(currentVersion, out var runningVersion)
+        && recordVersion <= runningVersion;
 
     /// <summary>消す対象を、記録の中でも <c>.old</c> で終わる安全な相対パスに限る。</summary>
     public IEnumerable<string> GetBackupFilePaths() => BackupFiles
@@ -112,7 +117,7 @@ public sealed record UpdateCleanupRecord(string InstallDirectory, string Version
     public UpdateCleanupRecord? KeepUndeletedBackups(string installDirectory, string version, Func<string, bool> tryDeleteBackup)
     {
         ArgumentNullException.ThrowIfNull(tryDeleteBackup);
-        if (!AppliesTo(installDirectory, version)) return this;
+        if (!CanBeCleanedBy(installDirectory, version)) return this;
 
         var remaining = new List<string>();
         foreach (var backup in BackupFiles)

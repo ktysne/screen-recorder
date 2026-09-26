@@ -6,7 +6,7 @@ namespace ScreenRecorder.Core;
 /// <param name="BackupRelativePath">この更新だけが使うバックアップの相対パス。</param>
 public sealed record UpdateFileStep(string RelativePath, bool ReplacesExistingFile, string BackupRelativePath);
 
-public sealed record UpdateApplyPlan(IReadOnlyList<UpdateFileStep> Steps)
+public sealed record UpdateApplyPlan(string UpdateId, IReadOnlyList<UpdateFileStep> Steps)
 {
     /// <summary>旧プロセスや常駐の検査ソフトが開いている間は置き換えられない、既存の exe と DLL。</summary>
     public IReadOnlyList<string> ExclusiveAccessPaths => Steps
@@ -71,7 +71,7 @@ public static class UpdateApplyPlanner
                 return new UpdateApplyPlanResult(null, $"更新用バックアップが既に存在します: {backupPath}");
             steps.Add(new UpdateFileStep(path, replacesExistingFile, backupPath));
         }
-        return new UpdateApplyPlanResult(new UpdateApplyPlan(steps), null);
+        return new UpdateApplyPlanResult(new UpdateApplyPlan(updateId, steps), null);
     }
 
     /// <summary>進んだ手順を逆順に戻す。置いたファイル(書きかけを含む)を消してから、<c>.old</c> を元の名前へ戻す。</summary>
