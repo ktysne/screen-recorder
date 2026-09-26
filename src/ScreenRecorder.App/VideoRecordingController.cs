@@ -467,10 +467,11 @@ internal sealed class VideoRecordingController : IDisposable
                 return MoveRecordingToFinalPath(active, pathToMove);
             });
             DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画を保存しました: {finalPath}");
-            if (processResult.SupersededPath is { } supersededPath) await DeleteSupersededRecordingAsync(supersededPath);
             await CompleteRecordingSave(finalPath, active.Settings);
             if (processResult.Warning is not null)
                 _notifier.ShowForCapture(5000, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
+            // 変換前の一時ファイルが残ると次の起動で未完了の録画と誤って知らせるため、削除を終えてから保存を完了する。
+            if (processResult.SupersededPath is { } supersededPath) await DeleteSupersededRecordingAsync(supersededPath);
             _recordingState.TryCompleteSaving();
         }
         catch (Exception exception)
