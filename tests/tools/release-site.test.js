@@ -53,7 +53,7 @@ test('公開中の版より小さい版と同じ版を拒否する', async () =>
 });
 
 test('ffmpeg の版の情報は HTML としてエスケープして載せる', () => {
-  assert.equal(release.ffmpegBuildInfoFrom('ffmpeg version n7.1 <lgpl> & "shared"'), 'ffmpeg version n7.1 &lt;lgpl&gt; &amp; &quot;shared&quot;');
+  assert.equal(release.ffmpegBuildInfoFrom('ffmpeg version n7.1 <lgpl> & "x" --enable-shared'), 'ffmpeg version n7.1 &lt;lgpl&gt; &amp; &quot;x&quot; --enable-shared');
 });
 
 test('GPL か nonfree の成分を含む ffmpeg のビルドは拒否する', () => {
@@ -65,6 +65,24 @@ test('LGPL v3 として構成したビルドは受け付ける', () => {
   assert.match(release.ffmpegBuildInfoFrom('configuration: --enable-version3 --enable-shared'), /--enable-version3/);
 });
 
-test('ffmpeg の版の情報が無いときは、その旨を載せる', () => {
-  assert.equal(release.ffmpegBuildInfoFrom(''), '同梱の ffmpeg の版の情報はありません。');
+test('shared でない ffmpeg のビルドは拒否する', () => {
+  assert.throws(() => release.ffmpegBuildInfoFrom('configuration: --enable-static'), /--enable-shared/);
+});
+
+test('公開中の版より古い版は転送しない', () => {
+  assert.throws(() => release.decideUploadAgainstPublished('0.1.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /新しい/);
+});
+
+test('公開中と同じ版は、同じ zip の再試行だけを許す', () => {
+  assert.doesNotThrow(() => release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'a'.repeat(64) }));
+  assert.throws(() => release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /一致しない/);
+});
+
+test('初回の公開と、公開中より新しい版は転送できる', () => {
+  assert.doesNotThrow(() => release.decideUploadAgainstPublished('0.1.0', 'a'.repeat(64), null));
+  assert.doesNotThrow(() => release.decideUploadAgainstPublished('0.3.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }));
+});
+
+test('ffmpeg の版の情報が無いときは生成を止める', () => {
+  assert.throws(() => release.ffmpegBuildInfoFrom(''), /版の情報/);
 });

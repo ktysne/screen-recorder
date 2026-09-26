@@ -61,23 +61,26 @@ function renderTemplate(template, values) {
 }
 
 const FORBIDDEN_FFMPEG_CONFIGURATIONS = ['--enable-gpl', '--enable-nonfree'];
+const UPLOADING_SUFFIX = '.uploading';
 
 function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // 同梱の ffmpeg の `ffmpeg -version` の出力を license.html へ載せる。
-// GPL や nonfree の成分を含むビルドは LGPL の動的リンクで同梱する条件を満たさないので止める。
+// LGPL の動的リンクで同梱する条件(GPL と nonfree を含まない shared ビルド)を満たさないものは止める。
 function ffmpegBuildInfoFrom(versionText) {
   const text = String(versionText ?? '').trim();
-  if (!text) return '同梱の ffmpeg の版の情報はありません。';
+  if (!text) throw new Error('同梱する ffmpeg の版の情報(ffmpeg -version の出力)が必要です');
   const forbidden = FORBIDDEN_FFMPEG_CONFIGURATIONS.filter((flag) => text.includes(flag));
   if (forbidden.length > 0) throw new Error(`同梱できない ffmpeg のビルドです(${forbidden.join(', ')})。LGPL の shared ビルドを使ってください`);
+  if (!text.includes('--enable-shared')) throw new Error('同梱できない ffmpeg のビルドです(--enable-shared がありません)。LGPL の shared ビルドを使ってください');
   return escapeHtml(text);
 }
 
 function readFfmpegBuildInfo(ffmpegInfo) {
-  return ffmpegBuildInfoFrom(ffmpegInfo ? fs.readFileSync(path.resolve(ROOT, ffmpegInfo), 'utf8') : '');
+  if (!ffmpegInfo) throw new Error('--ffmpeg-info に ffmpeg -version の出力のファイルを指定してください');
+  return ffmpegBuildInfoFrom(fs.readFileSync(path.resolve(ROOT, ffmpegInfo), 'utf8'));
 }
 
 function generateFiles({ version, zip, out, releasedAt, ffmpegInfo }) {
@@ -135,6 +138,29 @@ function verifyReleaseInputs(version, items) {
   if (manifest.schema !== 1 || manifest.latest?.version !== version || manifest.latest?.url !== downloadUrlOf(version) || manifest.latest?.sha256 !== sha256) {
     throw new Error('update.json の版、URL、SHA-256 がアップロードする zip と一致しません。先に release:generate を実行してください');
   }
+  return sha256;
+}
+
+// 転送の直前に公開中の版と比べ、古い成果物で公開版を巻き戻さない。
+// 同じ版は、公開済みの zip と同じ成果物(SHA-256 が一致)の再試行だけを許す。
+function decideUploadAgainstPublished(version, localSha256, published) {
+  if (!published) return;
+  const order = compareVersions(version, published.version);
+  if (order < 0) throw new Error(`公開中の版 ${published.version} のほうが新しいため、${version} は転送しません`);
+  if (order === 0 && published.sha256 !== localSha256) {
+    throw new Error(`公開中の ${version} と zip の SHA-256 が一致しないため、転送しません`);
+  }
+}
+
+async function fetchPublishedLatest(fetchImpl = fetch) {
+  const response = await fetchImpl(`${BASE_URL}/update.json`, { signal: AbortSignal.timeout(15000), cache: 'no-store' });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`公開中の update.json を取得できません (HTTP ${response.status})`);
+  const manifest = await response.json();
+  if (manifest?.schema !== 1 || !/^\d+\.\d+\.\d+$/.test(manifest?.latest?.version || '')) {
+    throw new Error('公開中の update.json の形式が不正です');
+  }
+  return { version: manifest.latest.version, sha256: manifest.latest.sha256 };
 }
 
 async function checkPublishedVersion(version, fetchImpl = fetch) {
@@ -191,7 +217,8 @@ async function uploadFiles(options) {
     item.size = fs.statSync(item.localPath).size;
     if (item.size === 0) throw new Error(`アップロード対象が空です: ${item.name}`);
   }
-  verifyReleaseInputs(options.version, items);
+  const localSha256 = verifyReleaseInputs(options.version, items);
+  decideUploadAgainstPublished(options.version, localSha256, await fetchPublishedLatest());
   const config = loadConfig(options.config);
   const targets = buildRemoteTargets(items, config.remoteRoot);
   console.log(`接続先: ${config.host}:${config.port}`);
@@ -213,11 +240,17 @@ async function uploadFiles(options) {
     await client.access({ host: config.host, port: config.port, user: config.user, password: config.password, secure: config.secure });
     for (const item of targets) {
       await client.ensureDir(`${config.remoteRoot}/${item.remoteDir}`.replace(/\/$/, ''));
-      await client.uploadFrom(item.localPath, item.name);
+      // update.json は利用者の更新確認が読むので、途中で切れても壊れた内容を公開しないよう一時名で送ってから改名する。
+      const uploadName = item.name === 'update.json' ? `${item.name}${UPLOADING_SUFFIX}` : item.name;
+      await client.uploadFrom(item.localPath, uploadName);
       const entries = await client.list();
-      const remote = entries.find(entry => entry.name === item.name);
+      const remote = entries.find(entry => entry.name === uploadName);
       if (!remote || remote.size !== item.size) {
         throw new Error(`${item.name} の転送後サイズが一致しません (local=${item.size}, remote=${remote?.size ?? 'missing'})`);
+      }
+      if (uploadName !== item.name) {
+        if (entries.some(entry => entry.name === item.name)) await client.remove(item.name);
+        await client.rename(uploadName, item.name);
       }
       console.log(`転送・照合完了: ${item.name}`);
     }
@@ -272,5 +305,5 @@ module.exports = {
   isValidVersion, compareVersions, downloadUrlOf, zipFileName, localDateString, buildUpdateManifest,
   serializeUpdateManifest, renderTemplate, generateFiles, generatePages, buildUploadItems,
   verifyReleaseInputs, checkPublishedVersion, configFromEnvironment, buildRemoteTargets,
-  ffmpegBuildInfoFrom,
+  ffmpegBuildInfoFrom, decideUploadAgainstPublished,
 };

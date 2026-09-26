@@ -75,6 +75,12 @@ if errorlevel 1 goto :failed
 dotnet test ScreenRecorder.slnx -c Release
 if errorlevel 1 goto :failed
 
+rem Start from an empty publish folder so files from a previous package cannot leak into the zip.
+if exist "artifacts\publish" rmdir /s /q "artifacts\publish"
+if exist "artifacts\publish" (
+    echo [ScreenRecorder] ERROR: could not clear artifacts\publish.
+    goto :failed
+)
 dotnet publish src\ScreenRecorder.App -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:PublishSingleFile=true -p:DebugType=embedded -p:Version=%VERSION% -o artifacts\publish
 if errorlevel 1 goto :failed
 if not exist "artifacts\publish\ScreenRecorder.exe" (
