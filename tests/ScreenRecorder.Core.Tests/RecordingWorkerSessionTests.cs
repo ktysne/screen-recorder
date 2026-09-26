@@ -183,6 +183,35 @@ public sealed class RecordingWorkerSessionTests
         Assert.True(session.AdvanceTime(endedAt.AddSeconds(timeoutSeconds)).ShouldForceTerminateWorker);
     }
 
+    [Theory]
+    [InlineData(RecordingTerminationOutcome.Completed)]
+    [InlineData(RecordingTerminationOutcome.Failed)]
+    [InlineData(RecordingTerminationOutcome.ProcessExited)]
+    public void 完了も失敗も届かないまま終了の判定を受けたら失敗として知らせ二分の期限を置く(RecordingTerminationOutcome outcome)
+    {
+        var session = CreateReadySession();
+        var endedAt = StartedAt.AddSeconds(1);
+
+        var result = session.OnMessage(new RecordingWorkerTerminationMessage(outcome), endedAt);
+
+        Assert.Equal(RecordingTerminationOutcome.Failed, result.TerminationOutcome);
+        Assert.IsType<RecordingWorkerFailedEvent>(Assert.Single(result.Events));
+        Assert.False(session.AdvanceTime(endedAt + RecordingWorkerSession.FailedExitTimeout - TimeSpan.FromSeconds(1)).ShouldForceTerminateWorker);
+        Assert.True(session.AdvanceTime(endedAt + RecordingWorkerSession.FailedExitTimeout).ShouldForceTerminateWorker);
+    }
+
+    [Fact]
+    public void 完了の後に届いた完了の判定は完了のまま変えない()
+    {
+        var session = CreateReadySession();
+        session.OnMessage(new RecordingWorkerCompletedMessage("done.mp4"), StartedAt.AddSeconds(1));
+
+        var result = session.OnMessage(new RecordingWorkerTerminationMessage(RecordingTerminationOutcome.Completed), StartedAt.AddSeconds(2));
+
+        Assert.Equal(RecordingTerminationOutcome.Completed, result.TerminationOutcome);
+        Assert.Empty(result.Events);
+    }
+
     [Fact]
     public void 録画プロセス終了後は強制終了を求めない()
     {

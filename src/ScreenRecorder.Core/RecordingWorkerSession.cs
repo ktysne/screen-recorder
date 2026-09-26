@@ -54,6 +54,7 @@ public sealed record RecordingWorkerSessionTransition(
     bool ShouldForceTerminateWorker,
     bool StartFailed);
 
+// スレッド安全ではない。呼び出し側がすべての呼び出しを 1 つのロックか 1 本の実行列で直列化する。
 public sealed class RecordingWorkerSession
 {
     public static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(10);
@@ -192,7 +193,7 @@ public sealed class RecordingWorkerSession
                 SetTermination(RecordingTerminationOutcome.Failed, at, FailedExitTimeout);
                 break;
             case RecordingWorkerTerminationMessage terminationMessage:
-                ReceiveTermination(terminationMessage.Outcome, at);
+                if (ReceiveTermination(terminationMessage.Outcome, at) is { } failure) events.Add(failure);
                 break;
         }
 
@@ -299,21 +300,29 @@ public sealed class RecordingWorkerSession
         _queuedCommands.Add(command);
     }
 
-    private void ReceiveTermination(RecordingTerminationOutcome outcome, DateTimeOffset at)
+    // 完了と失敗は専用のメッセージが正本で、終了の判定より先に届く。先に届いていない完了や失敗の判定は、保存を確かめられないので失敗として知らせる。
+    private RecordingWorkerFailedEvent? ReceiveTermination(RecordingTerminationOutcome outcome, DateTimeOffset at)
     {
-        if (_terminationOutcome is not null) return;
+        if (_terminationOutcome is not null) return null;
 
-        var timeout = outcome switch
+        switch (outcome)
         {
-            RecordingTerminationOutcome.Completed => CompletedExitTimeout,
-            RecordingTerminationOutcome.Idle => IdleExitTimeout,
-            RecordingTerminationOutcome.Failed => FailedExitTimeout,
-            RecordingTerminationOutcome.ProcessExited => DisconnectedExitTimeout,
-            _ => (TimeSpan?)null
-        };
-
-        if (timeout is { } duration)
-            SetTermination(outcome, at, duration);
+            case RecordingTerminationOutcome.Idle:
+                SetTermination(outcome, at, IdleExitTimeout);
+                return null;
+            case RecordingTerminationOutcome.Completed:
+            case RecordingTerminationOutcome.Failed:
+            case RecordingTerminationOutcome.ProcessExited:
+                var beforeRecordingStarted = _recordingState is null;
+                _startFailed = beforeRecordingStarted;
+                SetTermination(RecordingTerminationOutcome.Failed, at, FailedExitTimeout);
+                return new RecordingWorkerFailedEvent(
+                    string.Empty,
+                    "録画プロセスが完了も失敗も知らせずに終了の判定を送りました。",
+                    beforeRecordingStarted);
+            default:
+                return null;
+        }
     }
 
     private void SetTermination(RecordingTerminationOutcome outcome, DateTimeOffset at, TimeSpan exitTimeout)
