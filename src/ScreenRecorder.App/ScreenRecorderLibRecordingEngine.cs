@@ -60,18 +60,18 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         var loopbackAvailable = false;
         if (request.CaptureSystemAudio)
         {
-            try { loopbackAvailable = AudioEndpoints.GetLoopbackDevices().Any(device => device.IsDefaultDevice); }
+            try { loopbackAvailable = AudioEndpoints.HasDefaultPlaybackDevice(); }
             catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"PC の音声デバイスを列挙できませんでした: {exception}"); }
         }
-        var microphoneDevices = new List<RecordableAudioCaptureDevice>();
+        IReadOnlyList<AudioEndpoint> microphoneDevices = [];
         if (request.CaptureMicrophone)
         {
-            try { microphoneDevices = AudioEndpoints.GetCaptureDevices(); }
+            try { microphoneDevices = AudioEndpoints.GetMicrophones(); }
             catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"マイクを列挙できませんでした: {exception}"); }
         }
         var microphoneAvailable = !request.CaptureMicrophone || (request.MicrophoneDeviceId is null
-            ? microphoneDevices.Any(device => device.IsDefaultDevice)
-            : microphoneDevices.Any(device => string.Equals(device.ID, request.MicrophoneDeviceId, StringComparison.Ordinal)));
+            ? microphoneDevices.Any(device => device.IsDefault)
+            : microphoneDevices.Any(device => string.Equals(device.Id, request.MicrophoneDeviceId, StringComparison.OrdinalIgnoreCase)));
         var captureSystemAudio = request.CaptureSystemAudio && loopbackAvailable;
         var captureMicrophone = request.CaptureMicrophone && microphoneAvailable;
         if (request.CaptureSystemAudio && !captureSystemAudio) DiagnosticLog.Warn(DiagnosticLogTags.Audio, "PC の音声入力元を使用できないため、音声を収録しません。");

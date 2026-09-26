@@ -561,8 +561,15 @@ internal sealed class SettingsForm : Form
         enumerationFailed = false;
         try
         {
-            choices.AddRange(AudioEndpoints.GetCaptureDevices()
-                .Select(device => ($"{device.FriendlyName} ({device.ID})", (string?)device.ID)));
+            var devices = AudioEndpoints.GetMicrophones();
+            var duplicateNames = devices
+                .GroupBy(device => device.FriendlyName, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToHashSet(StringComparer.Ordinal);
+            choices.AddRange(devices.Select(device => (
+                duplicateNames.Contains(device.FriendlyName) ? $"{device.FriendlyName} ({device.Id})" : device.FriendlyName,
+                (string?)device.Id)));
         }
         catch (Exception exception)
         {
@@ -570,7 +577,7 @@ internal sealed class SettingsForm : Form
             DiagnosticLog.Warn(DiagnosticLogTags.Audio, $"マイクを列挙できませんでした: {exception}");
         }
 
-        if (!enumerationFailed && savedDeviceId is not null && choices.All(choice => !string.Equals(choice.Value, savedDeviceId, StringComparison.Ordinal)))
+        if (!enumerationFailed && savedDeviceId is not null && choices.All(choice => !string.Equals(choice.Value, savedDeviceId, StringComparison.OrdinalIgnoreCase)))
             choices.Add(($"{UiLabels.SavedMicrophoneDevice} ({UiLabels.DeviceNotFound})", savedDeviceId));
         return choices.ToArray();
     }
