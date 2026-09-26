@@ -140,7 +140,7 @@ internal sealed class VideoRecordingController : IDisposable
                 {
                     await Task.Run(() => SaveDirectoryProbe.Check(captureSettings.VideoDirectory));
                 }
-                catch (Exception exception) when (IsSaveDirectoryFailure(exception))
+                catch (Exception exception) when (SaveDirectoryProbe.IsFailure(exception))
                 {
                     if (_exitRequested()) return;
                     selectedDirectory = await _confirmSaveDirectory(SaveDirectoryKind.Video, captureSettings.VideoDirectory, exception);
@@ -334,9 +334,6 @@ internal sealed class VideoRecordingController : IDisposable
             _tryExitAfterPendingWork();
         }
     }
-
-    private static bool IsSaveDirectoryFailure(Exception exception) => exception is
-        IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException;
 
     private async Task WaitForRecordingCountdownAsync(int seconds, Rectangle displayBounds, CancellationToken cancellationToken)
     {

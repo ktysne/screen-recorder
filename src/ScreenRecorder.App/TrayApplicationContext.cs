@@ -545,15 +545,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private Task<string?> ConfirmSaveDirectoryAsync(SaveDirectoryKind kind, string directory, Exception? failure = null)
+    private async Task<string?> ConfirmSaveDirectoryAsync(SaveDirectoryKind kind, string directory, Exception? failure = null)
     {
+        // 保護機能で書き込めない保存先なら、最初から代わりの場所を主操作にした状態で開く。
+        failure ??= await SaveDirectoryProbe.TryCheckAsync(directory);
+        if (_exitRequested) return null;
         using var dialog = new SaveDirectoryDialog(kind, directory, failure);
         _saveDirectoryDialog = dialog;
         try
         {
             if (_settingsForm is { IsDisposed: false, Visible: true } owner) dialog.ShowDialog(owner);
             else dialog.ShowDialog();
-            return Task.FromResult(dialog.DialogResult == DialogResult.OK ? dialog.SelectedDirectory : null);
+            return dialog.DialogResult == DialogResult.OK ? dialog.SelectedDirectory : null;
         }
         finally
         {
