@@ -12,28 +12,11 @@ public sealed record ShortcutValidationIssue(RecorderAction Action, ShortcutVali
 
 public static class ShortcutSettingsValidator
 {
-    public static string GetSettingName(RecorderAction action) => action switch
-    {
-        RecorderAction.ScreenshotRegion => nameof(Settings.ScreenshotRegionShortcut),
-        RecorderAction.ScreenshotFullScreen => nameof(Settings.ScreenshotFullScreenShortcut),
-        RecorderAction.ScreenshotWindow => nameof(Settings.ScreenshotWindowShortcut),
-        RecorderAction.RecordingRegion => nameof(Settings.RecordingRegionShortcut),
-        RecorderAction.RecordingFullScreen => nameof(Settings.RecordingFullScreenShortcut),
-        RecorderAction.RecordingWindow => nameof(Settings.RecordingWindowShortcut),
-        RecorderAction.PauseResume => nameof(Settings.PauseRecordingShortcut),
-        _ => throw new ArgumentOutOfRangeException(nameof(action))
-    };
+    public static string GetSettingName(RecorderAction action) => ShortcutBindings.For(action).SettingName;
 
-    public static IReadOnlyList<ShortcutAssignment> GetAssignments(Settings settings) =>
-    [
-        new(RecorderAction.ScreenshotRegion, settings.ScreenshotRegionShortcut, settings.ScreenshotRegionEnabled),
-        new(RecorderAction.ScreenshotFullScreen, settings.ScreenshotFullScreenShortcut, settings.ScreenshotFullScreenEnabled),
-        new(RecorderAction.ScreenshotWindow, settings.ScreenshotWindowShortcut, settings.ScreenshotWindowEnabled),
-        new(RecorderAction.RecordingRegion, settings.RecordingRegionShortcut, settings.RecordingRegionEnabled),
-        new(RecorderAction.RecordingFullScreen, settings.RecordingFullScreenShortcut, settings.RecordingFullScreenEnabled),
-        new(RecorderAction.RecordingWindow, settings.RecordingWindowShortcut, settings.RecordingWindowEnabled),
-        new(RecorderAction.PauseResume, settings.PauseRecordingShortcut, settings.PauseRecordingEnabled)
-    ];
+    public static IReadOnlyList<ShortcutAssignment> GetAssignments(Settings settings) => ShortcutBindings.All
+        .Select(binding => new ShortcutAssignment(binding.Action, binding.GetNotation(settings), binding.GetEnabled(settings)))
+        .ToArray();
 
     public static IReadOnlyList<ShortcutValidationIssue> Validate(Settings settings)
     {

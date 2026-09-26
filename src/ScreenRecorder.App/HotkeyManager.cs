@@ -40,17 +40,16 @@ internal sealed class HotkeyManager : IDisposable
         {
             var assignment = assignments[index];
             if (!assignment.Enabled) continue;
-            if (!HotkeyShortcut.TryParse(assignment.Notation, out var shortcut))
+            if (issuesByAction.TryGetValue(assignment.Action, out var issue))
             {
-                failures.Add(new HotkeyFailure(assignment.Action, assignment.Notation, HotkeyFailureReason.InvalidNotation, null, false));
+                var reason = issue.Kind == ShortcutValidationIssueKind.InvalidNotation
+                    ? HotkeyFailureReason.InvalidNotation
+                    : HotkeyFailureReason.Duplicate;
+                failures.Add(new HotkeyFailure(assignment.Action, assignment.Notation, reason, null, false));
                 continue;
             }
+            HotkeyShortcut.TryParse(assignment.Notation, out var shortcut);
             if (shortcut is null) continue;
-            if (issuesByAction.TryGetValue(assignment.Action, out var issue) && issue.Kind == ShortcutValidationIssueKind.Duplicate)
-            {
-                failures.Add(new HotkeyFailure(assignment.Action, assignment.Notation, HotkeyFailureReason.Duplicate, null, false));
-                continue;
-            }
 
             var id = index + 1;
             if (!RegisterHotKey(_window.Handle, id, ToNativeModifiers(shortcut.Modifiers) | NoRepeat, shortcut.VirtualKey))

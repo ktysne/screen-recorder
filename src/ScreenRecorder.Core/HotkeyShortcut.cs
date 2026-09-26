@@ -35,6 +35,9 @@ public sealed record HotkeyShortcut
     public HotkeyModifiers Modifiers { get; }
     public ushort VirtualKey { get; }
 
+    public static string? ToDisplayNotation(string? notation) =>
+        TryParse(notation, out var shortcut) && shortcut is not null ? shortcut.ToDisplayString() : null;
+
     public static bool TryParse(string? notation, out HotkeyShortcut? shortcut)
     {
         shortcut = null;
