@@ -5,6 +5,11 @@ namespace ScreenRecorder.App;
 
 internal sealed class CaptureNotifier
 {
+    private const int BriefDurationMilliseconds = 3000;
+    private const int StandardDurationMilliseconds = 4000;
+    private const int LongDurationMilliseconds = 6000;
+    private const int BalloonMessageMaximumLength = 255;
+
     private readonly NotifyIcon _tray;
     private readonly Action _openNotifiedUpdate;
     private string? _pendingCapturePath;
@@ -18,23 +23,23 @@ internal sealed class CaptureNotifier
 
     public void ClearPendingCapture() => _pendingCapturePath = null;
 
-    public void Show(int timeout, string title, string message, ToolTipIcon icon)
+    public void Show(NotificationDuration duration, string title, string message, ToolTipIcon icon)
     {
         _pendingCapturePath = null;
         _pendingUpdateNotification = false;
-        _tray.ShowBalloonTip(timeout, title, message, icon);
+        _tray.ShowBalloonTip(ToMilliseconds(duration), title, LimitMessageLength(message), icon);
     }
 
-    public void ShowForCapture(int timeout, string title, string message, ToolTipIcon icon, string? path)
+    public void ShowForCapture(NotificationDuration duration, string title, string message, ToolTipIcon icon, string? path)
     {
         _pendingCapturePath = path;
         _pendingUpdateNotification = false;
-        _tray.ShowBalloonTip(timeout, title, message, icon);
+        _tray.ShowBalloonTip(ToMilliseconds(duration), title, LimitMessageLength(message), icon);
     }
 
     public void ShowForUpdate(string message, ToolTipIcon icon, bool opensUpdateDialog)
     {
-        Show(icon == ToolTipIcon.Info ? 4000 : 6000, UiLabels.AppName, message, icon);
+        Show(icon == ToolTipIcon.Info ? NotificationDuration.Standard : NotificationDuration.Long, UiLabels.AppName, message, icon);
         _pendingUpdateNotification = opensUpdateDialog;
     }
 
@@ -65,7 +70,23 @@ internal sealed class CaptureNotifier
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.App, $"撮影したファイルの場所を開けませんでした: ファイル={path}; {exception}");
-            Show(3000, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, exception.Message), ToolTipIcon.Error);
+            Show(NotificationDuration.Brief, UiLabels.AppName, string.Format(UiLabels.FolderOpenFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Error);
         }
     }
+
+    private static int ToMilliseconds(NotificationDuration duration)
+    {
+        // Windows 10 以降は OS の設定が表示時間を上書きすることがあるため、値は目安。
+        return duration switch
+        {
+            NotificationDuration.Brief => BriefDurationMilliseconds,
+            NotificationDuration.Standard => StandardDurationMilliseconds,
+            NotificationDuration.Long => LongDurationMilliseconds,
+            _ => throw new ArgumentOutOfRangeException(nameof(duration))
+        };
+    }
+
+    private static string LimitMessageLength(string message) => message.Length > BalloonMessageMaximumLength
+        ? $"{message[..(BalloonMessageMaximumLength - 1)]}…"
+        : message;
 }

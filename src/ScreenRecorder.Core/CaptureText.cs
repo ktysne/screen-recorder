@@ -2,7 +2,10 @@ namespace ScreenRecorder.Core;
 
 public static class CaptureText
 {
-    public static string ShortError(string value) => value.Length > 180 ? value[..180] : value;
+    private const int ErrorDetailLength = 180;
+    private const int PathDetailLength = 150;
+
+    public static string ErrorDetail(string message) => message.Length > ErrorDetailLength ? message[..ErrorDetailLength] : message;
 
     public static string CaptureMethodName(ScreenshotMode mode) => mode switch
     {
@@ -12,9 +15,9 @@ public static class CaptureText
         _ => mode.ToString()
     };
 
-    public static string ShortPath(string value, int maximumLength) => value.Length > maximumLength
-        ? $"…{value[^maximumLength..]}"
-        : value;
+    public static string PathDetail(string path) => path.Length > PathDetailLength
+        ? $"…{path[^PathDetailLength..]}"
+        : path;
 
     public static bool IsAlreadyExists(IOException exception) => (exception.HResult & 0xffff) is 80 or 183;
 }
