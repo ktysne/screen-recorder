@@ -7,7 +7,45 @@ public enum UpdateCheckKind { UpToDate, Available, Skipped, Failed }
 /// <summary><see cref="Manifest"/> は <see cref="UpdateCheckKind.Failed"/> 以外で、<see cref="Error"/> は失敗のときだけ値を持つ。</summary>
 public sealed record UpdateCheckResult(UpdateCheckKind Kind, UpdateManifest? Manifest, string? Error)
 {
-    public static UpdateCheckResult Failed(string error) => new(UpdateCheckKind.Failed, null, error);
+    public string? DiagnosticDetail { get; init; }
+
+    public static UpdateCheckResult Failed(string error, string? diagnosticDetail = null) =>
+        new(UpdateCheckKind.Failed, null, error) { DiagnosticDetail = diagnosticDetail };
+}
+
+public static class UpdateCheckLog
+{
+    public static string TriggerName(UpdateCheckTrigger trigger) => trigger == UpdateCheckTrigger.Manual ? "手動" : "自動";
+
+    public static DiagnosticLogLevel FailureLevel(UpdateCheckTrigger trigger) =>
+        trigger == UpdateCheckTrigger.Manual ? DiagnosticLogLevel.Error : DiagnosticLogLevel.Warn;
+
+    public static string FailureMessage(UpdateCheckTrigger trigger, string? detail) =>
+        $"更新の確認に失敗しました: きっかけ={TriggerName(trigger)}; {detail}";
+
+    public static string CompletedMessage(UpdateCheckTrigger trigger, UpdateCheckResult result, string? currentVersion)
+    {
+        var hasNewVersion = result.Kind is UpdateCheckKind.Available or UpdateCheckKind.Skipped;
+        return $"更新の確認が完了しました: きっかけ={TriggerName(trigger)}、新しい版={(hasNewVersion ? "あり" : "なし")}、現在の版={currentVersion}、最新の版={result.Manifest?.Version}。";
+    }
+
+    public static void Log(UpdateCheckTrigger trigger, UpdateCheckResult result, string? currentVersion)
+    {
+        if (result.Kind == UpdateCheckKind.Failed)
+        {
+            LogFailure(trigger, result.DiagnosticDetail ?? result.Error);
+            return;
+        }
+
+        DiagnosticLog.Info(DiagnosticLogTags.Update, CompletedMessage(trigger, result, currentVersion));
+    }
+
+    public static void LogFailure(UpdateCheckTrigger trigger, string? detail)
+    {
+        var message = FailureMessage(trigger, detail);
+        if (FailureLevel(trigger) == DiagnosticLogLevel.Error) DiagnosticLog.Error(DiagnosticLogTags.Update, message);
+        else DiagnosticLog.Warn(DiagnosticLogTags.Update, message);
+    }
 }
 
 public static class UpdateCheckEvaluator
