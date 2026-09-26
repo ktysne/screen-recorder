@@ -3,7 +3,7 @@ namespace ScreenRecorder.Core;
 public static class CaptureText
 {
     private const int ErrorDetailLength = 180;
-    private const int PathDetailLength = 150;
+    private const int PathDetailLength = 190;
 
     public static string ErrorDetail(string message) => message.Length > ErrorDetailLength ? message[..ErrorDetailLength] : message;
 

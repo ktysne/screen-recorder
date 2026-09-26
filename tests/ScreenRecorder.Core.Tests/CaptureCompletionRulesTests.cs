@@ -32,19 +32,19 @@ public sealed class CaptureCompletionRulesTests
     }
 
     [Fact]
-    public void PathDetail_KeepsExactly150Characters()
+    public void PathDetail_KeepsExactly190Characters()
     {
-        var value = new string('x', 150);
+        var value = new string('x', 190);
 
         Assert.Equal(value, CaptureText.PathDetail(value));
     }
 
     [Fact]
-    public void PathDetail_PrefixesAnEllipsisAndKeepsTheEndWhenOneCharacterOver150Characters()
+    public void PathDetail_PrefixesAnEllipsisAndKeepsTheEndWhenOneCharacterOver190Characters()
     {
-        var value = new string('x', 151);
+        var value = new string('x', 191);
 
-        Assert.Equal($"…{new string('x', 150)}", CaptureText.PathDetail(value));
+        Assert.Equal($"…{new string('x', 190)}", CaptureText.PathDetail(value));
     }
 
     [Theory]
