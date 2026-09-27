@@ -57,6 +57,15 @@ public sealed class AutomationRequestAdmissionTests
     }
 
     [Fact]
+    public void ScreenshotCountdownAcceptsStopWhileARecordingCanBeStopped()
+    {
+        var state = Ready with { Countdown = AutomationCountdownKind.Screenshot, RecordingStoppable = true };
+
+        Assert.True(AutomationRequestAdmission.Decide(state, "perform", RecorderAction.StopRecording).Accepted);
+        Assert.Equal("rejectedDuringCountdown", AutomationRequestAdmission.Decide(state, "perform", RecorderAction.PauseResume).ErrorDataCode);
+    }
+
+    [Fact]
     public void UpdateStateAcceptsOnlyUnconditionallyAllowedMethods()
     {
         var state = Ready with { UpdateDownloadOrPreparationInProgress = true };

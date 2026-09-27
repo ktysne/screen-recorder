@@ -680,7 +680,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     "screenshot" => AutomationCountdownKind.Screenshot,
                     _ => null
                 },
-                _updateController.IsDownloadingOrPreparing),
+                _updateController.IsDownloadingOrPreparing,
+                status.Menu.StopEnabled),
             method,
             action);
 

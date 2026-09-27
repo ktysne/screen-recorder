@@ -6,7 +6,8 @@ public sealed record AutomationRequestState(
     bool ModalDialogOpen,
     bool SelectionScreenOpen,
     AutomationCountdownKind? Countdown,
-    bool UpdateDownloadOrPreparationInProgress);
+    bool UpdateDownloadOrPreparationInProgress,
+    bool RecordingStoppable = false);
 
 public sealed record AutomationRequestDecision(bool Accepted, string? ErrorDataCode)
 {
@@ -31,9 +32,10 @@ public static class AutomationRequestAdmission
             return method == "selection"
                 ? AutomationRequestDecision.Accept
                 : AutomationRequestDecision.Reject("rejectedWhileSelection");
-        // 停止で取り消せるのは録画のカウントダウンだけで、静止画の撮影の遅延は取り消せない。
+        // 静止画の撮影の遅延は停止で取り消せないので、その間の停止は進行中の録画があるときだけ受け付ける。
         if (state.Countdown is { } countdown)
-            return method == "perform" && action == RecorderAction.StopRecording && countdown == AutomationCountdownKind.Recording
+            return method == "perform" && action == RecorderAction.StopRecording
+                && (countdown == AutomationCountdownKind.Recording || state.RecordingStoppable)
                 ? AutomationRequestDecision.Accept
                 : AutomationRequestDecision.Reject("rejectedDuringCountdown");
         if (state.UpdateDownloadOrPreparationInProgress)
