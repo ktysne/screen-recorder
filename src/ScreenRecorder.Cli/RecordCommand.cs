@@ -237,10 +237,17 @@ internal static class RecordCommand
                     : outputPath;
                 var finalized = RecordingFinalizer.FinalizeAsync(completedPath, settings, saveTarget, null,
                     new FfmpegVideoRecordingPostProcessor(ffmpeg), CancellationToken.None, temporaryPath).GetAwaiter().GetResult();
-                if (replaceExisting && finalized.FinalPath is not null)
+                if (replaceExisting && finalized.FinalPath is { } stagedPath)
                 {
-                    File.Move(finalized.FinalPath, outputPath, overwrite: true);
-                    finalized = finalized with { FinalPath = outputPath };
+                    try
+                    {
+                        File.Move(stagedPath, outputPath, overwrite: true);
+                        finalized = finalized with { FinalPath = outputPath };
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        finalized = finalized with { FinalPath = null, RetainedPath = stagedPath, Error = $"保存先を置き換えられませんでした: {exception.Message}" };
+                    }
                 }
                 if (finalized.Warning is not null) warnings.Add(finalized.Warning);
                 finalPath = finalized.FinalPath;

@@ -35,6 +35,35 @@ public sealed class CliDesktopTests
         }
     }
 
+    [DesktopFact]
+    public void ForcedRecordKeepsTheExistingFileAndReturnsTheSavedVideoWhenReplacingFails()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "test-output", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var video = Path.Combine(directory, "existing.mp4");
+        File.WriteAllText(video, "既存");
+        // 読み取り専用のファイルは置き換えの移動を拒むので、保存後の置き換えだけを失敗させられる。
+        File.SetAttributes(video, FileAttributes.ReadOnly);
+        try
+        {
+            var recording = Run(CliEnvironment.Create(), "record", "--display", "0", "--duration", "1", "--defaults", "--force", "-o", video);
+
+            Assert.Equal(3, recording.Code);
+            using var document = JsonDocument.Parse(recording.Output);
+            Assert.Equal("saveFailed", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+            var retainedPath = document.RootElement.GetProperty("result").GetProperty("retainedPath").GetString();
+            Assert.True(File.Exists(retainedPath), recording.Output);
+            Assert.Equal("既存", File.ReadAllText(video));
+        }
+        finally
+        {
+            File.SetAttributes(video, FileAttributes.Normal);
+            try { Directory.Delete(directory, true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
     private static (int Code, string Output) Run(CliEnvironment environment, params string[] arguments)
     {
         using var output = new StringWriter();
