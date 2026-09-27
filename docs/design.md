@@ -4,6 +4,7 @@
 
 ScreenRecorder の要件、技術選定、構成、各機能の仕様、配布と更新の仕組みを定める。
 実装の順序と Issue の分け方は [implementation-plan.md](implementation-plan.md) に置く。
+AI エージェントが開発とテストに使う CLI の設計は [automation-cli.md](automation-cli.md) に置く。
 
 ## 要件
 
