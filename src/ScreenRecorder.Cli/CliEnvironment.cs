@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+using System.IO.Pipes;
 using System.Windows.Forms;
+using ScreenRecorder.Capture;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.Cli;
@@ -26,6 +28,8 @@ internal sealed record CliEnvironment(
     string CliVersion)
 {
     public Func<string?, (string? Path, IReadOnlyList<string> Searched)> FindApp { get; init; } = FindApplication;
+    public Func<NamedPipeClientStream, string?, CliAutomationServerVerification> VerifyAutomationServer { get; init; } = AutomationRemoteCommand.VerifyServer;
+    public string AutomationPipeName { get; init; } = AutomationProtocol.PipeName;
 
     public static CliEnvironment Create() => new(
         StoragePaths.GetSettingsDirectory(),

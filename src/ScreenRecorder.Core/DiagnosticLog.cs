@@ -10,6 +10,7 @@ public static class DiagnosticLogTags
     public const string Convert = "convert";
     public const string Update = "update";
     public const string RecordWorker = "record-worker";
+    public const string Automation = "automation";
 }
 
 public static class DiagnosticLog

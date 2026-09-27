@@ -29,6 +29,7 @@ internal static class CliCommands
     private static readonly CliOptionDefinition TagOption = new("--tag", "<タグ>", "指定したタグの行だけを表示します。");
     private static readonly CliOptionDefinition GrepOption = new("--grep", "<文字列>", "本文または生行に文字列を含む行だけを表示します。");
     private static readonly CliOptionDefinition LimitOption = new("--limit", "<件数>", "条件に合う行のうち、末尾から表示する行数です。既定は 200 です。");
+    private static readonly CliOptionDefinition AutomationAppOption = new("--app", "<パス>", "接続先の実行ファイルを指定して照合します。");
 
     public static IReadOnlyList<CliOptionDefinition> GlobalOptions { get; } =
     [
@@ -42,6 +43,13 @@ internal static class CliCommands
         new("settings validate", "", "設定ファイルの形式と値を検査します。", [FileOption]),
         new("logs list", "", "診断ログの一覧を表示します。", []),
         new("logs show", "[<ファイル>]", "診断ログのヘッダーと行を表示します。ファイルを省くと最新のログを使います。", [SinceOption, LevelOption, TagOption, GrepOption, LimitOption], 0, 1),
+        new("remote status", "", "常駐中の ScreenRecorder の状態を表示します。", [AutomationAppOption]),
+        new("remote wait", "", "常駐中の ScreenRecorder が指定状態になるまで待ちます。", [
+            new("--state", "<状態>", "idle、countdown、preparing、recording、paused、saving のいずれかです。"),
+            new("--capture-after", "<日時>", "この ISO 8601 の日時より後に保存された撮影を待ちます。"),
+            new("--timeout", "<秒>", "待ち時間です。既定は 30 秒、上限は 3600 秒です。"),
+            AutomationAppOption
+        ]),
         new("naming preview", "", "設定と指定値から保存ファイル名を計算します。", [
             new("--template", "<ひな形>", "ファイル名のひな形を上書きします。"),
             new("--mode", "<種類>", "full、region、window のいずれかを指定します。"),

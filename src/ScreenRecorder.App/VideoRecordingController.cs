@@ -83,6 +83,8 @@ internal sealed class VideoRecordingController : IDisposable
     public bool CanStop => _recordingState.CanStop;
     public bool CanPause => _recordingState.CanPause;
     public bool SelectionInProgress => _recordingSelectionInProgress;
+    public int? CountdownRemainingSeconds => _recordingCountdownForm?.RemainingSeconds;
+    public bool RecordingToolbarOpen => _recordingToolbar is { IsDisposed: false, Visible: true };
 
     // ライブラリの破棄は一時ファイルの書き終えを含むことがあるため、終了時にこの完了を待つ。
     public Task EngineDisposal => _engineDisposal;
@@ -128,6 +130,7 @@ internal sealed class VideoRecordingController : IDisposable
     private async Task StartRecordingAsync(ScreenshotMode mode)
     {
         _recordingSelectionInProgress = true;
+        _recordingStateChanged();
         _busyStateChanged();
         var captureSettings = _currentSettings().Clone();
         var engineStarted = false;
@@ -307,6 +310,7 @@ internal sealed class VideoRecordingController : IDisposable
         finally
         {
             _recordingSelectionInProgress = false;
+            _recordingStateChanged();
             _busyStateChanged();
             if (_recordingState.State == VideoRecordingState.Idle && _recordingEngine is null)
                 CleanupRecordingSession();

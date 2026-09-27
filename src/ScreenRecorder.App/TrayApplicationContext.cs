@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Win32;
 using ScreenRecorder.Core;
 
@@ -16,7 +19,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly TrayIcons _trayIcons;
     private readonly CaptureNotifier _captureNotifier;
     private readonly VideoRecordingController _recording;
+    private readonly SemaphoreSlim _automationWaitSlots = new(3, 3);
+    private readonly ConcurrentDictionary<TaskCompletionSource<bool>, byte> _automationWaitSignals = new();
     private Settings _settings;
+    private AutomationPipeServer? _automationPipeServer;
     private SettingsForm? _settingsForm;
     private SaveDirectoryDialog? _saveDirectoryDialog;
     private bool _screenshotCaptureInProgress;
@@ -77,10 +83,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _ = UpdateCleanup.RunAsync(installDirectory);
         if (startedAfterUpdate) ScheduleUpdateCompletedNotification();
         _updateController.Start();
+        UpdateAutomationServer();
     }
 
     protected override void ExitThreadCore()
     {
+        StopAutomationServer(applicationExit: true);
         SystemEvents.PowerModeChanged -= HandlePowerModeChanged;
         _updateController.Dispose();
         _updateCompletedNotificationTimer?.Stop();
@@ -115,7 +123,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         form.FormClosed += (_, _) =>
         {
             if (ReferenceEquals(_settingsForm, form)) _settingsForm = null;
+            PulseAutomationStateChanged();
         };
+        form.Shown += (_, _) => PulseAutomationStateChanged();
         form.Show();
         form.BringToFront();
         form.Activate();
@@ -151,6 +161,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         _settingsRepository.Save(settings);
         _settings = settings.Clone();
+        UpdateAutomationServer();
         DiagnosticLog.Info(DiagnosticLogTags.App, "設定を保存しました。");
         DiagnosticLog.SetLevel(_settings.DiagnosticLogLevel);
         try
@@ -279,6 +290,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (_recording.State == VideoRecordingState.Saving || IsCaptureOrRecordingSelectionInProgress) return;
             _screenshotCaptureInProgress = true;
+            PulseAutomationStateChanged();
             _updateController.RefreshBusyState();
             _captureNotifier.ClearPendingCapture();
             var captureSettings = _settings.Clone();
@@ -333,6 +345,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             finally
             {
                 _screenshotCaptureInProgress = false;
+                PulseAutomationStateChanged();
                 _updateController.RefreshBusyState();
                 TryExitAfterPendingWork();
             }
@@ -433,6 +446,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray.Text = UiLabels.TrayRecordingStatus(state);
         _settingsForm?.RefreshRecordingState();
         _updateController?.RefreshBusyState();
+        PulseAutomationStateChanged();
     }
 
     private void HandlePowerModeChanged(object? sender, PowerModeChangedEventArgs eventArgs)
@@ -442,6 +456,236 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void DispatchToUi(Action action) => _uiDispatcher.Post(action);
+
+    private void UpdateAutomationServer()
+    {
+        if (_settings.AutomationEnabled)
+        {
+            if (_automationPipeServer is not null) return;
+            if (AutomationPipeServer.TryStart(AutomationProtocol.PipeName, HandleAutomationLineAsync, out var server))
+                _automationPipeServer = server;
+            return;
+        }
+
+        StopAutomationServer(applicationExit: false);
+    }
+
+    private void StopAutomationServer(bool applicationExit)
+    {
+        var server = _automationPipeServer;
+        _automationPipeServer = null;
+        if (server is null) return;
+
+        var notification = applicationExit ? AutomationProtocol.WriteNotification("exitRequested") : null;
+        try { server.StopAsync(notification).GetAwaiter().GetResult(); }
+        catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Automation, $"自動化用パイプを閉じられませんでした: {exception.Message}"); }
+    }
+
+    private async Task<string?> HandleAutomationLineAsync(string line, CancellationToken cancellationToken)
+    {
+        var read = AutomationProtocol.ReadRequest(line);
+        if (!read.Success)
+        {
+            DiagnosticLog.Info(DiagnosticLogTags.Automation, $"自動化要求を断りました: メソッド=unknown、理由={read.Error!.Data.Code}");
+            return AutomationProtocol.WriteError(read.Id, read.Error);
+        }
+
+        var request = read.Request!;
+        if (request.Id is null) return null;
+        var method = request.Method!;
+        var level = method is "status" or "waitFor" ? DiagnosticLogLevel.Debug : DiagnosticLogLevel.Info;
+        WriteAutomationLog(level, $"自動化要求を受け取りました: メソッド={method}");
+
+        string response;
+        string? failureCode = null;
+        try
+        {
+            response = method switch
+            {
+                "hello" => AutomationProtocol.WriteResult(
+                    request.Id,
+                    new AutomationHelloResult(AutomationProtocol.CurrentVersion, Environment.ProcessId),
+                    AutomationJsonContext.Default.AutomationHelloResult),
+                "status" => await WriteStatusAsync(request.Id, cancellationToken),
+                "waitFor" => await WriteWaitForStatusAsync(request, cancellationToken),
+                _ => AutomationProtocol.WriteError(
+                    request.Id,
+                    AutomationProtocol.Error(AutomationRpcErrorCodes.MethodNotFound, "このメソッドはまだ利用できません。", "methodNotFound"))
+            };
+            if (method is not ("hello" or "status" or "waitFor")) failureCode = "methodNotFound";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (JsonException)
+        {
+            failureCode = "invalidParams";
+            response = AutomationProtocol.WriteError(
+                request.Id,
+                AutomationProtocol.Error(AutomationRpcErrorCodes.InvalidParams, "要求の引数の形式が正しくありません。", failureCode));
+        }
+        catch (AutomationWaitBusyException)
+        {
+            failureCode = "busy";
+            response = AutomationProtocol.WriteError(
+                request.Id,
+                AutomationProtocol.Error(AutomationRpcErrorCodes.Busy, "待機中の要求が上限に達しています。", failureCode));
+        }
+        catch (TimeoutException)
+        {
+            failureCode = "timeout";
+            response = AutomationProtocol.WriteError(
+                request.Id,
+                AutomationProtocol.Error(AutomationRpcErrorCodes.Timeout, "指定された状態になる前に期限が切れました。", failureCode));
+        }
+        catch (Exception)
+        {
+            failureCode = "internalError";
+            response = AutomationProtocol.WriteError(
+                request.Id,
+                AutomationProtocol.Error(AutomationRpcErrorCodes.InternalError, "要求を処理できませんでした。", failureCode));
+        }
+
+        if (failureCode is null)
+            WriteAutomationLog(level, $"自動化応答を作成しました: メソッド={method}、成否=成功");
+        else
+            WriteAutomationLog(level, $"自動化要求を断りました: メソッド={method}、理由={failureCode}、成否=失敗");
+        return response;
+    }
+
+    private async Task<string> WriteStatusAsync(JsonElement? id, CancellationToken cancellationToken)
+    {
+        var status = await _uiDispatcher.InvokeAsync(CreateAutomationStatus, cancellationToken);
+        return AutomationProtocol.WriteResult(id, status, AutomationJsonContext.Default.AutomationStatus);
+    }
+
+    private async Task<string> WriteWaitForStatusAsync(AutomationJsonRpcRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Params is not { ValueKind: JsonValueKind.Object } parameters)
+            throw new JsonException("waitFor の引数がありません。");
+        var wait = AutomationProtocol.ReadParameters(parameters, AutomationJsonContext.Default.AutomationWaitForParams);
+        if (!IsRecordingWaitState(wait.State) || wait.TimeoutMilliseconds is < 1 or > 3_600_000)
+            throw new JsonException("waitFor の引数の値が正しくありません。");
+
+        var status = await WaitForAutomationStateAsync(wait, cancellationToken);
+        return AutomationProtocol.WriteResult(request.Id, status, AutomationJsonContext.Default.AutomationStatus);
+    }
+
+    private async Task<AutomationStatus> WaitForAutomationStateAsync(AutomationWaitForParams wait, CancellationToken cancellationToken)
+    {
+        if (!_automationWaitSlots.Wait(0)) throw new AutomationWaitBusyException();
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            while (true)
+            {
+                var signal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _automationWaitSignals.TryAdd(signal, 0);
+                AutomationStatus status;
+                try
+                {
+                    status = await _uiDispatcher.InvokeAsync(CreateAutomationStatus, cancellationToken);
+                    if (AutomationWaitMatches(status, wait)) return status;
+
+                    var remaining = TimeSpan.FromMilliseconds(wait.TimeoutMilliseconds) - stopwatch.Elapsed;
+                    if (remaining <= TimeSpan.Zero) throw new TimeoutException();
+                    await signal.Task.WaitAsync(remaining, cancellationToken);
+                }
+                finally
+                {
+                    _automationWaitSignals.TryRemove(signal, out _);
+                }
+            }
+        }
+        finally
+        {
+            _automationWaitSlots.Release();
+        }
+    }
+
+    private AutomationStatus CreateAutomationStatus()
+    {
+        var state = _recording.State;
+        var countdown = Application.OpenForms
+            .Cast<Form>()
+            .OfType<CaptureCountdownForm>()
+            .FirstOrDefault(form => !form.IsDisposed && form.Visible);
+        var selectionScreenOpen = Application.OpenForms
+            .Cast<Form>()
+            .Any(form => form.Name == "CaptureSelectionForm" && form.Visible);
+        var failedActions = _hotkeyManager.Failures.Select(failure => failure.Action).ToHashSet();
+        var shortcuts = ShortcutSettingsValidator.GetAssignments(_settings)
+            .Select(assignment => new AutomationShortcutStatus(
+                AutomationActionName(assignment.Action),
+                assignment.Notation,
+                assignment.Enabled,
+                failedActions.Contains(assignment.Action)))
+            .ToArray();
+        var recordingCountdown = state == VideoRecordingState.Countdown
+            ? countdown?.RemainingSeconds ?? _recording.CountdownRemainingSeconds
+            : null;
+        var uiCountdown = countdown is null
+            ? null
+            : new AutomationCountdownStatus(countdown.Kind == CaptureCountdownKind.Recording ? "recording" : "screenshot", countdown.RemainingSeconds);
+
+        return new AutomationStatus(
+            new AutomationRecordingStatus(state.ToString().ToLowerInvariant(), recordingCountdown, _recording.SelectionInProgress),
+            _screenshotCaptureInProgress,
+            _exitRequested,
+            new AutomationMenuStatus(
+                RecordingUiActions.CanRequestPauseOrResume(state),
+                RecordingUiActions.CanRequestStop(state),
+                RecordingUiActions.ShowsResume(state) ? UiLabels.ResumeRecording : UiLabels.PauseRecording),
+            shortcuts,
+            new AutomationDirectoriesStatus(
+                new AutomationDirectoryStatus(_settings.StillImageDirectory, SaveDirectoryRules.IsConfirmed(_settings.ConfirmedStillImageDirectory, _settings.StillImageDirectory)),
+                new AutomationDirectoryStatus(_settings.VideoDirectory, SaveDirectoryRules.IsConfirmed(_settings.ConfirmedVideoDirectory, _settings.VideoDirectory))),
+            new AutomationUiStatus(
+                _settingsForm is { IsDisposed: false, Visible: true },
+                _updateController.IsDialogOpen,
+                _saveDirectoryDialog is { IsDisposed: false, Visible: true },
+                selectionScreenOpen,
+                _recording.RecordingToolbarOpen,
+                (_settingsForm?.ModalDialogOpen ?? false) || _saveDirectoryDialog is { IsDisposed: false, Visible: true },
+                uiCountdown),
+            null,
+            null);
+    }
+
+    private static bool AutomationWaitMatches(AutomationStatus status, AutomationWaitForParams wait) =>
+        string.Equals(status.Recording.State, wait.State, StringComparison.Ordinal)
+        && (wait.CaptureAfter is null || status.LastCapture is { } capture && capture.At > wait.CaptureAfter.Value);
+
+    private static bool IsRecordingWaitState(string? state) => state is "idle" or "countdown" or "preparing" or "recording" or "paused" or "saving";
+
+    private static string AutomationActionName(RecorderAction action) => action switch
+    {
+        RecorderAction.ScreenshotRegion => "screenshotRegion",
+        RecorderAction.ScreenshotFullScreen => "screenshotFullScreen",
+        RecorderAction.ScreenshotWindow => "screenshotWindow",
+        RecorderAction.RecordingRegion => "recordingRegion",
+        RecorderAction.RecordingFullScreen => "recordingFullScreen",
+        RecorderAction.RecordingWindow => "recordingWindow",
+        RecorderAction.PauseResume => "pauseResume",
+        RecorderAction.StopRecording => "stopRecording",
+        _ => throw new ArgumentOutOfRangeException(nameof(action))
+    };
+
+    private void PulseAutomationStateChanged()
+    {
+        if (_automationPipeServer is null) return;
+        foreach (var signal in _automationWaitSignals.Keys)
+            signal.TrySetResult(true);
+    }
+
+    private static void WriteAutomationLog(DiagnosticLogLevel level, string message)
+    {
+        if (level == DiagnosticLogLevel.Debug) DiagnosticLog.Debug(DiagnosticLogTags.Automation, message);
+        else DiagnosticLog.Info(DiagnosticLogTags.Automation, message);
+    }
+
+    private sealed class AutomationWaitBusyException : Exception { }
 
     private void ReportIncompleteRecordings()
     {
@@ -556,6 +800,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_exitRequested) return null;
         using var dialog = new SaveDirectoryDialog(kind, directory, failure);
         _saveDirectoryDialog = dialog;
+        dialog.Shown += (_, _) => PulseAutomationStateChanged();
         try
         {
             if (_settingsForm is { IsDisposed: false, Visible: true } owner) dialog.ShowDialog(owner);
@@ -565,6 +810,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         finally
         {
             if (ReferenceEquals(_saveDirectoryDialog, dialog)) _saveDirectoryDialog = null;
+            PulseAutomationStateChanged();
         }
     }
 

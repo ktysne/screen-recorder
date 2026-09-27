@@ -223,6 +223,7 @@ internal static class CaptureSelection
 
         public CaptureSelectionForm(CaptureSelectionSession session, DisplaySnapshot display)
         {
+            Name = "CaptureSelectionForm";
             this.session = session;
             this.display = display;
             FormBorderStyle = FormBorderStyle.None;

@@ -27,6 +27,7 @@ public sealed class SettingsRepository(string? baseDirectory = null)
             result.DiagnosticLogLevel = DiagnosticLogLevels.FromSettingName(Property(root, nameof(result.DiagnosticLogLevel)) is { ValueKind: JsonValueKind.String } logLevel ? logLevel.GetString() : null);
             result.StartWithWindows = Bool(root, nameof(result.StartWithWindows), defaults.StartWithWindows);
             result.CheckForUpdatesAutomatically = Bool(root, nameof(result.CheckForUpdatesAutomatically), defaults.CheckForUpdatesAutomatically);
+            result.AutomationEnabled = Bool(root, nameof(result.AutomationEnabled), defaults.AutomationEnabled);
             result.NotifyWhenSaved = Bool(root, nameof(result.NotifyWhenSaved), defaults.NotifyWhenSaved);
             result.PlayCaptureSound = Bool(root, nameof(result.PlayCaptureSound), defaults.PlayCaptureSound);
             result.FileNameTemplate = Text(root, nameof(result.FileNameTemplate), defaults.FileNameTemplate);

@@ -21,6 +21,9 @@ public static class UiLabels
     public const string SettingsTitle = "ScreenRecorder の設定";
     public const string GeneralTab = "全般";
     public const string GeneralPreferences = "サインインと通知";
+    public const string AutomationSettings = "自動化用 CLI";
+    public const string AutomationEnabled = "自動化用の接続を受け付ける";
+    public const string AutomationEnabledHelp = "同じユーザーの自動化用 CLI から状態を読み取れます。接続を受け付ける間は、同じユーザーの他のプログラムからも利用できます。使うときだけオンにしてください。設定を保存すると反映されます。";
     public const string FilenameOptions = "ファイル名";
     public const string ApplicationTools = "アプリの管理";
     public const string DiagnosticLog = "診断ログ";
