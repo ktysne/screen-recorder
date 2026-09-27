@@ -674,7 +674,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
             new AutomationRequestState(
                 status.Ui.ModalDialogOpen,
                 status.Ui.SelectionScreenOpen,
-                status.Ui.Countdown is not null,
+                status.Ui.Countdown?.Kind switch
+                {
+                    "recording" => AutomationCountdownKind.Recording,
+                    "screenshot" => AutomationCountdownKind.Screenshot,
+                    _ => null
+                },
                 _updateController.IsDownloadingOrPreparing),
             method,
             action);

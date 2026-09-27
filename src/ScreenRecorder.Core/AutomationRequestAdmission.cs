@@ -1,9 +1,11 @@
 namespace ScreenRecorder.Core;
 
+public enum AutomationCountdownKind { Recording, Screenshot }
+
 public sealed record AutomationRequestState(
     bool ModalDialogOpen,
     bool SelectionScreenOpen,
-    bool CountdownInProgress,
+    AutomationCountdownKind? Countdown,
     bool UpdateDownloadOrPreparationInProgress);
 
 public sealed record AutomationRequestDecision(bool Accepted, string? ErrorDataCode)
@@ -29,8 +31,9 @@ public static class AutomationRequestAdmission
             return method == "selection"
                 ? AutomationRequestDecision.Accept
                 : AutomationRequestDecision.Reject("rejectedWhileSelection");
-        if (state.CountdownInProgress)
-            return method == "perform" && action == RecorderAction.StopRecording
+        // 停止で取り消せるのは録画のカウントダウンだけで、静止画の撮影の遅延は取り消せない。
+        if (state.Countdown is { } countdown)
+            return method == "perform" && action == RecorderAction.StopRecording && countdown == AutomationCountdownKind.Recording
                 ? AutomationRequestDecision.Accept
                 : AutomationRequestDecision.Reject("rejectedDuringCountdown");
         if (state.UpdateDownloadOrPreparationInProgress)

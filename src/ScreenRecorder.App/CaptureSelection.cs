@@ -217,7 +217,7 @@ internal static class CaptureSelection
 
         public bool TrySelectWindow(IntPtr window)
         {
-            if (mode != ScreenshotMode.Window || IsCompleted) return false;
+            if (mode != ScreenshotMode.Window || IsCompleted || !IsEnumeratedTopLevelWindow(window)) return false;
             var target = GetSelectableWindow(window);
             if (target is null) return false;
             Complete(new ScreenshotSelection(ScreenshotMode.Window, target.Value.Bounds, null, target.Value.Window, target.Value.Title));
@@ -255,6 +255,18 @@ internal static class CaptureSelection
             }, IntPtr.Zero);
             if (failure is not null) throw new InvalidOperationException("ウィンドウを判定できませんでした。", failure);
             return match;
+        }
+
+        // マウスでの選択は EnumWindows の候補から選ぶので、外から渡すウィンドウも同じ候補に限る。
+        private static bool IsEnumeratedTopLevelWindow(IntPtr window)
+        {
+            var found = false;
+            NativeMethods.EnumWindows((candidate, parameter) =>
+            {
+                found = candidate == window;
+                return !found;
+            }, IntPtr.Zero);
+            return found;
         }
 
         private (IntPtr Window, Rectangle Bounds, string Title)? GetSelectableWindow(IntPtr window)

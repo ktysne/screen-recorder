@@ -5,7 +5,7 @@ namespace ScreenRecorder.Core.Tests;
 
 public sealed class AutomationRequestAdmissionTests
 {
-    private static readonly AutomationRequestState Ready = new(false, false, false, false);
+    private static readonly AutomationRequestState Ready = new(false, false, null, false);
 
     [Theory]
     [InlineData("hello")]
@@ -43,12 +43,14 @@ public sealed class AutomationRequestAdmissionTests
     }
 
     [Theory]
-    [InlineData(RecorderAction.StopRecording, true)]
-    [InlineData(RecorderAction.PauseResume, false)]
-    [InlineData(RecorderAction.ScreenshotFullScreen, false)]
-    public void CountdownStateOnlyAcceptsTheStopAction(RecorderAction action, bool expected)
+    [InlineData(AutomationCountdownKind.Recording, RecorderAction.StopRecording, true)]
+    [InlineData(AutomationCountdownKind.Recording, RecorderAction.PauseResume, false)]
+    [InlineData(AutomationCountdownKind.Recording, RecorderAction.ScreenshotFullScreen, false)]
+    [InlineData(AutomationCountdownKind.Screenshot, RecorderAction.StopRecording, false)]
+    [InlineData(AutomationCountdownKind.Screenshot, RecorderAction.ScreenshotFullScreen, false)]
+    public void CountdownStateOnlyAcceptsTheStopActionThatCancelsARecordingCountdown(AutomationCountdownKind countdown, RecorderAction action, bool expected)
     {
-        var decision = AutomationRequestAdmission.Decide(Ready with { CountdownInProgress = true }, "perform", action);
+        var decision = AutomationRequestAdmission.Decide(Ready with { Countdown = countdown }, "perform", action);
 
         Assert.Equal(expected, decision.Accepted);
         Assert.Equal(expected ? null : "rejectedDuringCountdown", decision.ErrorDataCode);
