@@ -49,6 +49,14 @@ internal static class CliCommands
             new("--timeout", "<秒>", "待ち時間です。既定は 30 秒、上限は 3600 秒です。"),
             AutomationAppOption
         ]),
+        new("remote perform", "<動作>", "status の shortcuts[] に表示された動作を常駐中の ScreenRecorder で始めます。", [AutomationAppOption], 1, 1),
+        new("remote select", "", "開いている選択画面を範囲、ウィンドウ、取り消しのいずれかで完了させます。", [
+            new("--rect", "<x,y,w,h>", "仮想画面上の物理ピクセル範囲です。"),
+            new("--window", "<hwnd>", "選択画面が受け付けるウィンドウハンドルです。"),
+            new("--cancel", null, "選択を取り消します。"),
+            AutomationAppOption
+        ]),
+        new("remote exit", "", "常駐中の ScreenRecorder の終了を要求します。", [AutomationAppOption]),
         new("naming preview", "", "設定と指定値から保存ファイル名を計算します。", [
             new("--template", "<ひな形>", "ファイル名のひな形を上書きします。"),
             new("--mode", "<種類>", "full、region、window のいずれかを指定します。"),

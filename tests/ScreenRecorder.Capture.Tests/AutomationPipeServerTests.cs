@@ -50,7 +50,7 @@ public sealed class AutomationPipeServerTests
             if (Interlocked.Increment(ref receivedCount) == AutomationPipeServer.MaximumConnections)
                 allRequestsReceived.TrySetResult();
             await allRequestsReceived.Task.WaitAsync(cancellationToken);
-            return line;
+            return new AutomationPipeResponse(line);
         }, out var server));
 
         try
@@ -153,7 +153,35 @@ public sealed class AutomationPipeServerTests
         }
     }
 
-    private static Task<string?> EchoAsync(string line, CancellationToken cancellationToken) => Task.FromResult<string?>(line);
+    [Fact]
+    public async Task AfterWriteCallbackRunsOnceTheResponseIsWritten()
+    {
+        var pipeName = NewPipeName();
+        var afterWrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(AutomationPipeServer.TryStart(pipeName, (line, cancellationToken) => Task.FromResult<AutomationPipeResponse?>(new AutomationPipeResponse(
+            line,
+            () => afterWrite.TrySetResult())), out var server));
+
+        try
+        {
+            using var client = await ConnectAsync(pipeName);
+            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
+            using var writer = new StreamWriter(client, new UTF8Encoding(false), leaveOpen: true) { NewLine = "\n", AutoFlush = true };
+            // パイプの送信バッファーが 0 なので、読み手が待っていないと応答の書き込みが終わらない。
+            var response = reader.ReadLineAsync();
+            await writer.WriteLineAsync("accepted");
+
+            Assert.Equal("accepted", await response.WaitAsync(TimeSpan.FromSeconds(5)));
+            await afterWrite.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await server!.DisposeAsync();
+        }
+    }
+
+    private static Task<AutomationPipeResponse?> EchoAsync(string line, CancellationToken cancellationToken) =>
+        Task.FromResult<AutomationPipeResponse?>(new AutomationPipeResponse(line));
 
     private static string NewPipeName() => $"ScreenRecorder.Automation.Tests.{Guid.NewGuid():N}";
 

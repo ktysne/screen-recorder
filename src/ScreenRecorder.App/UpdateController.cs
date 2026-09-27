@@ -53,6 +53,8 @@ internal sealed class UpdateController : IDisposable
 
     public bool IsDialogOpen => _dialog is { IsDisposed: false, Visible: true };
 
+    public bool IsDownloadingOrPreparing => _downloadCancellation is not null;
+
     public void CheckManually()
     {
         if (_dialog is { IsDisposed: false, IsWorking: true })

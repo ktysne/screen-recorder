@@ -18,6 +18,12 @@ internal static class AutomationRemoteCommand
     {
         "idle", "countdown", "preparing", "recording", "paused", "saving"
     };
+    private static readonly HashSet<string> ActionNames = new(StringComparer.Ordinal)
+    {
+        "screenshotRegion", "screenshotFullScreen", "screenshotWindow",
+        "recordingRegion", "recordingFullScreen", "recordingWindow",
+        "pauseResume", "stopRecording"
+    };
 
     private sealed class PipeSession : IDisposable
     {
@@ -69,7 +75,7 @@ internal static class AutomationRemoteCommand
     }
 
     public static CliApplication.CliExecutionResult ExecuteStatus(ParsedCliCommand command, CliEnvironment environment) =>
-        Execute(command, environment, null, TimeSpan.Zero);
+        Execute(command, environment, "status", null, TimeSpan.Zero);
 
     public static CliApplication.CliExecutionResult ExecuteWait(ParsedCliCommand command, CliEnvironment environment)
     {
@@ -87,7 +93,75 @@ internal static class AutomationRemoteCommand
 
         var parameters = new AutomationWaitForParams(state, null, checked(timeoutSeconds * 1000));
         var json = JsonSerializer.SerializeToElement(parameters, AutomationJsonContext.Default.AutomationWaitForParams);
-        return Execute(command, environment, json, TimeSpan.FromSeconds(timeoutSeconds));
+        return Execute(command, environment, "waitFor", json, TimeSpan.FromSeconds(timeoutSeconds));
+    }
+
+    public static CliApplication.CliExecutionResult ExecutePerform(ParsedCliCommand command, CliEnvironment environment)
+    {
+        var action = command.Positionals.SingleOrDefault();
+        if (action is null || !ActionNames.Contains(action))
+            return Invalid("動作は status の shortcuts[] にある 8 つの名前のいずれかを指定してください。");
+
+        var parameters = new AutomationPerformParams(action);
+        var json = JsonSerializer.SerializeToElement(parameters, AutomationJsonContext.Default.AutomationPerformParams);
+        return Execute(command, environment, "perform", json, TimeSpan.Zero);
+    }
+
+    public static CliApplication.CliExecutionResult ExecuteSelect(ParsedCliCommand command, CliEnvironment environment)
+    {
+        var rectSpecified = command.Options.TryGetValue("--rect", out var rectValue);
+        var windowSpecified = command.Options.TryGetValue("--window", out var windowValue);
+        var cancelSpecified = command.Options.ContainsKey("--cancel");
+        if ((rectSpecified ? 1 : 0) + (windowSpecified ? 1 : 0) + (cancelSpecified ? 1 : 0) != 1)
+            return Invalid("--rect、--window、--cancel のいずれか 1 つを指定してください。");
+
+        AutomationSelectionParams selection;
+        if (rectSpecified)
+        {
+            if (!TryParseRectangle(rectValue, out var x, out var y, out var width, out var height))
+                return Invalid("--rect は x,y,w,h の 4 つの整数で、幅と高さを 1 以上にしてください。");
+            selection = new AutomationSelectionParams("rect", x, y, width, height, null);
+        }
+        else if (windowSpecified)
+        {
+            if (!TryParseWindowHandle(windowValue, out var hwnd))
+                return Invalid("--window は 10 進数または 0x で始まる 16 進数のウィンドウハンドルを指定してください。");
+            selection = new AutomationSelectionParams("window", null, null, null, null, hwnd);
+        }
+        else
+        {
+            selection = new AutomationSelectionParams("cancel", null, null, null, null, null);
+        }
+
+        var json = JsonSerializer.SerializeToElement(selection, AutomationJsonContext.Default.AutomationSelectionParams);
+        return Execute(command, environment, "selection", json, TimeSpan.Zero);
+    }
+
+    public static CliApplication.CliExecutionResult ExecuteExit(ParsedCliCommand command, CliEnvironment environment) =>
+        Execute(command, environment, "exit", null, TimeSpan.Zero);
+
+    private static bool TryParseRectangle(string? value, out int x, out int y, out int width, out int height)
+    {
+        x = y = width = height = 0;
+        if (value is null) return false;
+        var parts = value.Split(',', StringSplitOptions.TrimEntries);
+        return parts.Length == 4
+            && int.TryParse(parts[0], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out x)
+            && int.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out y)
+            && int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out width)
+            && int.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out height)
+            && width > 0
+            && height > 0;
+    }
+
+    private static bool TryParseWindowHandle(string? value, out long hwnd)
+    {
+        hwnd = 0;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var candidate = value.Trim();
+        var isHexadecimal = candidate.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+        var digits = isHexadecimal ? candidate[2..] : candidate;
+        return long.TryParse(digits, isHexadecimal ? NumberStyles.HexNumber : NumberStyles.None, CultureInfo.InvariantCulture, out hwnd);
     }
 
     public static CliAutomationServerVerification VerifyServer(NamedPipeClientStream pipe, string? expectedAppPath)
@@ -119,17 +193,19 @@ internal static class AutomationRemoteCommand
     private static CliApplication.CliExecutionResult Execute(
         ParsedCliCommand command,
         CliEnvironment environment,
-        JsonElement? waitParameters,
+        string method,
+        JsonElement? parameters,
         TimeSpan waitTimeout)
     {
         command.Options.TryGetValue("--app", out var expectedAppPath);
-        return ExecuteAsync(environment, expectedAppPath, waitParameters, waitTimeout).GetAwaiter().GetResult();
+        return ExecuteAsync(environment, expectedAppPath, method, parameters, waitTimeout).GetAwaiter().GetResult();
     }
 
     private static async Task<CliApplication.CliExecutionResult> ExecuteAsync(
         CliEnvironment environment,
         string? expectedAppPath,
-        JsonElement? waitParameters,
+        string method,
+        JsonElement? parameters,
         TimeSpan waitTimeout)
     {
         using var pipe = new NamedPipeClientStream(".", environment.AutomationPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -169,8 +245,7 @@ internal static class AutomationRemoteCommand
                 return Failure(CliExitCode.IoFailure, "protocolMismatch", "接続先と通信プロトコルの版が一致しません。");
 
             using var requestIdDocument = JsonDocument.Parse("2");
-            var method = waitParameters is null ? "status" : "waitFor";
-            await session.SendAsync(requestIdDocument.RootElement, method, waitParameters, CancellationToken.None);
+            await session.SendAsync(requestIdDocument.RootElement, method, parameters, CancellationToken.None);
             // 本体は期限ちょうどに timeout を返すので、その応答が届く分だけ長く待つ。
             var response = await session.ReceiveAsync(waitTimeout + ResponseTimeout, CancellationToken.None);
             if (response.Error is not null) return RemoteError(response.Error);

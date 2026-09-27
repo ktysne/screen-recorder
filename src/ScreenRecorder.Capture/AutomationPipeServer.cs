@@ -18,7 +18,7 @@ public sealed class AutomationPipeServer : IAsyncDisposable
     }
 
     private readonly string _pipeName;
-    private readonly Func<string, CancellationToken, Task<string?>> _handleLine;
+    private readonly Func<string, CancellationToken, Task<AutomationPipeResponse?>> _handleLine;
     private readonly TimeSpan _requestTimeout;
     private readonly int _maximumLineLengthBytes;
     private readonly CancellationTokenSource _shutdown = new();
@@ -28,7 +28,7 @@ public sealed class AutomationPipeServer : IAsyncDisposable
 
     private AutomationPipeServer(
         string pipeName,
-        Func<string, CancellationToken, Task<string?>> handleLine,
+        Func<string, CancellationToken, Task<AutomationPipeResponse?>> handleLine,
         TimeSpan requestTimeout,
         int maximumLineLengthBytes)
     {
@@ -41,6 +41,22 @@ public sealed class AutomationPipeServer : IAsyncDisposable
     public static bool TryStart(
         string pipeName,
         Func<string, CancellationToken, Task<string?>> handleLine,
+        out AutomationPipeServer? server,
+        TimeSpan? requestTimeout = null,
+        int maximumLineLengthBytes = RecordingWorkerLineReader.MaximumLineLengthBytes)
+    {
+        ArgumentNullException.ThrowIfNull(handleLine);
+        Func<string, CancellationToken, Task<AutomationPipeResponse?>> adapter = async (line, cancellationToken) =>
+        {
+            var response = await handleLine(line, cancellationToken).ConfigureAwait(false);
+            return response is null ? null : new AutomationPipeResponse(response);
+        };
+        return TryStart(pipeName, adapter, out server, requestTimeout, maximumLineLengthBytes);
+    }
+
+    public static bool TryStart(
+        string pipeName,
+        Func<string, CancellationToken, Task<AutomationPipeResponse?>> handleLine,
         out AutomationPipeServer? server,
         TimeSpan? requestTimeout = null,
         int maximumLineLengthBytes = RecordingWorkerLineReader.MaximumLineLengthBytes)
@@ -228,8 +244,11 @@ public sealed class AutomationPipeServer : IAsyncDisposable
                 }
 
                 var response = await responseTask.ConfigureAwait(false);
-                if (response is not null)
-                    await WriteLineAsync(connection, response, _shutdown.Token).ConfigureAwait(false);
+                if (response?.Line is { } responseLine)
+                {
+                    await WriteLineAsync(connection, responseLine, _shutdown.Token).ConfigureAwait(false);
+                    response.AfterWrite?.Invoke();
+                }
             }
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
@@ -316,3 +335,5 @@ public sealed class AutomationPipeServer : IAsyncDisposable
         }
     }
 }
+
+public sealed record AutomationPipeResponse(string Line, Action? AfterWrite = null);

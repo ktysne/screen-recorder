@@ -1,6 +1,6 @@
 # 起動中の本体の操作
 
-状態：段階 4b は実装済み。段階 4c と 4d は未着手。
+状態：段階 4b と 4c は実装済み。段階 4d は未着手。
 
 この資料は、自動化用 CLI から常駐中の本体の状態を読み、操作する仕組み(段階 4)の通信の形式と安全性を定める。
 CLI 全体の約束と段階の位置づけは [automation-cli.md](automation-cli.md) にあり、この資料はその「段階 4」を詳しくしたものである。
@@ -87,7 +87,7 @@ JSON-RPC 2.0 に合わせるのは、段階 5 の MCP が JSON-RPC 2.0 で、変
 - 版は `hello` の `protocolVersion` で確かめる。合わなければ、CLI が `protocolMismatch` で止める。
 - JSON のプロパティは camelCase とし、録画プロセスとの通信と同じく、ソース生成のシリアライザと行の読み取りを使う。
 
-段階 4b で使うエラー番号は次のとおりである。
+段階 4b と 4c で使うエラー番号は次のとおりである。
 
 | `error.code` | `error.data.code` | 意味 |
 |---|---|---|
@@ -98,6 +98,9 @@ JSON-RPC 2.0 に合わせるのは、段階 5 の MCP が JSON-RPC 2.0 で、変
 | -32603 | `internalError` | 要求を処理できない |
 | -32001 | `busy` | `waitFor` の同時実行数が上限に達した |
 | -32002 | `timeout` | `waitFor` の期限が切れた |
+| -32003 | 状態に応じた識別子 | 現在の状態では要求を受け付けられない |
+
+`-32003` の `error.data.code` には、`rejectedWhileModal`、`rejectedWhileSelection`、`rejectedDuringCountdown`、`rejectedDuringUpdate`、`selectionNotOpen` のいずれかを入れる。
 
 ## メソッド
 
@@ -143,8 +146,11 @@ CLI は 1 回の要求で終わるので、状態の変化を購読する仕組�
 ### perform
 
 `RecorderAction` の名前(camelCase)を受け取り、`TrayApplicationContext.PerformAction` へ渡す。
+名前は `status` の `shortcuts[]` が返す 8 種類と一致させる。
+引数は `{"action":"screenshotFullScreen"}` の形で渡す。
 応答は「受け付けた」ことだけを返す。動作の結果は `status` と `waitFor` で見る。
 `PerformAction` は選択画面や保存先の確認で人の操作を待つ分岐を持ち、終わるまで数十秒かかりうるためである。
+成功の結果は `{ "accepted": true }` とする。
 
 ### selection
 
@@ -153,6 +159,16 @@ CLI は 1 回の要求で終わるので、状態の変化を購読する仕組�
 
 選択画面は静止画の撮影と録画の両方から開かれるが、同時に 2 つ開かないことは、撮影中と録画の選択中を断る既存の判定で保証されている。
 このため、選択画面の側に「いま開いている選択」を 1 つだけ持たせ、`selection` はそれを完了させる。
+
+引数の `kind` で選択方法を指定する。
+
+- `rect` は `{"kind":"rect","x":0,"y":0,"width":320,"height":240}` の形で仮想画面の物理ピクセルを指定する。範囲全体が 1 つのモニター内に収まる必要がある。
+- `window` は `{"kind":"window","hwnd":1234}` の形でウィンドウハンドルを指定する。選択画面がその時点で候補として受け付けるウィンドウである必要がある。
+- `cancel` は `{"kind":"cancel"}` を送り、選択画面を取り消す。
+
+選択画面が開いていない要求は `selectionNotOpen` で断る。
+範囲かウィンドウをその選択画面で受け付けられない場合は `invalidParams` で断る。
+成功の結果は `{ "accepted": true }` とする。
 
 選択画面を飛ばして範囲を直接渡す方式は、ウィンドウを直接指定する既存の経路と同じ形で後から足せる。この段階では作らない。
 
@@ -165,6 +181,7 @@ CLI は 1 回の要求で終わるので、状態の変化を購読する仕組�
 
 本体は `exit` の要求 ID への成功の応答を送り終えてから、終了の処理を進める。
 CLI は、その応答を受け取れば成功とする。応答より前に接続が切れた場合だけ `disconnected` を返す。
+成功の結果は `{ "accepted": true }` とする。
 
 ## 受け付けの判定と UI スレッド
 
@@ -175,11 +192,14 @@ UI スレッドへの受け渡しは `BeginInvoke` を使う。モーダルの�
 
 | 状態 | 受け付けるメソッド |
 |---|---|
-| モーダルのダイアログが開いている | `hello`、`status`、`waitFor`、`exit` |
-| 選択画面が開いている | 上に加えて `selection` |
-| カウントダウン中 | `hello`、`status`、`waitFor`、`exit`、`perform`(停止だけ) |
-| 更新のダウンロードと準備中 | `hello`、`status`、`waitFor`、`exit` |
+| モーダルのダイアログが開いている | `hello`、`status`、`waitFor`、`exit`。ほかは `rejectedWhileModal` |
+| 選択画面が開いている | 上に加えて `selection`。ほかは `rejectedWhileSelection` |
+| カウントダウン中 | `hello`、`status`、`waitFor`、`exit`、`perform`(停止だけ)。ほかは `rejectedDuringCountdown` |
+| 更新のダウンロードと準備中 | `hello`、`status`、`waitFor`、`exit`。ほかは `rejectedDuringUpdate` |
 | それ以外 | すべて |
+
+複数の状態が同時に該当する場合は、モーダル、選択画面、カウントダウン、更新の順で判定する。
+`selection` はこれらの状態に該当せず、選択画面も開いていないとき `selectionNotOpen` で断る。
 
 - `exit` は常に受け付ける。本体の終了の処理は、開いている保存先の確認ダイアログを閉じてから終わる作りなので、テストが途中のダイアログで止まったときの後始末に使える。
 - カウントダウン中の停止は、カウントダウンの取り消しとして働く(本体のトレイメニューの停止と同じ)。選択画面が開いている間の停止は何もしないので、選択の取り消しには `selection` の取り消しを使う。

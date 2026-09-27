@@ -42,6 +42,14 @@ $cli = "src/ScreenRecorder.Cli/bin/Debug/net10.0-windows10.0.22000.0/screenrecor
 
 - `info` のモニターの一覧の順が `--display` の番号になる。`--rect` は仮想画面の座標で、1 つのモニターに収める。
 
+常駐中の本体を確かめる:
+
+- `remote status` と `remote wait` で状態を読み、操作できる条件を待つ。
+- `remote perform` で本体の撮影や録画を始め、`remote select` で開いている選択画面を完了または取り消す。
+- `remote exit` で本体を終了する。テスト後にトレイを残さないために使う。
+- 接続先が見つからないときは、本体で自動化用接続が有効かを確認する。
+- 引数と選択画面が操作を受け付ける条件は `help remote` と `help remote select` を正本とする。
+
 ## 長さを比べるときの注意
 
 - 設定のエンコーダが「自動」だと、画面が静止している間はフレームが間引かれ、動画の末尾が短くなる。長さを比べるときは、`"encoder": "softwareOnly"` の設定ファイルを `--settings` で渡す。
