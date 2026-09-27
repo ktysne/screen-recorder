@@ -147,6 +147,26 @@ public sealed class DiagnosticLogTests
     }
 
     [Fact]
+    public void 切断後の固定名のログは起動ごとのログのローテーションで数えも消しもしない()
+    {
+        const string orphanLog = "record-worker-orphan.log";
+        var startupLog = DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 26, 14, 53, 1));
+
+        Assert.False(DiagnosticLogFormatting.IsLogFileName(orphanLog));
+        Assert.Empty(DiagnosticLogFormatting.SelectFilesToDelete([orphanLog], 0));
+        Assert.Equal([startupLog], DiagnosticLogFormatting.SelectFilesToDelete([orphanLog, startupLog], 0));
+    }
+
+    [Fact]
+    public void 切断後の固定名のログは上限を超えたときだけ新しい側の半分を残して切り詰める()
+    {
+        Assert.Null(DiagnosticLogOrphanPolicy.GetTruncationStartOffset(DiagnosticLogOrphanPolicy.MaximumFileSizeBytes));
+        Assert.Equal(
+            (DiagnosticLogOrphanPolicy.MaximumFileSizeBytes + 2) / 2,
+            DiagnosticLogOrphanPolicy.GetTruncationStartOffset(DiagnosticLogOrphanPolicy.MaximumFileSizeBytes + 2));
+    }
+
+    [Fact]
     public void HeaderStatesVersionLevelPrivacyAndExcludedContent()
     {
         var header = DiagnosticLogFormatting.CreateHeader("1.2.3", DiagnosticLogLevel.Warn);

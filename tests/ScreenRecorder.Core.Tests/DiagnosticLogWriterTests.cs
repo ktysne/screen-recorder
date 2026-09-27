@@ -25,6 +25,32 @@ public sealed class DiagnosticLogWriterTests
     }
 
     [Fact]
+    public void ForwardsEntriesAtOrAboveTheConfiguredLevel()
+    {
+        var entries = new List<(DiagnosticLogLevel Level, string Tag, string Message)>();
+        DiagnosticLog.SetForwarder(DiagnosticLogLevel.Warn, (level, tag, message) => entries.Add((level, tag, message)));
+
+        try
+        {
+            DiagnosticLog.Debug("record", "debug");
+            DiagnosticLog.Warn("audio", "warning");
+            DiagnosticLog.Error("record", "error");
+        }
+        finally
+        {
+            DiagnosticLog.ClearForwarder();
+        }
+
+        Assert.Equal(
+            new[]
+            {
+                (DiagnosticLogLevel.Warn, "audio", "warning"),
+                (DiagnosticLogLevel.Error, "record", "error")
+            },
+            entries);
+    }
+
+    [Fact]
     public async Task CallsDoNotWaitForAnActiveWrite()
     {
         using var destination = new TestDestination { HoldAppend = true };

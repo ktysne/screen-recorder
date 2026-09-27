@@ -83,3 +83,14 @@ public static class DiagnosticLogFormatting
         "記録しないもの: 撮影した画像、録画した映像と音声、クリップボードの内容、ウィンドウのタイトル、IP アドレス、利用統計。"
     ];
 }
+
+public static class DiagnosticLogOrphanPolicy
+{
+    public const long MaximumFileSizeBytes = 256 * 1024;
+
+    public static long? GetTruncationStartOffset(long fileSizeBytes)
+    {
+        if (fileSizeBytes < 0) throw new ArgumentOutOfRangeException(nameof(fileSizeBytes));
+        return fileSizeBytes > MaximumFileSizeBytes ? fileSizeBytes / 2 : null;
+    }
+}

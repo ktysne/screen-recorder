@@ -46,6 +46,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray = new NotifyIcon { Text = UiLabels.AppName, Icon = _trayIcons.Idle, ContextMenuStrip = _menu.Strip, Visible = true };
         _captureNotifier = new CaptureNotifier(_tray, OpenNotifiedUpdate);
         _recording = new VideoRecordingController(
+            executablePath,
             () => _settings,
             () => _exitRequested,
             RefreshRecordingUi,
@@ -383,7 +384,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private string? GetUpdateBlockedReason()
     {
-        if (_recording.SelectionInProgress || _recording.State != VideoRecordingState.Idle) return UiLabels.UpdateBlockedByRecording;
+        if (!_recording.EngineDisposal.IsCompleted
+            || _recording.SelectionInProgress
+            || _recording.State != VideoRecordingState.Idle)
+            return UiLabels.UpdateBlockedByRecording;
         return _screenshotCaptureInProgress ? UiLabels.UpdateBlockedByCapture : null;
     }
 

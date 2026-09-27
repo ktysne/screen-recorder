@@ -11,6 +11,7 @@ internal sealed class VideoRecordingController : IDisposable
     private static readonly TimeSpan RecordingFinalizationTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan RecordingEngineDisposeWarningThreshold = TimeSpan.FromSeconds(1);
     private readonly Func<Settings> _currentSettings;
+    private readonly string _executablePath;
     private readonly Func<bool> _exitRequested;
     private readonly Action _recordingStateChanged;
     private readonly Action _busyStateChanged;
@@ -53,6 +54,7 @@ internal sealed class VideoRecordingController : IDisposable
     private sealed record RecordingSpaceAvailability(long? AvailableBytes, Exception? Error);
 
     public VideoRecordingController(
+        string executablePath,
         Func<Settings> currentSettings,
         Func<bool> exitRequested,
         Action recordingStateChanged,
@@ -64,6 +66,7 @@ internal sealed class VideoRecordingController : IDisposable
         Func<SaveDirectoryKind, string, Exception?, Task<string?>> confirmSaveDirectory,
         Action<SaveDirectoryKind, string> rememberConfirmedDirectory)
     {
+        _executablePath = executablePath;
         _currentSettings = currentSettings;
         _exitRequested = exitRequested;
         _recordingStateChanged = recordingStateChanged;
@@ -95,7 +98,9 @@ internal sealed class VideoRecordingController : IDisposable
         _recordingCountdownForm?.Close();
         _recordingToolbar?.Close();
         _recordingRegionFrame?.Close();
-        _recordingEngine?.Dispose();
+        var engine = _recordingEngine;
+        _recordingEngine = null;
+        if (engine is not null) QueueEngineDisposal(engine);
     }
 
     public async Task HandleRecordActionAsync(ScreenshotMode mode)
@@ -278,7 +283,7 @@ internal sealed class VideoRecordingController : IDisposable
                 captureSettings.CaptureMicrophone,
                 captureSettings.MicrophoneDeviceId,
                 captureSettings.AudioFormat == AudioFormat.Mp3 ? 192 : captureSettings.AacBitrateKbps);
-            var engine = new ScreenRecorderLibRecordingEngine();
+            var engine = new RecordingWorkerProcessEngine(_executablePath);
             engine.StatusChanged += (_, eventArgs) => DispatchToUi(() => HandleRecordingStatus(engine, eventArgs));
             engine.RecordingCompleted += (_, eventArgs) => DispatchToUi(() => HandleRecordingCompleted(engine, eventArgs));
             engine.RecordingFailed += (_, eventArgs) => DispatchToUi(() => HandleRecordingFailed(engine, eventArgs));
@@ -538,7 +543,8 @@ internal sealed class VideoRecordingController : IDisposable
         _ = FinishRecordingFailureAsync(
             eventArgs.Error,
             eventArgs.FilePath,
-            finalizationConfirmed: false);
+            finalizationConfirmed: false,
+            recordingStartFailure: eventArgs.BeforeRecordingStarted);
     }
 
     private async Task FinishRecordingStartFailureAfterTimeoutAsync(IRecordingEngine engine)
@@ -804,12 +810,7 @@ internal sealed class VideoRecordingController : IDisposable
     {
         var engine = _recordingEngine;
         _recordingEngine = null;
-        if (engine is not null)
-        {
-            var previousDisposal = _engineDisposal;
-            var disposal = Task.Run(() => DisposeRecordingEngine(engine));
-            _engineDisposal = Task.WhenAll(previousDisposal, disposal);
-        }
+        if (engine is not null) QueueEngineDisposal(engine);
 
         SetSystemSleepInhibition(false);
         _recordingTimer?.Stop();
@@ -849,6 +850,23 @@ internal sealed class VideoRecordingController : IDisposable
             if (stopwatch.Elapsed > RecordingEngineDisposeWarningThreshold)
                 DiagnosticLog.Warn(DiagnosticLogTags.Record, $"録画エンジンの破棄に {stopwatch.ElapsedMilliseconds} ms かかりました。");
         }
+    }
+
+    private void QueueEngineDisposal(IRecordingEngine engine)
+    {
+        var previousDisposal = _engineDisposal;
+        var disposal = Task.Run(() => DisposeRecordingEngine(engine));
+        var combinedDisposal = Task.WhenAll(previousDisposal, disposal);
+        _engineDisposal = combinedDisposal;
+        _ = combinedDisposal.ContinueWith(
+            _ => _dispatcher.Post(() =>
+            {
+                _busyStateChanged();
+                _tryExitAfterPendingWork();
+            }),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
     }
 
     private void CloseRegionFrame()
