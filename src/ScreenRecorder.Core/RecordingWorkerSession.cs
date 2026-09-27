@@ -250,7 +250,7 @@ public sealed class RecordingWorkerSession
         if (!_processStarted || (_startupDeadline is { } deadline && at > deadline))
             return FailStart(at, "録画プロセスの準備完了を期限内に受信できませんでした。");
         if (message.ProcessId != _expectedProcessId || message.ProtocolVersion != RecordingWorkerProtocol.CurrentVersion)
-            return FailStart(at, "録画プロセスの ID またはやり取りの版が一致しません。");
+            return FailStart(at, "録画プロセスの ID またはやり取りのバージョンが一致しません。");
 
         _ready = true;
         _startupDeadline = null;

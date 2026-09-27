@@ -50,7 +50,7 @@ public sealed class RecordingWorkerSessionTests
     [Theory]
     [InlineData(1235, RecordingWorkerProtocol.CurrentVersion)]
     [InlineData(1234, RecordingWorkerProtocol.CurrentVersion + 1)]
-    public void PIDまたは版が一致しない準備完了を開始失敗にする(int processId, int version)
+    public void PIDまたはバージョンが一致しない準備完了を開始失敗にする(int processId, int version)
     {
         var session = CreateStartedSession();
 
