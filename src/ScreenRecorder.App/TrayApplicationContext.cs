@@ -31,6 +31,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private System.Windows.Forms.Timer? _leftoverRecordingNotificationTimer;
     private readonly UpdateController _updateController;
     private System.Windows.Forms.Timer? _updateCompletedNotificationTimer;
+    private AutomationCaptureRecord? _lastCapture;
+    private AutomationFailureRecord? _lastFailure;
 
     private bool IsCaptureOrRecordingSelectionInProgress => _screenshotCaptureInProgress || _recording.SelectionInProgress;
 
@@ -62,7 +64,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _uiDispatcher,
             path => OpenFolderAsync(path, notifyFailure: false),
             ConfirmSaveDirectoryAsync,
-            RememberConfirmedDirectory);
+            RememberConfirmedDirectory,
+            RecordAutomationCapture,
+            RecordAutomationFailure);
         _tray.DoubleClick += (_, _) => ShowSettings();
         _tray.BalloonTipClicked += (_, _) => _captureNotifier.HandleBalloonClicked();
         _hotkeyManager = new HotkeyManager(PerformHotkeyAction);
@@ -294,6 +298,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _updateController.RefreshBusyState();
             _captureNotifier.ClearPendingCapture();
             var captureSettings = _settings.Clone();
+            string? savedPathForFailure = null;
             try
             {
                 using var result = await _screenshotCaptureService.CaptureAsync(screenshotMode, captureSettings,
@@ -334,13 +339,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         captureSettings.ConfirmedStillImageDirectory = selectedDirectory;
                     }
                 }
+                savedPathForFailure = savedPath;
                 await CompleteScreenshotAsync(result, screenshotMode, captureSettings, savedPath);
             }
             catch (Exception exception)
             {
                 DiagnosticLog.Error(DiagnosticLogTags.Capture, $"静止画の撮影に失敗しました: 方法={CaptureText.CaptureMethodName(screenshotMode)}; {exception}");
                 var reason = CaptureText.ErrorDetail(exception.Message);
-                ShowNotification(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.ScreenshotCaptureFailed, reason), ToolTipIcon.Error);
+                var message = string.Format(UiLabels.ScreenshotCaptureFailed, reason);
+                RecordAutomationFailure("screenshot", savedPathForFailure, message);
+                ShowNotification(NotificationDuration.Standard, UiLabels.AppName, message, ToolTipIcon.Error);
             }
             finally
             {
@@ -728,8 +736,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (request.Params is not { ValueKind: JsonValueKind.Object } parameters)
             throw new JsonException("waitFor の引数がありません。");
         var wait = AutomationProtocol.ReadParameters(parameters, AutomationJsonContext.Default.AutomationWaitForParams);
-        // lastCapture を記録するまでは captureAfter が成立せず、期限まで待たせるだけになるため断る。
-        if (!IsRecordingWaitState(wait.State) || wait.CaptureAfter is not null || wait.TimeoutMilliseconds is < 1 or > 3_600_000)
+        if (!IsRecordingWaitState(wait.State) || wait.TimeoutMilliseconds is < 1 or > 3_600_000)
             throw new JsonException("waitFor の引数の値が正しくありません。");
 
         var status = await WaitForAutomationStateAsync(wait, cancellationToken);
@@ -813,8 +820,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 _recording.RecordingToolbarOpen,
                 (_settingsForm?.ModalDialogOpen ?? false) || _saveDirectoryDialog is { IsDisposed: false, Visible: true },
                 uiCountdown),
-            null,
-            null);
+            _lastCapture,
+            _lastFailure);
     }
 
     private static bool AutomationWaitMatches(AutomationStatus status, AutomationWaitForParams wait) =>
@@ -841,6 +848,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_automationPipeServer is null) return;
         foreach (var signal in _automationWaitSignals.Keys)
             signal.TrySetResult(true);
+    }
+
+    private void RecordAutomationCapture(string kind, string? path, string? notification)
+    {
+        _lastCapture = new AutomationCaptureRecord(kind, path, DateTimeOffset.Now, notification);
+        PulseAutomationStateChanged();
+    }
+
+    private void RecordAutomationFailure(string kind, string? path, string notification)
+    {
+        _lastFailure = new AutomationFailureRecord(kind, path, DateTimeOffset.Now, notification);
+        PulseAutomationStateChanged();
     }
 
     private static void WriteAutomationLog(DiagnosticLogLevel level, string message)
@@ -916,6 +935,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private async Task CompleteScreenshotAsync(ScreenshotCaptureResult result, ScreenshotMode mode, Settings settings, string filePath)
     {
         var clipboardResult = await CopyScreenshotToClipboardAsync(result.Image, settings.CopyImageToClipboard);
+        if (clipboardResult.Warning is { } warning)
+            RecordAutomationFailure("screenshot", filePath, warning);
 
         await CaptureCompletion.ExecuteAsync(
             CaptureCompletionKind.Screenshot,
@@ -925,20 +946,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
             $"方法={CaptureText.CaptureMethodName(mode)}、動作={settings.AfterCaptureAction}、ファイル={filePath}",
             clipboardResult.Warning,
             path => OpenFolderAsync(path, notifyFailure: false),
+            notification => RecordAutomationCapture("screenshot", filePath, notification),
             ShowCaptureNotification);
     }
 
     private async Task NotifyScreenshotNotSavedAsync(Bitmap image, bool copyToClipboard)
     {
         var clipboardResult = await CopyScreenshotToClipboardAsync(image, copyToClipboard);
+        var message = clipboardResult.Copied
+            ? UiLabels.ScreenshotNotSavedClipboardNotification
+            : clipboardResult.Warning is not null
+                ? UiLabels.ScreenshotNotSavedClipboardFailedNotification
+                : UiLabels.ScreenshotNotSavedNotification;
+        if (clipboardResult.Copied) RecordAutomationCapture("screenshot", null, message);
+        else if (clipboardResult.Warning is not null) RecordAutomationFailure("screenshot", null, message);
         ShowNotification(
             NotificationDuration.Standard,
             UiLabels.AppName,
-            clipboardResult.Copied
-                ? UiLabels.ScreenshotNotSavedClipboardNotification
-                : clipboardResult.Warning is not null
-                    ? UiLabels.ScreenshotNotSavedClipboardFailedNotification
-                    : UiLabels.ScreenshotNotSavedNotification,
+            message,
             clipboardResult.Warning is not null ? ToolTipIcon.Warning : ToolTipIcon.Info);
     }
 

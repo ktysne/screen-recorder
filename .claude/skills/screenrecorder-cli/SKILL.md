@@ -5,6 +5,8 @@ description: ScreenRecorder の自動化用 CLI(screenrecorder-cli)で、設定�
 
 # ScreenRecorder CLI の使い方
 
+状態：段階 4 は実装済み。段階 5 は未着手。
+
 設計の正本は `docs/automation-cli.md`、引数の正本は `help` の出力である。
 この Skill には場面ごとのコマンドの選び方だけを書き、引数の詳細は写さない。
 
@@ -45,6 +47,7 @@ $cli = "src/ScreenRecorder.Cli/bin/Debug/net10.0-windows10.0.22000.0/screenrecor
 常駐中の本体を確かめる:
 
 - `remote status` と `remote wait` で状態を読み、操作できる条件を待つ。
+- 撮影の保存を確認するときは、開始前の ISO 8601 時刻を指定して `remote wait --state idle --capture-after <日時>` を実行し、返った `result.lastCapture.path` を `probe` に渡す。
 - `remote perform` で本体の撮影や録画を始め、`remote select` で開いている選択画面を完了または取り消す。
 - `remote exit` で本体を終了する。テスト後にトレイを残さないために使う。
 - 接続先が見つからないときは、本体で自動化用接続が有効かを確認する。

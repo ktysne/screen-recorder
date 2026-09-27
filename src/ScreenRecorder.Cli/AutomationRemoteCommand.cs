@@ -84,6 +84,14 @@ internal static class AutomationRemoteCommand
         if (!RecordingStates.Contains(state))
             return Invalid("--state は idle、countdown、preparing、recording、paused、saving のいずれかを指定してください。");
 
+        DateTimeOffset? captureAfter = null;
+        if (command.Options.TryGetValue("--capture-after", out var captureAfterValue))
+        {
+            if (!DateTimeOffset.TryParse(captureAfterValue, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedCaptureAfter))
+                return Invalid("--capture-after は ISO 8601 の日時で指定してください。");
+            captureAfter = parsedCaptureAfter;
+        }
+
         var timeoutSeconds = DefaultTimeoutSeconds;
         if (command.Options.TryGetValue("--timeout", out var timeoutValue)
             && (!int.TryParse(timeoutValue, NumberStyles.None, CultureInfo.InvariantCulture, out timeoutSeconds)
@@ -91,7 +99,7 @@ internal static class AutomationRemoteCommand
                 || timeoutSeconds > MaximumTimeoutSeconds))
             return Invalid($"--timeout は 1 から {MaximumTimeoutSeconds} までの整数で指定してください。");
 
-        var parameters = new AutomationWaitForParams(state, null, checked(timeoutSeconds * 1000));
+        var parameters = new AutomationWaitForParams(state, captureAfter, checked(timeoutSeconds * 1000));
         var json = JsonSerializer.SerializeToElement(parameters, AutomationJsonContext.Default.AutomationWaitForParams);
         return Execute(command, environment, "waitFor", json, TimeSpan.FromSeconds(timeoutSeconds));
     }

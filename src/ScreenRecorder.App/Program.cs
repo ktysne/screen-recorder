@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.Win32;
 using ScreenRecorder.Core;
 
@@ -48,7 +49,7 @@ internal static class Program
         };
         DiagnosticLog.Info(DiagnosticLogTags.App, "アプリを起動しました。");
         var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
-        var sync = new AutoStartSynchronizer(new RunRegistry(), exePath);
+        var sync = new AutoStartSynchronizer(CreateAutoStartRegistry(), exePath);
         try { sync.Apply(settings.StartWithWindows); }
         catch (Exception exception) { DiagnosticLog.Error(DiagnosticLogTags.App, $"自動起動の設定に失敗しました: {exception}"); }
         var applicationReturnedNormally = false;
@@ -67,6 +68,26 @@ internal static class Program
                 DiagnosticLog.Info(DiagnosticLogTags.App, "アプリを終了します。");
                 DiagnosticLog.Stop();
             }
+        }
+    }
+
+    private static IAutoStartRegistry CreateAutoStartRegistry() => StoragePaths.GetTestDataDirectory() is { } testDataDirectory
+        ? new TestDataRunRegistry(testDataDirectory)
+        : new RunRegistry();
+
+    private sealed class TestDataRunRegistry(string testDataDirectory) : IAutoStartRegistry
+    {
+        private readonly string _registrationPath = Path.Combine(testDataDirectory, "autostart.json");
+
+        public void Set(string valueName, string executablePath)
+        {
+            Directory.CreateDirectory(testDataDirectory);
+            File.WriteAllText(_registrationPath, JsonSerializer.Serialize(new { valueName, executablePath }));
+        }
+
+        public void Remove(string valueName)
+        {
+            if (File.Exists(_registrationPath)) File.Delete(_registrationPath);
         }
     }
 

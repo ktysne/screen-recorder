@@ -24,6 +24,9 @@ dotnet run --project src/ScreenRecorder.Cli -- help
 Windows の実機で `SCREENRECORDER_DESKTOP_TESTS=1` を設定して実行してください。
 環境変数を設定しない場合、実機テストはスキップされます。
 
+実機テストが本体を起動するときは、`SCREENRECORDER_TEST_DATA_DIR` に一時フォルダーを指定します。
+設定、診断ログ、更新用ファイル、自動起動の登録をそのフォルダーの下に置くため、利用者の状態を変更しません。
+
 ## アプリのアイコン
 
 `src/ScreenRecorder.App/app.ico` と配布ページのアイコン `site/assets/app-icon-256.png` は、`assets/screen-recorder-a1-transparent.png` から作ります。
