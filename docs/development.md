@@ -14,6 +14,12 @@ dotnet build ScreenRecorder.slnx
 dotnet test ScreenRecorder.slnx
 ```
 
+CLI のコマンド一覧は次のコマンドで表示します。
+
+```powershell
+dotnet run --project src/ScreenRecorder.Cli -- help
+```
+
 `tests/ScreenRecorder.Capture.Tests` は GPU と Media Foundation を使うため、Windows の実機で実行してください。
 
 ## アプリのアイコン

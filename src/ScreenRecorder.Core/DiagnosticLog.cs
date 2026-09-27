@@ -21,7 +21,7 @@ public static class DiagnosticLog
         DiagnosticLogLevel MinimumLevel,
         Action<DiagnosticLogLevel, string, string> Write);
 
-    public static string LogsDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScreenRecorder", "logs");
+    public static string LogsDirectory => StoragePaths.GetLogsDirectory();
 
     public static DiagnosticLogLevel Level => Writer.Level;
 
