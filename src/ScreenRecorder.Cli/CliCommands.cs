@@ -49,6 +49,35 @@ internal static class CliCommands
             new("--at", "<日時>", "計算に使う ISO 8601 の日時です。"),
             new("--dir", "<フォルダー>", "保存先フォルダーを上書きします。")
         ]),
+        new("record", "", "画面を録画します。--dry-run では開始データだけを計算します。", [
+            new("--display", "<番号>", "info の順のモニター番号です。"),
+            new("--rect", "<x,y,w,h>", "仮想画面上の範囲です。"),
+            new("--window", "<hwnd>", "ウィンドウハンドルです。"),
+            new("-o", "<MP4>", "保存先です。"),
+            new("--duration", "<秒>", "録画する実時間です。"),
+            new("--pause-at", "<秒>", "録画開始から一時停止までの時間です。"),
+            new("--resume-at", "<秒>", "録画開始から再開までの時間です。"),
+            new("--settings", "<パス>", "設定ファイルです。"),
+            new("--defaults", null, "組み込みの既定値を使います。"),
+            new("--app", "<パス>", "ScreenRecorder.exe の場所です。"),
+            new("--force", null, "既存の出力を上書きします。"),
+            new("--dry-run", null, "録画せずに開始データを表示します。"),
+            new("--log-level", "<レベル>", "silent、error、warn、info、debug。")
+        ]),
+        new("probe", "<ファイル>", "MP4 または PNG を検査します。", [
+            new("--expect-width", "<px>", "期待する幅です。"),
+            new("--expect-height", "<px>", "期待する高さです。"),
+            new("--expect-fps", "<fps>", "期待するフレームレートです。"),
+            new("--expect-duration-ms", "<ms>", "期待する長さです。"),
+            new("--tolerance-ms", "<ms>", "長さの許容差です。既定は 500 ms。"),
+            new("--expect-video-codec", "<名称>", "期待する映像コーデックです。"),
+            new("--expect-audio-channels", "<数>", "期待する音声チャンネル数です。"),
+            new("--expect-audio-rate", "<Hz>", "期待する音声サンプリングレートです。"),
+            new("--expect-no-audio", null, "音声がないことを確認します。"),
+            new("--frame", "<秒>", "指定時刻のフレームを書き出します。"),
+            new("-o", "<PNG>", "フレームの保存先です。"),
+            new("--force", null, "既存の出力を上書きします。")
+        ], 1, 1),
         new("help", "[<コマンド>]", "コマンド一覧または指定したコマンドの使い方を表示します。", [], 0, 2)
     ];
 
@@ -98,7 +127,7 @@ internal static class CliCommands
         for (var index = 0; index < remaining.Length; index++)
         {
             var token = remaining[index];
-            if (!token.StartsWith("--", StringComparison.Ordinal))
+            if (!token.StartsWith("--", StringComparison.Ordinal) && token != "-o")
             {
                 positionals.Add(token);
                 continue;

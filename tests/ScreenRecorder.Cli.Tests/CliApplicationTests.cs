@@ -197,6 +197,68 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Empty(invocation.StandardError);
     }
 
+    [Fact]
+    public void RecordRejectsInvalidArgumentsBeforeStartingWorker()
+    {
+        string[][] cases =
+        [
+            ["record", "--dry-run", "--defaults"],
+            ["record", "--dry-run", "--defaults", "--display", "0", "--rect", "0,0,100,100"],
+            ["record", "--display", "0", "--defaults", "--duration", "3", "--pause-at", "1", "-o", "out.mp4"],
+            ["record", "--display", "0", "--defaults", "--duration", "3", "--pause-at", "2", "--resume-at", "1", "-o", "out.mp4"]
+        ];
+        foreach (var arguments in cases)
+        {
+            using var json = AssertJson(Run(arguments), 2, "record");
+            Assert.NotEqual(JsonValueKind.Null, json.RootElement.GetProperty("error").ValueKind);
+        }
+    }
+
+    [Fact]
+    public void RecordDryRunConvertsLeftMonitorRectangleToMonitorCoordinates()
+    {
+        using var json = AssertJson(Run("record", "--dry-run", "--defaults", "--rect", "-1800,100,400,300"), 0, "record");
+        var result = json.RootElement.GetProperty("result");
+        Assert.Equal("DISPLAY_TEST", result.GetProperty("target").GetProperty("monitor").GetString());
+        Assert.Equal(120, result.GetProperty("startData").GetProperty("sourceRect").GetProperty("x").GetInt32());
+        Assert.Equal(100, result.GetProperty("startData").GetProperty("sourceRect").GetProperty("y").GetInt32());
+    }
+
+    [Fact]
+    public void RecordRejectsRectangleSpanningDisplays()
+    {
+        using var json = AssertJson(Run("record", "--dry-run", "--defaults", "--rect", "-100,0,200,100"), 2, "record");
+        Assert.Equal("rectSpansDisplays", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void RecordReportsMissingAppWithoutStartingWorker()
+    {
+        var environment = _environment with { FindApp = _ => (null, ["missing.exe"]) };
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var code = CliApplication.Run(["record", "--defaults", "--display", "0", "--duration", "3", "-o", Path.Combine(_root, "out.mp4")], output, error, environment);
+        using var json = AssertJson(new Invocation(code, output.ToString(), error.ToString()), 3, "record");
+        Assert.Equal("appNotFound", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void RecordRejectsExistingOutput()
+    {
+        var path = Path.Combine(_root, "out.mp4");
+        File.WriteAllText(path, "existing");
+        using var json = AssertJson(Run("record", "--defaults", "--display", "0", "--duration", "3", "-o", path), 2, "record");
+        Assert.Equal("outputExists", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void ProbeRejectsInvalidArgumentsAndMissingFile()
+    {
+        using var invalid = AssertJson(Run("probe", "x.mp4", "--frame", "1"), 2, "probe");
+        using var missing = AssertJson(Run("probe", Path.Combine(_root, "missing.mp4")), 3, "probe");
+        Assert.Equal("fileNotFound", missing.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
     private Invocation Run(params string[] arguments)
     {
         using var output = new StringWriter();

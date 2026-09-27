@@ -25,12 +25,46 @@ internal sealed record CliEnvironment(
     Func<DateTimeOffset> Now,
     string CliVersion)
 {
+    public Func<string?, (string? Path, IReadOnlyList<string> Searched)> FindApp { get; init; } = FindApplication;
+
     public static CliEnvironment Create() => new(
         StoragePaths.GetSettingsDirectory(),
         StoragePaths.GetLogsDirectory(),
         EnumerateMonitors,
         () => DateTimeOffset.Now,
         typeof(CliEnvironment).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
+
+    private static (string? Path, IReadOnlyList<string> Searched) FindApplication(string? explicitPath)
+    {
+        var searched = new List<string>();
+        if (explicitPath is not null)
+        {
+            var path = Path.GetFullPath(explicitPath);
+            searched.Add(path);
+            return (File.Exists(path) ? path : null, searched);
+        }
+        var sibling = Path.Combine(AppContext.BaseDirectory, "ScreenRecorder.exe");
+        searched.Add(sibling);
+        if (File.Exists(sibling)) return (sibling, searched);
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "ScreenRecorder.slnx")))
+            directory = directory.Parent;
+        if (directory is null) return (null, searched);
+        var bin = Path.Combine(directory.FullName, "src", "ScreenRecorder.App", "bin");
+        foreach (var configuration in new[] { "Debug", "Release" })
+        foreach (var layout in new[] { Path.Combine("x64", configuration), configuration })
+        {
+            var root = Path.Combine(bin, layout);
+            if (!Directory.Exists(root)) continue;
+            foreach (var path in Directory.EnumerateFiles(root, "ScreenRecorder.exe", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+            {
+                searched.Add(path);
+                if (File.Exists(path)) return (path, searched);
+            }
+        }
+        return (null, searched);
+    }
 
     private static IReadOnlyList<CliMonitor> EnumerateMonitors() => Screen.AllScreens.Select(screen =>
     {
