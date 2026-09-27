@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Globalization;
 using System.Security;
 using System.Text.Encodings.Web;
@@ -107,6 +108,8 @@ internal static class CliApplication
         "logs list" => LogsList(environment),
         "logs show" => LogsShow(command, environment),
         "naming preview" => NamingPreview(command, environment),
+        "record" => RecordCommand.Execute(command, environment),
+        "probe" => ProbeCommand.Execute(command),
         "help" => Help(command),
         _ => throw new InvalidOperationException($"未対応のコマンドです: {command.Definition.Name}")
     };
@@ -440,8 +443,25 @@ internal static class CliApplication
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
         options.Converters.Add(new DiagnosticLogLevelJsonConverter());
+        options.Converters.Add(new RectangleJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
+    }
+
+    private sealed class RectangleJsonConverter : JsonConverter<Rectangle>
+    {
+        public override Rectangle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, Rectangle value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("x", value.X);
+            writer.WriteNumber("y", value.Y);
+            writer.WriteNumber("width", value.Width);
+            writer.WriteNumber("height", value.Height);
+            writer.WriteEndObject();
+        }
     }
 
     private sealed class DiagnosticLogLevelJsonConverter : JsonConverter<DiagnosticLogLevel>
@@ -453,7 +473,7 @@ internal static class CliApplication
             writer.WriteStringValue(value.ToSettingName());
     }
 
-    private sealed record CliExecutionResult(
+    internal sealed record CliExecutionResult(
         CliExitCode ExitCode,
         object? Result,
         IReadOnlyList<string> Warnings,
