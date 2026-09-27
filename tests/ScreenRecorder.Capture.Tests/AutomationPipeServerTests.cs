@@ -25,6 +25,21 @@ public sealed class AutomationPipeServerTests
     }
 
     [Fact]
+    public async Task StopWithoutNotificationReleasesThePipeNameBeforeCompleting()
+    {
+        var pipeName = NewPipeName();
+        Assert.True(AutomationPipeServer.TryStart(pipeName, EchoAsync, out var first));
+        await using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await client.ConnectAsync(3000);
+
+        var stopping = first!.StopAsync();
+        Assert.True(AutomationPipeServer.TryStart(pipeName, EchoAsync, out var second));
+
+        await stopping;
+        await second!.DisposeAsync();
+    }
+
+    [Fact]
     public async Task FourConnectedClientsAreHandledAtTheSameTime()
     {
         var pipeName = NewPipeName();

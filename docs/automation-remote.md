@@ -131,7 +131,7 @@ JSON-RPC 2.0 に合わせるのは、段階 5 の MCP が JSON-RPC 2.0 で、変
 
 段階 4b で受け付ける録画状態は `idle`、`countdown`、`preparing`、`recording`、`paused`、`saving` である。
 CLI の既定の期限は 30 秒、指定できる範囲は 1〜3600 秒とする。
-`captureAfter` は `lastCapture` を記録する段階 4d まで成立しない。
+`captureAfter` は `lastCapture` を記録する段階 4d まで成立しないので、段階 4b の本体は `captureAfter` を指定した要求を `invalidParams` で断り、CLI も `--capture-after` を受け付けない。
 
 UI スレッドで待つと UI が止まり、状態も変わらない。
 このため、条件の評価だけを UI スレッドで行い、満たさなければ状態の変化の通知(録画の表示の更新、保存の完了と失敗)に登録して UI スレッドを離れ、変化のたびに評価し直す。

@@ -299,7 +299,7 @@ public sealed class CliApplicationTests : IDisposable
     public async Task RemoteWaitReturnsStatusAndSendsWaitConditions()
     {
         await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
-        var invocation = await RunAsync(_environment, "remote", "wait", "--state", "recording", "--capture-after", "2026-09-27T10:00:00+09:00", "--timeout", "7");
+        var invocation = await RunAsync(_environment, "remote", "wait", "--state", "recording", "--timeout", "7");
 
         using var json = AssertRemoteSuccess(invocation, "remote wait");
         Assert.Equal("recording", json.RootElement.GetProperty("result").GetProperty("recording").GetProperty("state").GetString());
@@ -307,7 +307,14 @@ public sealed class CliApplicationTests : IDisposable
         Assert.True(server.WaitParameters.HasValue);
         Assert.Equal("recording", server.WaitParameters.Value.GetProperty("state").GetString());
         Assert.Equal(7000, server.WaitParameters.Value.GetProperty("timeoutMilliseconds").GetInt32());
-        Assert.Equal("2026-09-27T10:00:00+09:00", server.WaitParameters.Value.GetProperty("captureAfter").GetString());
+        Assert.False(server.WaitParameters.Value.TryGetProperty("captureAfter", out var captureAfter) && captureAfter.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void RemoteWaitRejectsCaptureAfterUntilCapturesAreRecorded()
+    {
+        using var json = AssertJson(Run("remote", "wait", "--state", "idle", "--capture-after", "2026-09-27T10:00:00+09:00"), 2, "remote");
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]

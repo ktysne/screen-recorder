@@ -46,7 +46,6 @@ internal static class CliCommands
         new("remote status", "", "常駐中の ScreenRecorder の状態を表示します。", [AutomationAppOption]),
         new("remote wait", "", "常駐中の ScreenRecorder が指定状態になるまで待ちます。", [
             new("--state", "<状態>", "idle、countdown、preparing、recording、paused、saving のいずれかです。"),
-            new("--capture-after", "<日時>", "この ISO 8601 の日時より後に保存された撮影を待ちます。"),
             new("--timeout", "<秒>", "待ち時間です。既定は 30 秒、上限は 3600 秒です。"),
             AutomationAppOption
         ]),

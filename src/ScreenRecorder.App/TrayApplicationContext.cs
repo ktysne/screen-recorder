@@ -476,8 +476,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _automationPipeServer = null;
         if (server is null) return;
 
-        var notification = applicationExit ? AutomationProtocol.WriteNotification("exitRequested") : null;
-        try { server.StopAsync(notification).GetAwaiter().GetResult(); }
+        if (!applicationExit)
+        {
+            // 通知を送らない停止はパイプを同期的に閉じるので、UI スレッドで接続の終わりを待たない。
+            _ = server.StopAsync().ContinueWith(
+                task => DiagnosticLog.Warn(DiagnosticLogTags.Automation, $"自動化用パイプを閉じられませんでした: {task.Exception!.GetBaseException().Message}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+            return;
+        }
+
+        try { server.StopAsync(AutomationProtocol.WriteNotification("exitRequested")).GetAwaiter().GetResult(); }
         catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Automation, $"自動化用パイプを閉じられませんでした: {exception.Message}"); }
     }
 
@@ -565,7 +575,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (request.Params is not { ValueKind: JsonValueKind.Object } parameters)
             throw new JsonException("waitFor の引数がありません。");
         var wait = AutomationProtocol.ReadParameters(parameters, AutomationJsonContext.Default.AutomationWaitForParams);
-        if (!IsRecordingWaitState(wait.State) || wait.TimeoutMilliseconds is < 1 or > 3_600_000)
+        // lastCapture を記録するまでは captureAfter が成立せず、期限まで待たせるだけになるため断る。
+        if (!IsRecordingWaitState(wait.State) || wait.CaptureAfter is not null || wait.TimeoutMilliseconds is < 1 or > 3_600_000)
             throw new JsonException("waitFor の引数の値が正しくありません。");
 
         var status = await WaitForAutomationStateAsync(wait, cancellationToken);
