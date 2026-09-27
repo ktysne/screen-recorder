@@ -275,6 +275,7 @@ public sealed class VideoRecordingRulesTests
     [InlineData(RecordingTerminationOutcome.Failed, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
     [InlineData(RecordingTerminationOutcome.Idle, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
     [InlineData(RecordingTerminationOutcome.TimedOut, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
+    [InlineData(RecordingTerminationOutcome.ProcessExited, RecordingTerminationDecision.NotifyIncompleteThenDispose)]
     public void RecordingTermination_ChoosesCleanupOnlyAfterAValidEndCondition(
         RecordingTerminationOutcome outcome,
         RecordingTerminationDecision expectedDecision)
