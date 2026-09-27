@@ -285,7 +285,16 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
         }
         catch (Exception exception) when (message is RecordingWorkerPauseCommand or RecordingWorkerResumeCommand)
         {
-            Enqueue(new RecordingWorkerWarningMessage(exception.Message));
+            var (operationId, operation) = message switch
+            {
+                RecordingWorkerPauseCommand pause => (pause.OperationId, RecordingWorkerOperationKind.Pause),
+                RecordingWorkerResumeCommand resume => (resume.OperationId, RecordingWorkerOperationKind.Resume),
+                _ => throw new ArgumentOutOfRangeException(nameof(message))
+            };
+            DiagnosticLog.Error(
+                DiagnosticLogTags.Record,
+                $"録画の{(operation == RecordingWorkerOperationKind.Pause ? "一時停止" : "再開")}に失敗しました: {exception}");
+            Enqueue(new RecordingWorkerOperationFailedMessage(operationId, operation, exception.Message));
         }
         catch (Exception exception) when (message is RecordingWorkerStopCommand && _engine is { } engine)
         {

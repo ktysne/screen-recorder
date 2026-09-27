@@ -26,8 +26,8 @@ public sealed class RecordingWorkerProtocolTests
             true,
             "microphone-1",
             160)),
-        new RecordingWorkerPauseCommand(),
-        new RecordingWorkerResumeCommand(),
+        new RecordingWorkerPauseCommand(1),
+        new RecordingWorkerResumeCommand(2),
         new RecordingWorkerStopCommand(),
         new RecordingWorkerReadyResponseCommand(DiagnosticLogLevel.Debug),
         new RecordingWorkerReadyMessage(4321, RecordingWorkerProtocol.CurrentVersion),
@@ -35,6 +35,7 @@ public sealed class RecordingWorkerProtocolTests
         new RecordingWorkerCompletedMessage("C:\\Videos\\sample.mp4"),
         new RecordingWorkerFailedMessage("C:\\Videos\\sample.mp4", "保存に失敗しました", true),
         new RecordingWorkerWarningMessage("音声デバイスが切断されました"),
+        new RecordingWorkerOperationFailedMessage(3, RecordingWorkerOperationKind.Pause, "一時停止に失敗しました"),
         new RecordingWorkerTerminationMessage(RecordingTerminationOutcome.Idle),
         new RecordingWorkerLogMessage(DiagnosticLogLevel.Warn, "record-worker", "encoder warning"),
     };

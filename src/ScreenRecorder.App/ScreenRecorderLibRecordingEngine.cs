@@ -26,6 +26,11 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
     public event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
     public event EventHandler<RecordingEngineFailedEventArgs>? RecordingFailed;
     public event EventHandler<RecordingEngineWarningEventArgs>? RecordingWarning;
+    public event EventHandler<RecordingEngineOperationFailedEventArgs>? OperationFailed
+    {
+        add { }
+        remove { }
+    }
 
     public void Start(RecordingStartRequest request)
     {
@@ -112,7 +117,11 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
             RecordingWarning?.Invoke(this, new RecordingEngineWarningEventArgs($"{string.Join("、", missingSources)}が見つからなかったため、その音源を録音しません。"));
     }
 
-    public void Pause()
+    public void Pause(long operationId) => PauseCore();
+
+    public void Pause() => PauseCore();
+
+    private void PauseCore()
     {
         Recorder? recorder;
         var applyImmediately = false;
@@ -131,7 +140,11 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         if (applyImmediately) recorder!.Pause();
     }
 
-    public void Resume()
+    public void Resume(long operationId) => ResumeCore();
+
+    public void Resume() => ResumeCore();
+
+    private void ResumeCore()
     {
         Recorder? recorder;
         var applyImmediately = false;

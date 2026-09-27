@@ -59,16 +59,27 @@ internal sealed class RecordingEngineWarningEventArgs(string message) : EventArg
     public string Message { get; } = message;
 }
 
+internal sealed class RecordingEngineOperationFailedEventArgs(
+    long operationId,
+    RecordingWorkerOperationKind operation,
+    string error) : EventArgs
+{
+    public long OperationId { get; } = operationId;
+    public RecordingWorkerOperationKind Operation { get; } = operation;
+    public string Error { get; } = error;
+}
+
 internal interface IRecordingEngine : IDisposable
 {
     event EventHandler<RecordingEngineStatusChangedEventArgs>? StatusChanged;
     event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
     event EventHandler<RecordingEngineFailedEventArgs>? RecordingFailed;
     event EventHandler<RecordingEngineWarningEventArgs>? RecordingWarning;
+    event EventHandler<RecordingEngineOperationFailedEventArgs>? OperationFailed;
 
     void Start(RecordingStartRequest request);
-    void Pause();
-    void Resume();
+    void Pause(long operationId);
+    void Resume(long operationId);
     void Stop();
     Task<RecordingTerminationOutcome> WaitForTerminationAsync(TimeSpan timeout);
 }

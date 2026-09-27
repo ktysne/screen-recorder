@@ -51,6 +51,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
     public event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
     public event EventHandler<RecordingEngineFailedEventArgs>? RecordingFailed;
     public event EventHandler<RecordingEngineWarningEventArgs>? RecordingWarning;
+    public event EventHandler<RecordingEngineOperationFailedEventArgs>? OperationFailed;
 
     public void Start(RecordingStartRequest request)
     {
@@ -108,9 +109,9 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
         _connectionTask = Task.Run(ConnectAndReadAsync);
     }
 
-    public void Pause() => RequestSession(session => session.RequestPause(DateTimeOffset.UtcNow));
+    public void Pause(long operationId) => RequestSession(session => session.RequestPause(operationId, DateTimeOffset.UtcNow));
 
-    public void Resume() => RequestSession(session => session.RequestResume(DateTimeOffset.UtcNow));
+    public void Resume(long operationId) => RequestSession(session => session.RequestResume(operationId, DateTimeOffset.UtcNow));
 
     public void Stop() => RequestSession(session => session.RequestStop(DateTimeOffset.UtcNow));
 
@@ -491,6 +492,12 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
                 break;
             case RecordingWorkerWarningEvent warning:
                 RecordingWarning?.Invoke(this, new RecordingEngineWarningEventArgs(warning.Message));
+                break;
+            case RecordingWorkerOperationFailedEvent operationFailed:
+                OperationFailed?.Invoke(this, new RecordingEngineOperationFailedEventArgs(
+                    operationFailed.OperationId,
+                    operationFailed.Operation,
+                    operationFailed.Error));
                 break;
             case RecordingWorkerLogEvent log:
                 WriteForwardedLog(log);

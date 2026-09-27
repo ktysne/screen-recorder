@@ -37,7 +37,11 @@ internal sealed class VideoRecordingController : IDisposable
     private IRecordingEngine? _recordingEngine;
     private ActiveRecording? _activeRecording;
     private Stopwatch? _recordingStopwatch;
+    private TimeSpan _recordingElapsedBase;
+    private TimeSpan _pauseResumeElapsedBefore;
+    private long _pauseResumeStartedAtTimestamp;
     private Task _engineDisposal = Task.CompletedTask;
+    private long _pauseResumeOperationId;
 
     private sealed record ActiveRecording(
         string FinalPath,
@@ -287,6 +291,7 @@ internal sealed class VideoRecordingController : IDisposable
             engine.StatusChanged += (_, eventArgs) => DispatchToUi(() => HandleRecordingStatus(engine, eventArgs));
             engine.RecordingCompleted += (_, eventArgs) => DispatchToUi(() => HandleRecordingCompleted(engine, eventArgs));
             engine.RecordingFailed += (_, eventArgs) => DispatchToUi(() => HandleRecordingFailed(engine, eventArgs));
+            engine.OperationFailed += (_, eventArgs) => DispatchToUi(() => HandlePauseResumeOperationFailed(engine, eventArgs));
             engine.RecordingWarning += (_, eventArgs) => DispatchToUi(() =>
             {
                 if (!ReferenceEquals(engine, _recordingEngine)) return;
@@ -376,9 +381,10 @@ internal sealed class VideoRecordingController : IDisposable
         if (!_recordingState.CanPause) return;
         var wasRecording = _recordingState.State == VideoRecordingState.Recording;
         var command = wasRecording ? _recordingState.RequestPause() : _recordingState.RequestResume();
+        var operationId = BeginPauseResumeOperation();
         try
         {
-            ExecuteRecordingCommand(command);
+            ExecuteRecordingCommand(command, operationId);
             DiagnosticLog.Info(DiagnosticLogTags.Record, wasRecording ? "録画を一時停止しました。" : "録画を再開しました。");
             if (wasRecording) _recordingStopwatch?.Stop();
             else _recordingStopwatch?.Start();
@@ -389,7 +395,7 @@ internal sealed class VideoRecordingController : IDisposable
             if (wasRecording) _recordingState.RequestResume();
             else _recordingState.RequestPause();
             DiagnosticLog.Error(DiagnosticLogTags.Record, $"録画の一時停止または再開に失敗しました: {exception}");
-            _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.RecordingFailed, CaptureText.ErrorDetail(exception.Message)), ToolTipIcon.Warning);
+            NotifyPauseResumeFailure(exception.Message);
             UpdateRecordingUi();
         }
     }
@@ -422,21 +428,70 @@ internal sealed class VideoRecordingController : IDisposable
         }
     }
 
-    private void ExecuteRecordingCommand(RecordingEngineCommand command)
+    private void ExecuteRecordingCommand(RecordingEngineCommand command, long operationId = 0)
     {
         switch (command)
         {
             case RecordingEngineCommand.Pause:
-                _recordingEngine?.Pause();
+                _recordingEngine?.Pause(operationId > 0 ? operationId : BeginPauseResumeOperation());
                 break;
             case RecordingEngineCommand.Resume:
-                _recordingEngine?.Resume();
+                _recordingEngine?.Resume(operationId > 0 ? operationId : BeginPauseResumeOperation());
                 break;
             case RecordingEngineCommand.Stop:
                 _recordingEngine?.Stop();
                 break;
         }
     }
+
+    private void HandlePauseResumeOperationFailed(IRecordingEngine engine, RecordingEngineOperationFailedEventArgs eventArgs)
+    {
+        if (!ReferenceEquals(engine, _recordingEngine) || eventArgs.OperationId != _pauseResumeOperationId) return;
+
+        var failedPause = eventArgs.Operation == RecordingWorkerOperationKind.Pause;
+        var expectedState = failedPause ? VideoRecordingState.Paused : VideoRecordingState.Recording;
+        if (_recordingState.State != expectedState) return;
+
+        if (failedPause)
+        {
+            _recordingState.RequestResume();
+        }
+        else
+        {
+            _recordingState.RequestPause();
+        }
+
+        var elapsed = _pauseResumeElapsedBefore;
+        if (failedPause) elapsed += Stopwatch.GetElapsedTime(_pauseResumeStartedAtTimestamp);
+        RestoreRecordingElapsed(elapsed, isRunning: failedPause);
+        NotifyPauseResumeFailure(eventArgs.Error);
+        UpdateRecordingUi();
+    }
+
+    private long BeginPauseResumeOperation()
+    {
+        _pauseResumeStartedAtTimestamp = Stopwatch.GetTimestamp();
+        _pauseResumeElapsedBefore = GetRecordingElapsed();
+        return checked(++_pauseResumeOperationId);
+    }
+
+    private TimeSpan GetRecordingElapsed() =>
+        _recordingElapsedBase + (_recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
+
+    private void RestoreRecordingElapsed(TimeSpan elapsed, bool isRunning)
+    {
+        _recordingElapsedBase = elapsed;
+        _recordingStopwatch ??= new Stopwatch();
+        _recordingStopwatch.Reset();
+        if (isRunning) _recordingStopwatch.Start();
+    }
+
+    private void NotifyPauseResumeFailure(string error) =>
+        _notifier.Show(
+            NotificationDuration.Standard,
+            UiLabels.AppName,
+            string.Format(UiLabels.RecordingFailed, CaptureText.ErrorDetail(error)),
+            ToolTipIcon.Warning);
 
     private void HandleRecordingStatus(IRecordingEngine engine, RecordingEngineStatusChangedEventArgs eventArgs)
     {
@@ -447,6 +502,7 @@ internal sealed class VideoRecordingController : IDisposable
             var command = _recordingState.OnEngineRecordingStarted();
             if (wasPreparing && _recordingState.State == VideoRecordingState.Recording)
             {
+                _recordingElapsedBase = TimeSpan.Zero;
                 _recordingStopwatch = Stopwatch.StartNew();
                 if (_activeRecording is { } active)
                 {
@@ -697,7 +753,7 @@ internal sealed class VideoRecordingController : IDisposable
         _windowMonitorTimer?.Stop();
         _recordingStopwatch?.Stop();
         CloseRegionFrame();
-        _recordingToolbar?.UpdateStatus(VideoRecordingState.Saving, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
+        _recordingToolbar?.UpdateStatus(VideoRecordingState.Saving, GetRecordingElapsed());
         UpdateRecordingUi();
     }
 
@@ -714,7 +770,7 @@ internal sealed class VideoRecordingController : IDisposable
             _recordingToolbar = toolbar;
             toolbar.Show();
             toolbar.ExcludeFromCapture(DiagnosticLogTags.Record, "録画操作バー");
-            toolbar.UpdateStatus(_recordingState.State, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
+            toolbar.UpdateStatus(_recordingState.State, GetRecordingElapsed());
         }
         catch (Exception exception)
         {
@@ -738,7 +794,7 @@ internal sealed class VideoRecordingController : IDisposable
     private void StartRecordingTimers(ActiveRecording? active)
     {
         _recordingTimer = new System.Windows.Forms.Timer { Interval = 500 };
-        _recordingTimer.Tick += (_, _) => _recordingToolbar?.UpdateStatus(_recordingState.State, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
+        _recordingTimer.Tick += (_, _) => _recordingToolbar?.UpdateStatus(_recordingState.State, GetRecordingElapsed());
         _recordingTimer.Start();
         if (active is not { SourceKind: RecordingSourceKind.Window } windowRecording) return;
         _windowMonitorTimer = new System.Windows.Forms.Timer { Interval = 500 };
@@ -755,7 +811,7 @@ internal sealed class VideoRecordingController : IDisposable
     private void UpdateRecordingUi()
     {
         var state = _recordingState.State;
-        _recordingToolbar?.UpdateStatus(state, _recordingStopwatch?.Elapsed ?? TimeSpan.Zero);
+        _recordingToolbar?.UpdateStatus(state, GetRecordingElapsed());
         _recordingStateChanged();
     }
 
@@ -821,6 +877,7 @@ internal sealed class VideoRecordingController : IDisposable
         _windowMonitorTimer = null;
         _recordingStopwatch?.Stop();
         _recordingStopwatch = null;
+        _recordingElapsedBase = TimeSpan.Zero;
         CloseRegionFrame();
         _recordingToolbar?.Close();
         _recordingToolbar?.Dispose();
