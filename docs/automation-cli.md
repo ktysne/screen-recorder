@@ -1,6 +1,6 @@
 # 自動化用 CLI と AI からの利用
 
-状態：段階 1 と段階 2a の `record`、`probe` は実装済み。段階 2b 以降は未着手。
+状態：段階 1、段階 2a の `record` と `probe`、段階 2b の `screenshot` は実装済み。段階 3 以降は未着手。
 
 この資料は、AI エージェント(Claude Code、Codex)が ScreenRecorder の開発、テスト、利用者の支援に使う仕組みの設計を定める。
 アプリ本体の仕様の正本は [design.md](design.md) で、この資料は本体に足す部品と CLI の約束だけを扱う。
@@ -187,7 +187,14 @@ CLI が途中で止められると録画プロセスはこの状態になるの�
   期待値との差は `result.mismatches[]` に入り、終了コードは 1 になる。
 - `probe <MP4> --frame <秒> -o <PNG> [--force]`：指定時刻のフレームを PNG に書き出す。
   既存の出力は `--force` を指定したときだけ上書きする。
-- `screenshot -o <パス> (--display <n> | --rect <x,y,w,h> | --window <hwnd>)`：静止画を 1 枚撮って保存する。範囲の選択画面は出さない。
+- `screenshot -o <パス> (--display <n> | --rect <x,y,w,h> | --window <hwnd>) [--settings <パス> | --defaults] [--force]`：静止画を 1 枚撮って保存する。範囲の選択画面は出さない。
+  対象の指定、設定の読み取り、`--rect` が 1 つのモニターに収まること、`--window` の撮影可否は `record` と同じ規則で判定する。
+  保存形式は出力先の拡張子で決め、PNG、JPEG を選べる。圧縮、品質、カーソル合成は設定に従う。
+  撮影の遅延、カウントダウン、クリップボードへのコピー、撮影後の動作、通知は行わない。
+  結果には `path`、`format`、`width`、`height`、`target`（種類、モニター、範囲）を含める。
+  既存の出力は `--force` がある場合だけ置き換え、撮影画像を一時ファイルへ書き終えてから移す。
+  引数の誤りは終了コード 2、撮影失敗は `captureFailed`、保存失敗は `saveFailed` として終了コード 3 を返す。
+  `--force` の無い既存ファイルは `outputExists` として終了コード 2 を返す。
 
 `record` は数秒の録画でも実時間がかかる。
 CLI は全体の期限を「録画の長さ + 準備の期限 + 書き終えの期限」とし、その値を結果の JSON に書く。呼び出す AI が、自分のツールの待ち時間をこれに合わせられるようにするためである。
@@ -224,6 +231,7 @@ CLI は全体の期限を「録画の長さ + 準備の期限 + 書き終えの�
 - CLI の引数、出力、終了コードは、新しい `tests/ScreenRecorder.Cli.Tests` で確かめる。CLI の入口を、引数と標準出力の書き手を受け取る関数にして、テストからプロセスを起動せずに呼ぶ。設定とログは一時フォルダーに置いたものを使う。`DiagnosticLog` は static なので、このテストは並列に実行しない集まりにまとめ、テストごとに転送先を外す。
 - 段階 2 の撮影と録画のテストは `tests/ScreenRecorder.Capture.Tests` に置く。GPU と Media Foundation と画面が要るので、環境変数 `SCREENRECORDER_DESKTOP_TESTS=1` があるときだけ実行する。xUnit 2 は実行時にテストを飛ばす手段を持たないので、`Fact` を継承し、環境変数が無いときに `Skip` を設定する独自の属性を作る。`dotnet test ScreenRecorder.slnx` の既定の結果は変えない。
 - 実機のテストの最初の 3 本は、主モニターの 3 秒の録画、範囲の 3 秒の録画と一時停止、静止画の撮影とし、`probe` と同じ処理で解像度と長さを確かめる。
+- `screenshot --display 0` の PNG、`--rect` の JPEG、一時ファイルから既存画像を置き換える保存処理も `tests/ScreenRecorder.Capture.Tests` で確かめる。
 - 実機での確認は PR に手順を書く、という [implementation-plan.md](implementation-plan.md) の運用は変えない。CLI ができた後は、その手順を CLI のコマンドで書ける。
 
 ## 配布

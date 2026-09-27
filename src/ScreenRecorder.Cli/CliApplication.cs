@@ -109,6 +109,7 @@ internal static class CliApplication
         "logs show" => LogsShow(command, environment),
         "naming preview" => NamingPreview(command, environment),
         "record" => RecordCommand.Execute(command, environment),
+        "screenshot" => ScreenshotCommand.Execute(command, environment),
         "probe" => ProbeCommand.Execute(command),
         "help" => Help(command),
         _ => throw new InvalidOperationException($"未対応のコマンドです: {command.Definition.Name}")

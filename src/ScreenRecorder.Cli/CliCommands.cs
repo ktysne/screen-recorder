@@ -64,6 +64,15 @@ internal static class CliCommands
             new("--dry-run", null, "録画せずに開始データを表示します。"),
             new("--log-level", "<レベル>", "silent、error、warn、info、debug。")
         ]),
+        new("screenshot", "", "画面を静止画として保存します。", [
+            new("--display", "<番号>", "info の順のモニター番号です。"),
+            new("--rect", "<x,y,w,h>", "仮想画面上の範囲です。"),
+            new("--window", "<hwnd>", "ウィンドウハンドルです。"),
+            new("-o", "<パス>", "保存先です。.png、.jpg、.jpeg を指定できます。"),
+            new("--settings", "<パス>", "設定ファイルです。"),
+            new("--defaults", null, "組み込みの既定値を使います。"),
+            new("--force", null, "既存の出力を上書きします。")
+        ]),
         new("probe", "<ファイル>", "MP4 または PNG を検査します。", [
             new("--expect-width", "<px>", "期待する幅です。"),
             new("--expect-height", "<px>", "期待する高さです。"),

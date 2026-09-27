@@ -137,6 +137,7 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Contains("settings validate", names);
         Assert.Contains("logs show", names);
         Assert.Contains("naming preview", names);
+        Assert.Contains("screenshot", names);
     }
 
     [Fact]
@@ -249,6 +250,24 @@ public sealed class CliApplicationTests : IDisposable
         File.WriteAllText(path, "existing");
         using var json = AssertJson(Run("record", "--defaults", "--display", "0", "--duration", "3", "-o", path), 2, "record");
         Assert.Equal("outputExists", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void ScreenshotValidatesTargetRectangleExtensionAndExistingOutput()
+    {
+        using var noTarget = AssertJson(Run("screenshot", "--defaults", "-o", Path.Combine(_root, "image.png")), 2, "screenshot");
+        using var twoTargets = AssertJson(Run("screenshot", "--defaults", "--display", "0", "--rect", "0,0,100,100", "-o", Path.Combine(_root, "image.png")), 2, "screenshot");
+        using var spanningRectangle = AssertJson(Run("screenshot", "--defaults", "--rect", "-100,0,200,100", "-o", Path.Combine(_root, "image.png")), 2, "screenshot");
+        using var invalidExtension = AssertJson(Run("screenshot", "--defaults", "--display", "0", "-o", Path.Combine(_root, "image.bmp")), 2, "screenshot");
+        var existingPath = Path.Combine(_root, "existing.png");
+        File.WriteAllText(existingPath, "existing");
+        using var existingOutput = AssertJson(Run("screenshot", "--defaults", "--display", "0", "-o", existingPath), 2, "screenshot");
+
+        Assert.Equal("invalidArguments", noTarget.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalidArguments", twoTargets.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("rectSpansDisplays", spanningRectangle.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalidArguments", invalidExtension.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("outputExists", existingOutput.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
