@@ -1,14 +1,14 @@
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace ScreenRecorder.App;
+namespace ScreenRecorder.Capture;
 
-internal static class DesktopCapture
+public static class DesktopCapture
 {
     public static Bitmap Capture(Rectangle bounds)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0) throw new ArgumentOutOfRangeException(nameof(bounds));
-        var screenDc = NativeMethods.GetDC(IntPtr.Zero);
+        var screenDc = CaptureNativeMethods.GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero) throw new InvalidOperationException("画面のデバイスコンテキストを取得できませんでした。");
 
         IntPtr memoryDc = IntPtr.Zero;
@@ -16,21 +16,21 @@ internal static class DesktopCapture
         IntPtr previousObject = IntPtr.Zero;
         try
         {
-            memoryDc = NativeMethods.CreateCompatibleDC(screenDc);
-            bitmapHandle = NativeMethods.CreateCompatibleBitmap(screenDc, bounds.Width, bounds.Height);
+            memoryDc = CaptureNativeMethods.CreateCompatibleDC(screenDc);
+            bitmapHandle = CaptureNativeMethods.CreateCompatibleBitmap(screenDc, bounds.Width, bounds.Height);
             if (memoryDc == IntPtr.Zero || bitmapHandle == IntPtr.Zero) throw new InvalidOperationException("画面の撮影領域を確保できませんでした。");
-            previousObject = NativeMethods.SelectObject(memoryDc, bitmapHandle);
+            previousObject = CaptureNativeMethods.SelectObject(memoryDc, bitmapHandle);
             if (previousObject == IntPtr.Zero) throw new InvalidOperationException("撮影先のビットマップを選択できませんでした。");
-            if (!NativeMethods.BitBlt(memoryDc, 0, 0, bounds.Width, bounds.Height, screenDc, bounds.X, bounds.Y, NativeMethods.SourceCopy | NativeMethods.CaptureLayeredWindows))
+            if (!CaptureNativeMethods.BitBlt(memoryDc, 0, 0, bounds.Width, bounds.Height, screenDc, bounds.X, bounds.Y, CaptureNativeMethods.SourceCopy | CaptureNativeMethods.CaptureLayeredWindows))
                 throw new InvalidOperationException("画面を撮影できませんでした。");
             return Image.FromHbitmap(bitmapHandle);
         }
         finally
         {
-            if (previousObject != IntPtr.Zero) NativeMethods.SelectObject(memoryDc, previousObject);
-            if (bitmapHandle != IntPtr.Zero) NativeMethods.DeleteObject(bitmapHandle);
-            if (memoryDc != IntPtr.Zero) NativeMethods.DeleteDC(memoryDc);
-            NativeMethods.ReleaseDC(IntPtr.Zero, screenDc);
+            if (previousObject != IntPtr.Zero) CaptureNativeMethods.SelectObject(memoryDc, previousObject);
+            if (bitmapHandle != IntPtr.Zero) CaptureNativeMethods.DeleteObject(bitmapHandle);
+            if (memoryDc != IntPtr.Zero) CaptureNativeMethods.DeleteDC(memoryDc);
+            CaptureNativeMethods.ReleaseDC(IntPtr.Zero, screenDc);
         }
     }
 
@@ -42,7 +42,7 @@ internal static class DesktopCapture
             using (var graphics = Graphics.FromImage(bitmap))
             {
                 var deviceContext = graphics.GetHdc();
-                try { printSucceeded = NativeMethods.PrintWindow(window, deviceContext, NativeMethods.PrintWindowRenderFullContent); }
+                try { printSucceeded = CaptureNativeMethods.PrintWindow(window, deviceContext, CaptureNativeMethods.PrintWindowRenderFullContent); }
                 finally { graphics.ReleaseHdc(deviceContext); }
             }
             return bitmap;

@@ -2,18 +2,20 @@ using System.Diagnostics;
 using System.Text;
 using ScreenRecorder.Core;
 
-namespace ScreenRecorder.App;
+namespace ScreenRecorder.Capture;
 
-internal interface IVideoRecordingPostProcessor
+public interface IVideoRecordingPostProcessor
 {
     Task<VideoPostProcessResult> ProcessAsync(string temporaryPath, Settings settings, CancellationToken cancellationToken);
 }
 
 // SupersededPath は、FilePath を最終名へ移し終えてから消すファイル(MP3 へ変換する前の AAC の録画)。
-internal sealed record VideoPostProcessResult(string FilePath, string? Warning, string? SupersededPath = null);
+public sealed record VideoPostProcessResult(string FilePath, string? Warning, string? SupersededPath = null);
 
-internal sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostProcessor
+public sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostProcessor
 {
+    private readonly string _ffmpegPath;
+    public FfmpegVideoRecordingPostProcessor(string ffmpegPath) => _ffmpegPath = ffmpegPath;
     private static readonly int StandardErrorTailLength = 4000;
     private static readonly TimeSpan ProcessExitTimeoutAfterKill = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StallCheckInterval = TimeSpan.FromSeconds(1);
@@ -26,7 +28,7 @@ internal sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostPro
         cancellationToken.ThrowIfCancellationRequested();
         if (settings.AudioFormat != AudioFormat.Mp3) return new VideoPostProcessResult(temporaryPath, null);
 
-        var ffmpegPath = Path.Combine(AppContext.BaseDirectory, "ffmpeg", "ffmpeg.exe");
+        var ffmpegPath = _ffmpegPath;
         var outputPath = Path.Combine(Path.GetDirectoryName(temporaryPath)!, $".{Path.GetFileNameWithoutExtension(temporaryPath)}.{Guid.NewGuid():N}.mp3.mp4");
         string standardError = string.Empty;
         try

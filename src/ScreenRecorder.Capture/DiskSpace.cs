@@ -2,15 +2,15 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using ScreenRecorder.Core;
 
-namespace ScreenRecorder.App;
+namespace ScreenRecorder.Capture;
 
-internal static class DiskSpace
+public static class DiskSpace
 {
     public static long GetAvailableFreeBytes(string path)
     {
         var fullPath = Path.GetFullPath(path);
         var root = StoragePaths.GetVolumeRoot(fullPath);
-        if (!NativeMethods.GetDiskFreeSpaceExW(root, out var availableBytes, out _, out _))
+        if (!CaptureNativeMethods.GetDiskFreeSpaceExW(root, out var availableBytes, out _, out _))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         return availableBytes;
     }

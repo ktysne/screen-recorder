@@ -20,7 +20,9 @@ CLI のコマンド一覧は次のコマンドで表示します。
 dotnet run --project src/ScreenRecorder.Cli -- help
 ```
 
-`tests/ScreenRecorder.Capture.Tests` は GPU と Media Foundation を使うため、Windows の実機で実行してください。
+`tests/ScreenRecorder.Capture.Tests` の実機テストは GPU、Media Foundation、画面を使います。
+Windows の実機で `SCREENRECORDER_DESKTOP_TESTS=1` を設定して実行してください。
+環境変数を設定しない場合、実機テストはスキップされます。
 
 ## アプリのアイコン
 

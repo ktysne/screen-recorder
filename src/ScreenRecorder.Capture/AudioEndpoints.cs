@@ -1,11 +1,11 @@
 using System.Runtime.InteropServices;
 using ScreenRecorder.Core;
 
-namespace ScreenRecorder.App;
+namespace ScreenRecorder.Capture;
 
-internal sealed record AudioEndpoint(string Id, string FriendlyName, bool IsDefault);
+public sealed record AudioEndpoint(string Id, string FriendlyName, bool IsDefault);
 
-internal static class AudioEndpoints
+public static class AudioEndpoints
 {
     private const uint DeviceStateActive = 1;
     private const uint StorageModeRead = 0;
