@@ -87,7 +87,7 @@ internal static class AutomationRemoteCommand
         DateTimeOffset? captureAfter = null;
         if (command.Options.TryGetValue("--capture-after", out var captureAfterValue))
         {
-            if (!DateTimeOffset.TryParse(captureAfterValue, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedCaptureAfter))
+            if (!AutomationWaitConditions.TryParseCaptureAfter(captureAfterValue, out var parsedCaptureAfter))
                 return Invalid("--capture-after は ISO 8601 の日時で指定してください。");
             captureAfter = parsedCaptureAfter;
         }

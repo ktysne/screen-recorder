@@ -39,6 +39,7 @@ internal static class CaptureCompletion
         string? warning,
         Func<string, Task<bool>> openFolder,
         Action<string?> recordCapture,
+        Action<string> recordActionFailure,
         Action<NotificationDuration, string, string, ToolTipIcon, string?> showNotification)
     {
         if (settings.PlayCaptureSound)
@@ -59,7 +60,10 @@ internal static class CaptureCompletion
                     break;
                 case CaptureAfterAction.OpenFolder:
                     if (!await openFolder(Path.GetDirectoryName(filePath) ?? defaultDirectory))
+                    {
                         warning = kind.ActionFailureNotification;
+                        recordActionFailure(warning);
+                    }
                     break;
             }
         }
@@ -67,6 +71,7 @@ internal static class CaptureCompletion
         {
             DiagnosticLog.Warn(kind.LogTag, $"{kind.ActionFailureMessage}: {actionFailureDetails}; {exception}");
             warning = kind.ActionFailureNotification;
+            recordActionFailure(warning);
         }
 
         var notification = CaptureCompletionRules.DecideNotification(warning is not null, settings.NotifyWhenSaved);

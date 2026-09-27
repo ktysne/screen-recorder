@@ -825,8 +825,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private static bool AutomationWaitMatches(AutomationStatus status, AutomationWaitForParams wait) =>
-        string.Equals(status.Recording.State, wait.State, StringComparison.Ordinal)
-        && (wait.CaptureAfter is null || status.LastCapture is { } capture && capture.At > wait.CaptureAfter.Value);
+        AutomationWaitConditions.Matches(status.Recording.State, status.LastCapture?.At, wait);
 
     private static bool IsRecordingWaitState(string? state) => state is "idle" or "countdown" or "preparing" or "recording" or "paused" or "saving";
 
@@ -947,6 +946,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             clipboardResult.Warning,
             path => OpenFolderAsync(path, notifyFailure: false),
             notification => RecordAutomationCapture("screenshot", filePath, notification),
+            message => RecordAutomationFailure("screenshot", filePath, message),
             ShowCaptureNotification);
     }
 

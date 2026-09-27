@@ -688,6 +688,7 @@ internal sealed class VideoRecordingController : IDisposable
             warning: null,
             _openFolderQuietly,
             notification => _recordCapture("recording", finalPath, finalizationWarning ?? notification),
+            message => _recordFailure("recording", finalPath, message),
             _notifier.ShowForCapture);
     }
 
