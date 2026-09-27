@@ -109,7 +109,7 @@ internal static class UpdateApplier
 
         if (!WaitForSingletonRelease())
         {
-            DiagnosticLog.Error(DiagnosticLogTags.Update, "更新後に別の ScreenRecorder が起動しているため、新しい版を起動できませんでした。");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, "更新後に別の ScreenRecorder が起動しているため、新しいバージョンを起動できませんでした。");
             ShowError(string.Format(UiLabels.UpdateApplyAnotherInstance, version));
             return;
         }
@@ -122,7 +122,7 @@ internal static class UpdateApplier
         catch (Exception exception)
         {
             DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新後の ScreenRecorder を起動できませんでした: {exception}");
-            RollBackAppliedUpdate(version, plan, installDirectory, installedExecutable, files, "新しい版を起動できませんでした。");
+            RollBackAppliedUpdate(version, plan, installDirectory, installedExecutable, files, "新しいバージョンを起動できませんでした。");
             return;
         }
         using (newProcess)
@@ -299,7 +299,7 @@ internal static class UpdateCleanup
         try
         {
             if (!Directory.Exists(UpdatePaths.UpdateDirectory)) return;
-            // 適用した側は 15 秒後に新しい版が落ちていれば .old から戻すため、その判断が済むまで消さない。
+            // 適用した側は 15 秒後に新しいバージョンが落ちていれば .old から戻すため、その判断が済むまで消さない。
             var applierState = WaitForApplierToFinish();
             if (applierState == ApplierState.StillRunning)
             {

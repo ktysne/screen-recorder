@@ -26,7 +26,7 @@ public static class UpdateCheckLog
     public static string CompletedMessage(UpdateCheckTrigger trigger, UpdateCheckResult result, string? currentVersion)
     {
         var hasNewVersion = result.Kind is UpdateCheckKind.Available or UpdateCheckKind.Skipped;
-        return $"更新の確認が完了しました: きっかけ={TriggerName(trigger)}、新しい版={(hasNewVersion ? "あり" : "なし")}、現在の版={currentVersion}、最新の版={result.Manifest?.Version}。";
+        return $"更新の確認が完了しました: きっかけ={TriggerName(trigger)}、新しいバージョン={(hasNewVersion ? "あり" : "なし")}、現在の版={currentVersion}、最新の版={result.Manifest?.Version}。";
     }
 
     public static void Log(UpdateCheckTrigger trigger, UpdateCheckResult result, string? currentVersion)
@@ -63,7 +63,7 @@ public static class UpdateCheckEvaluator
         return new UpdateCheckResult(UpdateCheckKind.Available, manifest, null);
     }
 
-    /// <summary>自動の確認は新しい版があるときだけ知らせる。失敗を毎回知らせると、オフラインの間に通知が繰り返されるため。</summary>
+    /// <summary>自動の確認は新しいバージョンがあるときだけ知らせる。失敗を毎回知らせると、オフラインの間に通知が繰り返されるため。</summary>
     public static bool ShouldNotify(UpdateCheckResult result, UpdateCheckTrigger trigger) =>
         trigger == UpdateCheckTrigger.Manual || result.Kind == UpdateCheckKind.Available;
 

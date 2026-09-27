@@ -197,9 +197,9 @@ public static class UiLabels
     public const string UpdateDialogTitle = "ScreenRecorder の更新";
     public const string UpdateAvailableHeading = "ScreenRecorder {0} を利用できます";
     public const string UpdateCurrentVersion = "現在の版";
-    public const string UpdateNewVersion = "新しい版";
+    public const string UpdateNewVersion = "新しいバージョン";
     public const string UpdateReleasedAt = "公開日";
-    public const string UpdateRestartNote = "更新すると ScreenRecorder をいったん終了し、新しい版で起動し直します。";
+    public const string UpdateRestartNote = "更新すると ScreenRecorder をいったん終了し、新しいバージョンで起動し直します。";
     public const string UpdateNow = "今すぐ更新";
     public const string UpdateLater = "後で";
     public const string UpdateSkipVersion = "この版をスキップ";
@@ -210,9 +210,9 @@ public static class UiLabels
     public const string UpdateBlockedByCapture = "撮影中は更新できません。撮影と保存が終わると「今すぐ更新」を押せます。";
     public const string UpdateInstallNotWritable = "ScreenRecorder のフォルダーに書き込めないため、自動では更新できません。配布ページから zip を入手し、書き込めるフォルダーへ展開してください。";
     public const string UpdateInstallFolder = "フォルダー: {0}";
-    public const string UpdateDownloading = "新しい版をダウンロードしています。";
+    public const string UpdateDownloading = "新しいバージョンをダウンロードしています。";
     public const string UpdateVerifying = "ダウンロードしたファイルを確かめています。";
-    public const string UpdateApplying = "ScreenRecorder を終了して更新します。新しい版が起動するまでお待ちください。";
+    public const string UpdateApplying = "ScreenRecorder を終了して更新します。新しいバージョンが起動するまでお待ちください。";
     public const string UpdateDownloadCancelled = "ダウンロードを中止しました。更新するには「今すぐ更新」を押してください。";
     public const string UpdateFailed = "更新できませんでした。{0}";
     public const string UpdateFailedNextAction = "「もう一度試す」を押すか、配布ページから zip を入手して展開してください。詳しい内容はログに記録しました。";
@@ -226,10 +226,10 @@ public static class UiLabels
     public const string UpdateApplyFailedRestored = "ScreenRecorder を {0} に更新できなかったため、元の版に戻して起動します。\n\n理由: {1}\n\nもう一度更新するか、配布ページ({2})から zip を入手して展開してください。詳しい内容はログに記録しました。";
     public const string UpdateApplyFailedBroken = "ScreenRecorder を {0} に更新できず、元の版に戻せないファイルがありました。\n\n理由: {1}\n\n配布ページ({2})から zip を入手し、次のフォルダーへ上書きで展開してください。\n{3}\n\n詳しい内容はログに記録しました。";
     public const string UpdateApplyOldProcessRunning = "ScreenRecorder が終了しなかったため、更新を中止しました。ファイルは変更していません。\n\nScreenRecorder を終了してから、もう一度更新してください。";
-    public const string UpdateApplyAnotherInstance = "ScreenRecorder を {0} に更新しましたが、別の ScreenRecorder が起動しているため新しい版を起動できませんでした。\n\n起動中の ScreenRecorder を終了してから、起動し直してください。";
+    public const string UpdateApplyAnotherInstance = "ScreenRecorder を {0} に更新しましたが、別の ScreenRecorder が起動しているため新しいバージョンを起動できませんでした。\n\n起動中の ScreenRecorder を終了してから、起動し直してください。";
     public const string UpdateApplyInvalidArguments = "更新の指定が正しくないため、更新を中止しました。ファイルは変更していません。";
     public const string UpdateApplyAlreadyRunning = "別の更新の処理が実行中のため、この更新を中止しました。ファイルは変更していません。";
-    public const string UpdateApplyNewVersionExited = "新しい版が起動の直後に終了しました。";
+    public const string UpdateApplyNewVersionExited = "新しいバージョンが起動の直後に終了しました。";
     public const string UpdateApplyFilesLocked = "ScreenRecorder のファイルがほかのプログラムに使われていて、30 秒待っても置き換えられませんでした。";
     public const string Manual = "マニュアル";
     public const string CheckForUpdates = "更新を確認";

@@ -69,7 +69,7 @@ public static class UpdatePackage
 }
 
 /// <summary>
-/// 適用を終えた後で消す <c>.old</c> の記録。新しい版が起動し、適用した側が終わってから消す。
+/// 適用を終えた後で消す <c>.old</c> の記録。新しいバージョンが起動し、適用した側が終わってから消す。
 /// 適用した側が 15 秒後の生存確認で旧版へ戻すときに <c>.old</c> が要るため。
 /// </summary>
 public sealed record UpdateCleanupRecord(string InstallDirectory, string Version, IReadOnlyList<string> BackupFiles)
