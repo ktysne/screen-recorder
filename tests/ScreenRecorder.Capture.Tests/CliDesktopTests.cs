@@ -16,7 +16,10 @@ public sealed class CliDesktopTests
             var video = Path.Combine(directory, "cli.mp4");
             var frame = Path.Combine(directory, "frame.png");
             var environment = CliEnvironment.Create();
-            var recording = Run(environment, "record", "--display", "0", "--duration", "3", "--defaults", "-o", video);
+            // 自動のエンコーダは画面が静止している間フレームを間引き、動画の末尾が短くなるので、長さを比べるテストは固定フレームレートで録る。
+            var settings = Path.Combine(directory, "settings.json");
+            File.WriteAllText(settings, """{ "encoder": "softwareOnly" }""");
+            var recording = Run(environment, "record", "--display", "0", "--duration", "3", "--settings", settings, "-o", video);
             Assert.Equal(0, recording.Code);
             Assert.True(File.Exists(video), recording.Output);
             var probe = Run(environment, "probe", video, "--expect-duration-ms", "3000", "--tolerance-ms", "700");

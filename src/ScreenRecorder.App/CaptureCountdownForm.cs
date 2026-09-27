@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
@@ -102,37 +101,6 @@ internal static class CaptureCountdown
         finally
         {
             if (!countdown.IsDisposed) countdown.Close();
-        }
-    }
-}
-
-internal static class CursorOverlay
-{
-    public static void Draw(Bitmap bitmap, Rectangle captureBounds)
-    {
-        var cursor = new NativeMethods.CursorInfo { Size = Marshal.SizeOf<NativeMethods.CursorInfo>() };
-        if (!NativeMethods.GetCursorInfo(ref cursor) || (cursor.Flags & NativeMethods.CursorShowing) == 0 || cursor.Cursor == IntPtr.Zero) return;
-        if (!NativeMethods.GetIconInfo(cursor.Cursor, out var iconInfo)) return;
-
-        try
-        {
-            using var graphics = Graphics.FromImage(bitmap);
-            var deviceContext = graphics.GetHdc();
-            try
-            {
-                var x = cursor.ScreenPosition.X - captureBounds.X - (int)iconInfo.HotspotX;
-                var y = cursor.ScreenPosition.Y - captureBounds.Y - (int)iconInfo.HotspotY;
-                NativeMethods.DrawIconEx(deviceContext, x, y, cursor.Cursor, 0, 0, 0, IntPtr.Zero, NativeMethods.DrawIconNormal);
-            }
-            finally
-            {
-                graphics.ReleaseHdc(deviceContext);
-            }
-        }
-        finally
-        {
-            if (iconInfo.MaskBitmap != IntPtr.Zero) NativeMethods.DeleteObject(iconInfo.MaskBitmap);
-            if (iconInfo.ColorBitmap != IntPtr.Zero) NativeMethods.DeleteObject(iconInfo.ColorBitmap);
         }
     }
 }

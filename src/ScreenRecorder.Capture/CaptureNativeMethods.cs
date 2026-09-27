@@ -7,11 +7,14 @@ internal static class CaptureNativeMethods
 {
     internal const int DwmaExtendedFrameBounds = 9;
     internal const int DwmaCloaked = 14;
+    internal const uint CursorShowing = 0x00000001;
+    internal const uint DrawIconNormal = 0x00000003;
     internal const uint CaptureLayeredWindows = 0x40000000;
     internal const uint SourceCopy = 0x00CC0020;
     internal const uint PrintWindowRenderFullContent = 0x00000002;
     internal const uint ExecutionStateSystemRequired = 0x00000001;
     internal const uint ExecutionStateContinuous = 0x80000000;
+    internal const int SwRestore = 9;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct NativeRect
@@ -20,6 +23,32 @@ internal static class CaptureNativeMethods
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CursorInfo
+    {
+        public int Size;
+        public uint Flags;
+        public IntPtr Cursor;
+        public NativePoint ScreenPosition;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IconInfo
+    {
+        [MarshalAs(UnmanagedType.Bool)] public bool IsIcon;
+        public uint HotspotX;
+        public uint HotspotY;
+        public IntPtr MaskBitmap;
+        public IntPtr ColorBitmap;
     }
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -74,6 +103,13 @@ internal static class CaptureNativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern int GetWindowTextLength(IntPtr window);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool ShowWindow(IntPtr window, int command);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetForegroundWindow(IntPtr window);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern int GetWindowText(IntPtr window, StringBuilder text, int maximumCount);
 
@@ -90,4 +126,16 @@ internal static class CaptureNativeMethods
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
     internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int valueSize);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorInfo(ref CursorInfo cursorInfo);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetIconInfo(IntPtr icon, out IconInfo iconInfo);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DrawIconEx(IntPtr deviceContext, int x, int y, IntPtr icon, int width, int height, uint step, IntPtr flickerFreeDraw, uint flags);
 }
