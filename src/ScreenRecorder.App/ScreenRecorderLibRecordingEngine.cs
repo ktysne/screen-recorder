@@ -323,6 +323,6 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         var termination = await WaitForTerminationAsync(FailureFinalizationTimeout).ConfigureAwait(false);
         if (RecordingTerminationRules.Decide(termination) == RecordingTerminationDecision.ContinueCompletedSave) return;
         if (Interlocked.CompareExchange(ref _terminalEventRaised, 1, 0) != 0) return;
-        RecordingFailed?.Invoke(this, new RecordingEngineFailedEventArgs(filePath, error, termination));
+        RecordingFailed?.Invoke(this, new RecordingEngineFailedEventArgs(filePath, error, termination, beforeRecordingStarted: false));
     }
 }

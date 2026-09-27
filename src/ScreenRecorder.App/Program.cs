@@ -19,8 +19,8 @@ internal static class Program
         }
 
         if (args.Length > 0 && string.Equals(args[0], "--record-worker", StringComparison.OrdinalIgnoreCase))
-            return args.Length >= 2
-                ? RecordingWorkerProgram.Run(args[1])
+            return args.Length >= 3
+                ? RecordingWorkerProgram.Run(args[1], DiagnosticLogLevels.FromSettingName(args[2]))
                 : RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.StartFailed);
 
         using var mutex = new Mutex(true, UpdatePaths.SingletonMutexName, out var created);

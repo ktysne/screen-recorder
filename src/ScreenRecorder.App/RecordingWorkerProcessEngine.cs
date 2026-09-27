@@ -197,6 +197,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
         };
         startInfo.ArgumentList.Add("--record-worker");
         startInfo.ArgumentList.Add(pipeName);
+        startInfo.ArgumentList.Add(DiagnosticLog.Level.ToSettingName());
         return startInfo;
     }
 
@@ -404,6 +405,12 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
         int exitCode;
         try { exitCode = process.ExitCode; }
         catch (InvalidOperationException) { return; }
+        var exitCodeName = RecordingWorkerExitCodes.FromInt32(exitCode);
+        var logMessage = $"録画プロセスが終了しました: {exitCodeName} ({exitCode})";
+        if (exitCodeName == RecordingWorkerExitCode.Succeeded)
+            DiagnosticLog.Info(DiagnosticLogTags.RecordWorker, logMessage);
+        else
+            DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, logMessage);
 
         // 終了の直前に送られた完了を取りこぼさないため、パイプを終わりまで読んでから終了を知らせる。
         if (readerTask is null) _connectionLifetime.Cancel();
@@ -479,7 +486,8 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
                 RecordingFailed?.Invoke(this, new RecordingEngineFailedEventArgs(
                     string.IsNullOrWhiteSpace(failed.FilePath) ? _outputPath : failed.FilePath,
                     failed.Error,
-                    pending.Outcome));
+                    pending.Outcome,
+                    failed.BeforeRecordingStarted));
                 break;
             case RecordingWorkerWarningEvent warning:
                 RecordingWarning?.Invoke(this, new RecordingEngineWarningEventArgs(warning.Message));
@@ -505,6 +513,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
     private void ForceTerminateWorker()
     {
         if (Interlocked.Exchange(ref _forceTerminationStarted, 1) != 0) return;
+        DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, "録画プロセスの強制終了を開始します。");
         _ = Task.Run(async () =>
         {
             try

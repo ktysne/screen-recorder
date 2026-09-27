@@ -9,34 +9,49 @@ internal static class RecordingWorkerProgram
 {
     private static readonly TimeSpan PipeConnectTimeout = TimeSpan.FromSeconds(10);
 
-    public static int Run(string pipeName)
+    // 記録しない設定で固定名のログを作らないよう、本体の記録レベルを起動の引数で受け取り、接続前から従う。
+    public static int Run(string pipeName, DiagnosticLogLevel logLevel)
     {
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        ApplicationConfiguration.Initialize();
-
-        using var pipe = new NamedPipeClientStream(
-            ".",
-            pipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
+        OrphanDiagnosticLog.Activate(logLevel);
         try
         {
-            pipe.Connect((int)PipeConnectTimeout.TotalMilliseconds);
-        }
-        catch
-        {
-            return RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.StartFailed);
-        }
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            ApplicationConfiguration.Initialize();
 
-        using var runtime = new RecordingWorkerRuntime(pipe);
-        try
-        {
-            return runtime.Run();
+            using var pipe = new NamedPipeClientStream(
+                ".",
+                pipeName,
+                PipeDirection.InOut,
+                PipeOptions.Asynchronous);
+            try
+            {
+                pipe.Connect((int)PipeConnectTimeout.TotalMilliseconds);
+            }
+            catch (Exception exception)
+            {
+                DiagnosticLog.Error(DiagnosticLogTags.RecordWorker, $"本体との接続に失敗しました: {exception}");
+                return RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.StartFailed);
+            }
+
+            using var runtime = new RecordingWorkerRuntime(pipe, logLevel);
+            try
+            {
+                return runtime.Run();
+            }
+            catch (Exception exception)
+            {
+                runtime.ReportUnhandledException(exception);
+                return RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.UnhandledException);
+            }
         }
         catch (Exception exception)
         {
-            runtime.ReportUnhandledException(exception);
+            DiagnosticLog.Error(DiagnosticLogTags.RecordWorker, $"録画プロセスで未処理の例外が発生しました: {exception}");
             return RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.UnhandledException);
+        }
+        finally
+        {
+            DiagnosticLog.ClearForwarder();
         }
     }
 }
@@ -59,6 +74,7 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
     private RecordingWorkerStartData? _startData;
     private RecordingWorkerRecordingState? _recordingState;
     private int _readyResponseReceived;
+    private DiagnosticLogLevel _workerLogLevel;
     private int _hasObservedRecording;
     private int _disconnected;
     private int _disconnectHandling;
@@ -68,8 +84,9 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
 
     private sealed record OutgoingMessage(RecordingWorkerMessage Message, TaskCompletionSource<bool>? Written);
 
-    public RecordingWorkerRuntime(NamedPipeClientStream pipe)
+    public RecordingWorkerRuntime(NamedPipeClientStream pipe, DiagnosticLogLevel logLevel)
     {
+        _workerLogLevel = logLevel;
         _pipe = pipe;
         Application.Idle += CaptureUiContext;
     }
@@ -100,7 +117,11 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
 
     public void ReportUnhandledException(Exception exception)
     {
-        if (Volatile.Read(ref _disconnected) != 0) return;
+        if (Volatile.Read(ref _disconnected) != 0)
+        {
+            DiagnosticLog.Error(DiagnosticLogTags.RecordWorker, $"録画プロセスで未処理の例外が発生しました: {exception}");
+            return;
+        }
         var message = new RecordingWorkerLogMessage(
             DiagnosticLogLevel.Error,
             DiagnosticLogTags.RecordWorker,
@@ -205,6 +226,7 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
             return;
         }
 
+        _workerLogLevel = readyResponse.MinimumLogLevel;
         DiagnosticLog.SetForwarder(readyResponse.MinimumLogLevel, (level, tag, message) =>
         {
             Enqueue(new RecordingWorkerLogMessage(level, tag, message));
@@ -375,12 +397,20 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
     private void HandleCommunicationLost()
     {
         if (Interlocked.Exchange(ref _disconnected, 1) != 0) return;
+        OrphanDiagnosticLog.Activate(_workerLogLevel);
+        DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, "本体との通信が切断されました。");
         // 本体が落ちた後はライブラリの破棄が返らなくても強制終了する者がいないため、期限を過ぎたら自分で終わる。
         _ = Task.Run(async () =>
         {
             await Task.Delay(DisconnectedExitDeadline).ConfigureAwait(false);
             var exitCode = Volatile.Read(ref _exitCode);
-            Environment.Exit(exitCode != 0 ? exitCode : RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.SaveFailedAfterDisconnect));
+            if (exitCode == 0)
+            {
+                exitCode = RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.SaveFailedAfterDisconnect);
+                Volatile.Write(ref _exitCode, exitCode);
+            }
+            DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, $"切断後の終了期限を過ぎたため録画プロセスを終了します: {RecordingWorkerExitCodes.FromInt32(exitCode)} ({exitCode})");
+            Environment.Exit(exitCode);
         });
         _ = _uiContextReady.Task.ContinueWith(
             _ => PostToUi(HandleCommunicationLostOnUi),
@@ -395,12 +425,16 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
         if (_engine is null)
         {
             _exitCode = RecordingWorkerExitCodes.ToInt32(RecordingWorkerExitCode.SaveFailedAfterDisconnect);
+            DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, "録画の停止要求前に録画エンジンが終了していました。");
+            DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, "録画エンジンがなく、切断後の書き終え結果を確認できませんでした。");
+            LogOrphanExitCode();
             FinishOnUi();
             return;
         }
 
         try
         {
+            DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, "本体との通信切断を受けて録画の停止を要求しました。");
             // 記録が始まる前の停止はライブラリの包みが保留し、始まった時点で止める。
             if (_recordingState is not RecordingWorkerRecordingState.Saving)
                 RecordingWorkerLibraryBridge.Stop(_engine);
@@ -430,7 +464,17 @@ internal sealed class RecordingWorkerRuntime : ApplicationContext
         _exitCode = RecordingWorkerExitCodes.ToInt32(saved
             ? RecordingWorkerExitCode.SavedAfterDisconnect
             : RecordingWorkerExitCode.SaveFailedAfterDisconnect);
+        DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, saved
+            ? "切断後の録画ファイルを書き終えました。"
+            : "切断後の録画ファイルを書き終えられませんでした。");
+        LogOrphanExitCode();
         PostToUi(FinishOnUi);
+    }
+
+    private void LogOrphanExitCode()
+    {
+        var exitCode = RecordingWorkerExitCodes.FromInt32(Volatile.Read(ref _exitCode));
+        DiagnosticLog.Warn(DiagnosticLogTags.RecordWorker, $"録画プロセスの終了コード: {exitCode} ({RecordingWorkerExitCodes.ToInt32(exitCode)})");
     }
 
     private void FinishOnUi()
