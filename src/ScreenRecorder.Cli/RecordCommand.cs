@@ -159,7 +159,6 @@ internal static class RecordCommand
             engine.RecordingFailed += (_, args) => events.Add(args);
             engine.RecordingWarning += (_, args) => events.Add(args);
             engine.OperationFailed += (_, args) => events.Add(args);
-            if (force && File.Exists(outputPath)) File.Delete(outputPath);
             engine.Start(RecordingStartRequest.FromWorkerStartData(plan.StartData));
             var startup = Stopwatch.StartNew();
             var finalization = new Stopwatch();
@@ -188,6 +187,17 @@ internal static class RecordCommand
                 }
                 if (stopSent && finalization.Elapsed >= RecordingTimeouts.Finalization) break;
                 if (!events.TryTake(out var next, 50)) continue;
+                Handle(next);
+                if (completedPath is not null || failure is not null) break;
+            }
+            timings = engine.StartupTimings;
+            var termination = engine.WaitForTerminationAsync(RecordingTimeouts.Termination).GetAwaiter().GetResult();
+            // 期限で待ちを抜けた直後に届いた完了や失敗を取りこぼさない。
+            while (completedPath is null && failure is null && events.TryTake(out var late)) Handle(late);
+            if (completedPath is null && RecordingTerminationRules.Decide(termination) == RecordingTerminationDecision.ContinueCompletedSave)
+                warnings.Add("録画完了イベントを受信できませんでした。");
+            void Handle(object next)
+            {
                 switch (next)
                 {
                     case RecordingEngineStatus.Recording when !started:
@@ -208,12 +218,8 @@ internal static class RecordCommand
                         warnings.Add($"{operation.Operation}: {operation.Error}");
                         break;
                 }
-                if (completedPath is not null || failure is not null) break;
             }
-            timings = engine.StartupTimings;
-            var termination = engine.WaitForTerminationAsync(RecordingTimeouts.Termination).GetAwaiter().GetResult();
-            if (completedPath is null && RecordingTerminationRules.Decide(termination) == RecordingTerminationDecision.ContinueCompletedSave)
-                warnings.Add("録画完了イベントを受信できませんでした。");
+
             string? finalPath = null;
             string? retainedPath = failure is not null && File.Exists(failure.FilePath)
                 ? failure.FilePath
@@ -224,14 +230,26 @@ internal static class RecordCommand
             else
             {
                 var ffmpeg = Path.Combine(Path.GetDirectoryName(app.Path!)!, "ffmpeg", "ffmpeg.exe");
-                var finalized = RecordingFinalizer.FinalizeAsync(completedPath, settings, outputPath, null,
+                // --force でも既存のファイルは保存に成功するまで残すため、別名で確定してから置き換える。
+                var replaceExisting = force && File.Exists(outputPath);
+                var saveTarget = replaceExisting
+                    ? Path.Combine(Path.GetDirectoryName(outputPath)!, $"{Path.GetFileNameWithoutExtension(outputPath)}.{Guid.NewGuid():N}.cli-final.mp4")
+                    : outputPath;
+                var finalized = RecordingFinalizer.FinalizeAsync(completedPath, settings, saveTarget, null,
                     new FfmpegVideoRecordingPostProcessor(ffmpeg), CancellationToken.None, temporaryPath).GetAwaiter().GetResult();
+                if (replaceExisting && finalized.FinalPath is not null)
+                {
+                    File.Move(finalized.FinalPath, outputPath, overwrite: true);
+                    finalized = finalized with { FinalPath = outputPath };
+                }
                 if (finalized.Warning is not null) warnings.Add(finalized.Warning);
                 finalPath = finalized.FinalPath;
                 retainedPath = finalized.RetainedPath;
                 if (finalized.SupersededPath is not null)
                     RecordingFinalizer.DeleteSupersededAsync(finalized.SupersededPath).GetAwaiter().GetResult();
                 if (finalized.Error is not null) error = new CliError("saveFailed", finalized.Error);
+                else if (pauseFailed)
+                    error = new CliError("pauseResumeFailed", "一時停止または再開に失敗したため、動画の長さが指定と異なります。保存した動画は finalPath にあります。");
             }
             var result = new
             {

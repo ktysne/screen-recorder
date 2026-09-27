@@ -70,8 +70,17 @@ internal static class ProbeCommand
             if (options.ContainsKey("--expect-no-audio")) Compare("noAudio", true, info.Audio is null);
             if (output is not null)
             {
-                if (File.Exists(output)) File.Delete(output);
-                MediaFileProbe.WriteFramePngAsync(path, TimeSpan.FromSeconds(numbers["--frame"]), output).GetAwaiter().GetResult();
+                // 書き出しに失敗しても既存のファイルを残すため、別名に書き終えてから置き換える。
+                var staging = Path.Combine(Path.GetDirectoryName(output)!, $".{Path.GetFileNameWithoutExtension(output)}.{Guid.NewGuid():N}.png");
+                try
+                {
+                    MediaFileProbe.WriteFramePngAsync(path, TimeSpan.FromSeconds(numbers["--frame"]), staging).GetAwaiter().GetResult();
+                    File.Move(staging, output, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(staging)) File.Delete(staging);
+                }
             }
             result = new
             {
