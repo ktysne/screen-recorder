@@ -208,7 +208,7 @@ AI が状態を繰り返し読んでも、既定の記録レベルの利用者�
 `remote` のサブコマンドとして足す。
 
 - `remote status`
-- `remote wait --state <状態> [--capture-after <日時>] [--timeout <秒>]`
+- `remote wait --state <状態> [--capture-after <日時>] [--timeout <秒>]`(`--capture-after` は段階 4d から)
 - `remote perform <動作>`
 - `remote select (--rect <x,y,w,h> | --window <hwnd> | --cancel)`
 - `remote exit`
