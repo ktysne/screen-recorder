@@ -38,6 +38,7 @@ dotnet test ScreenRecorder.slnx
 
 `tools/` の Node スクリプトを触ったときは `npm run test:tools` も実行する。
 ビルド用の bat は `build-debug.bat`、`build-release.bat`、`build-package.bat`(配布)である。
+録画と撮影、設定と診断ログの確認には自動化用 CLI を使う。使い方は `.claude/skills/screenrecorder-cli/SKILL.md`、引数の正本は `screenrecorder-cli help` の出力である。
 
 ## リモートセッション時の作業について
 この節は、~/.claude 配下(グローバル CLAUDE.md、スキル、エージェント定義、codex-agent.sh)を読めないクラウド実行のための代替である。Claude Code のローカル実行では `~/.claude/CLAUDE.md` の規則に従う。
