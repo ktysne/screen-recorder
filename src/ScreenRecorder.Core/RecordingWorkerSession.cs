@@ -44,6 +44,11 @@ public sealed record RecordingWorkerFailedEvent(string FilePath, string Error, b
 
 public sealed record RecordingWorkerWarningEvent(string Message) : RecordingWorkerSessionEvent;
 
+public sealed record RecordingWorkerOperationFailedEvent(
+    long OperationId,
+    RecordingWorkerOperationKind Operation,
+    string Error) : RecordingWorkerSessionEvent;
+
 public sealed record RecordingWorkerLogEvent(DiagnosticLogLevel Level, string Tag, string Message) : RecordingWorkerSessionEvent;
 
 public sealed record RecordingWorkerSessionTransition(
@@ -113,17 +118,19 @@ public sealed class RecordingWorkerSession
         return Transition();
     }
 
-    public RecordingWorkerSessionTransition RequestPause(DateTimeOffset at)
+    public RecordingWorkerSessionTransition RequestPause(long operationId, DateTimeOffset at)
     {
+        if (operationId <= 0) throw new ArgumentOutOfRangeException(nameof(operationId));
         if (_terminationOutcome is null && !_processExited)
-            QueueCommand(new RecordingWorkerPauseCommand());
+            QueueCommand(new RecordingWorkerPauseCommand(operationId));
         return Transition();
     }
 
-    public RecordingWorkerSessionTransition RequestResume(DateTimeOffset at)
+    public RecordingWorkerSessionTransition RequestResume(long operationId, DateTimeOffset at)
     {
+        if (operationId <= 0) throw new ArgumentOutOfRangeException(nameof(operationId));
         if (_terminationOutcome is null && !_processExited)
-            QueueCommand(new RecordingWorkerResumeCommand());
+            QueueCommand(new RecordingWorkerResumeCommand(operationId));
         return Transition();
     }
 
@@ -169,6 +176,14 @@ public sealed class RecordingWorkerSession
 
         if (message is RecordingWorkerWarningMessage warningMessage)
             return Transition(events: [new RecordingWorkerWarningEvent(warningMessage.Message)]);
+        if (message is RecordingWorkerOperationFailedMessage operationFailedMessage)
+            return Transition(events:
+            [
+                new RecordingWorkerOperationFailedEvent(
+                    operationFailedMessage.OperationId,
+                    operationFailedMessage.Operation,
+                    operationFailedMessage.Error)
+            ]);
         if (message is RecordingWorkerLogMessage logMessage)
             return Transition(events: [new RecordingWorkerLogEvent(logMessage.Level, logMessage.Tag, logMessage.Message)]);
         if (_terminationOutcome is not null || _processExited) return elapsed;

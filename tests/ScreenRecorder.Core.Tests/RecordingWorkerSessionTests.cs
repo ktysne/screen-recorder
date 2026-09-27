@@ -12,8 +12,8 @@ public sealed class RecordingWorkerSessionTests
     {
         var session = CreateStartedSession();
         var start = session.RequestStart(CreateStartData(), StartedAt.AddSeconds(1));
-        var pause = session.RequestPause(StartedAt.AddSeconds(2));
-        var resume = session.RequestResume(StartedAt.AddSeconds(3));
+        var pause = session.RequestPause(1, StartedAt.AddSeconds(2));
+        var resume = session.RequestResume(2, StartedAt.AddSeconds(3));
         var stop = session.RequestStop(StartedAt.AddSeconds(4));
 
         Assert.Empty(start.MessagesToSend);
@@ -29,8 +29,8 @@ public sealed class RecordingWorkerSessionTests
             ready.MessagesToSend,
             message => Assert.IsType<RecordingWorkerReadyResponseCommand>(message),
             message => Assert.IsType<RecordingWorkerStartCommand>(message),
-            message => Assert.IsType<RecordingWorkerPauseCommand>(message),
-            message => Assert.IsType<RecordingWorkerResumeCommand>(message),
+            message => Assert.Equal(new RecordingWorkerPauseCommand(1), message),
+            message => Assert.Equal(new RecordingWorkerResumeCommand(2), message),
             message => Assert.IsType<RecordingWorkerStopCommand>(message));
     }
 
@@ -339,6 +339,37 @@ public sealed class RecordingWorkerSessionTests
 
         Assert.Equal(new RecordingWorkerWarningEvent("warning"), Assert.Single(warning.Events));
         Assert.Equal(new RecordingWorkerLogEvent(DiagnosticLogLevel.Debug, "record-worker", "entry"), Assert.Single(log.Events));
+    }
+
+    [Fact]
+    public void 操作失敗を要求識別子とともにイベントへ変換する()
+    {
+        var session = CreateReadySession();
+
+        var result = session.OnMessage(
+            new RecordingWorkerOperationFailedMessage(42, RecordingWorkerOperationKind.Resume, "再開できませんでした"),
+            StartedAt.AddSeconds(1));
+
+        Assert.Equal(
+            new RecordingWorkerOperationFailedEvent(42, RecordingWorkerOperationKind.Resume, "再開できませんでした"),
+            Assert.Single(result.Events));
+        Assert.Equal(RecordingTerminationOutcome.Waiting, result.TerminationOutcome);
+    }
+
+    [Fact]
+    public void 終端後に届いた操作失敗もイベントへ変換し終端を維持する()
+    {
+        var session = CreateReadySession();
+        session.OnMessage(new RecordingWorkerCompletedMessage("done.mp4"), StartedAt);
+
+        var result = session.OnMessage(
+            new RecordingWorkerOperationFailedMessage(43, RecordingWorkerOperationKind.Pause, "一時停止できませんでした"),
+            StartedAt.AddSeconds(1));
+
+        Assert.Equal(
+            new RecordingWorkerOperationFailedEvent(43, RecordingWorkerOperationKind.Pause, "一時停止できませんでした"),
+            Assert.Single(result.Events));
+        Assert.Equal(RecordingTerminationOutcome.Completed, result.TerminationOutcome);
     }
 
     [Fact]

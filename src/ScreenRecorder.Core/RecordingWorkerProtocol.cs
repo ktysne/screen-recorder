@@ -19,6 +19,12 @@ public enum RecordingWorkerRecordingState
     Saving
 }
 
+public enum RecordingWorkerOperationKind
+{
+    Pause,
+    Resume
+}
+
 public readonly record struct RecordingWorkerRectangle(int X, int Y, int Width, int Height);
 
 public readonly record struct RecordingWorkerSize(int Width, int Height);
@@ -52,12 +58,12 @@ public sealed record RecordingWorkerStartCommand(RecordingWorkerStartData Reques
     public override string Type => "start";
 }
 
-public sealed record RecordingWorkerPauseCommand : RecordingWorkerMessage
+public sealed record RecordingWorkerPauseCommand(long OperationId) : RecordingWorkerMessage
 {
     public override string Type => "pause";
 }
 
-public sealed record RecordingWorkerResumeCommand : RecordingWorkerMessage
+public sealed record RecordingWorkerResumeCommand(long OperationId) : RecordingWorkerMessage
 {
     public override string Type => "resume";
 }
@@ -97,6 +103,14 @@ public sealed record RecordingWorkerWarningMessage(string Message) : RecordingWo
     public override string Type => "warning";
 }
 
+public sealed record RecordingWorkerOperationFailedMessage(
+    long OperationId,
+    RecordingWorkerOperationKind Operation,
+    string Error) : RecordingWorkerMessage
+{
+    public override string Type => "operationFailed";
+}
+
 public sealed record RecordingWorkerTerminationMessage(RecordingTerminationOutcome Outcome) : RecordingWorkerMessage
 {
     public override string Type => "termination";
@@ -127,6 +141,7 @@ public static class RecordingWorkerProtocol
             RecordingWorkerCompletedMessage value => Serialize(value, RecordingWorkerJsonContext.Default.RecordingWorkerCompletedMessage),
             RecordingWorkerFailedMessage value => Serialize(value, RecordingWorkerJsonContext.Default.RecordingWorkerFailedMessage),
             RecordingWorkerWarningMessage value => Serialize(value, RecordingWorkerJsonContext.Default.RecordingWorkerWarningMessage),
+            RecordingWorkerOperationFailedMessage value => Serialize(value, RecordingWorkerJsonContext.Default.RecordingWorkerOperationFailedMessage),
             RecordingWorkerTerminationMessage value => Serialize(value, RecordingWorkerJsonContext.Default.RecordingWorkerTerminationMessage),
             RecordingWorkerLogMessage value => Serialize(value, RecordingWorkerJsonContext.Default.RecordingWorkerLogMessage),
             _ => throw new ArgumentOutOfRangeException(nameof(message), message.GetType(), "未対応の録画プロセスメッセージです。")
@@ -170,6 +185,7 @@ public static class RecordingWorkerProtocol
                     "completed" => Deserialize(json, RecordingWorkerJsonContext.Default.RecordingWorkerCompletedMessage),
                     "failed" => Deserialize(json, RecordingWorkerJsonContext.Default.RecordingWorkerFailedMessage),
                     "warning" => Deserialize(json, RecordingWorkerJsonContext.Default.RecordingWorkerWarningMessage),
+                    "operationFailed" => Deserialize(json, RecordingWorkerJsonContext.Default.RecordingWorkerOperationFailedMessage),
                     "termination" => Deserialize(json, RecordingWorkerJsonContext.Default.RecordingWorkerTerminationMessage),
                     "log" => Deserialize(json, RecordingWorkerJsonContext.Default.RecordingWorkerLogMessage),
                     _ => RecordingWorkerMessageReadResult.Unreadable(RecordingWorkerMessageReadError.UnknownType)
@@ -216,9 +232,14 @@ public static class RecordingWorkerProtocol
         RecordingWorkerCompletedMessage completed => completed.FilePath is not null,
         RecordingWorkerFailedMessage failed => failed.FilePath is not null && failed.Error is not null,
         RecordingWorkerWarningMessage warning => warning.Message is not null,
+        RecordingWorkerOperationFailedMessage operationFailed => operationFailed.OperationId > 0
+            && Enum.IsDefined(operationFailed.Operation)
+            && operationFailed.Error is not null,
         RecordingWorkerTerminationMessage termination => Enum.IsDefined(termination.Outcome),
         RecordingWorkerLogMessage log => Enum.IsDefined(log.Level) && log.Tag is not null && log.Message is not null,
-        RecordingWorkerPauseCommand or RecordingWorkerResumeCommand or RecordingWorkerStopCommand => true,
+        RecordingWorkerPauseCommand pause => pause.OperationId > 0,
+        RecordingWorkerResumeCommand resume => resume.OperationId > 0,
+        RecordingWorkerStopCommand => true,
         _ => false
     };
 }
@@ -367,6 +388,7 @@ public sealed class RecordingWorkerLineReader
 [JsonSerializable(typeof(RecordingWorkerCompletedMessage))]
 [JsonSerializable(typeof(RecordingWorkerFailedMessage))]
 [JsonSerializable(typeof(RecordingWorkerWarningMessage))]
+[JsonSerializable(typeof(RecordingWorkerOperationFailedMessage))]
 [JsonSerializable(typeof(RecordingWorkerTerminationMessage))]
 [JsonSerializable(typeof(RecordingWorkerLogMessage))]
 internal partial class RecordingWorkerJsonContext : JsonSerializerContext
