@@ -2,6 +2,12 @@ namespace ScreenRecorder.Core;
 
 public static class StoragePaths
 {
+    /// <summary>ScreenRecorder の設定フォルダーを返します。</summary>
+    public static string GetSettingsDirectory() => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScreenRecorder");
+
+    /// <summary>ScreenRecorder の診断ログフォルダーを返します。</summary>
+    public static string GetLogsDirectory() => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScreenRecorder", "logs");
+
     public static string GetVolumeRoot(string fullPath)
     {
         var root = Path.GetPathRoot(fullPath);

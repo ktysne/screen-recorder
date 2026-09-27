@@ -6,7 +6,7 @@ namespace ScreenRecorder.Core;
 
 public sealed class SettingsRepository(string? baseDirectory = null)
 {
-    private readonly string _directory = baseDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScreenRecorder");
+    private readonly string _directory = baseDirectory ?? StoragePaths.GetSettingsDirectory();
     private string FilePath => Path.Combine(_directory, "settings.json");
 
     public Settings Load()
