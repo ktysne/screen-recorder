@@ -92,6 +92,9 @@ internal static class ScreenshotCommand
                 var windowCapture = ScreenshotWindowCapture.CaptureAsync(new IntPtr(windowHandle)).GetAwaiter().GetResult();
                 image = windowCapture.Image;
                 bounds = windowCapture.Bounds;
+                // 撮影までにウィンドウが動いていても、結果のモニターを撮影した範囲と合わせる。
+                var capturedScreen = Screen.FromRectangle(bounds);
+                selected = monitors.FirstOrDefault(monitor => monitor.DeviceName == capturedScreen.DeviceName) ?? selected;
             }
             else
             {
@@ -119,6 +122,10 @@ internal static class ScreenshotCommand
         try
         {
             ScreenshotImageStorage.SaveImageToPath(capturedImage, outputPath, outputFormat, settings.PngCompression, settings.JpegQuality, force);
+        }
+        catch (IOException exception) when (!force && CaptureText.IsAlreadyExists(exception))
+        {
+            return Invalid("保存先のファイルは既に存在します。", "outputExists");
         }
         catch (Exception exception)
         {
