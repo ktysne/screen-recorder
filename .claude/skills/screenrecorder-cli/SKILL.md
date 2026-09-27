@@ -31,10 +31,11 @@ $cli = "src/ScreenRecorder.Cli/bin/Debug/net10.0-windows10.0.22000.0/screenrecor
 
 録画や撮影の変更を確かめる:
 
-- 範囲や DPI の計算だけを見るなら、`record --dry-run` で開始データを確かめる(録画はしない)。
-- 実際に録るなら、`record -o <MP4> --duration <秒>` の結果を `probe <MP4> --expect-*` で確かめる。
+- `record` と `screenshot` は、対象として `--display <番号>`、`--rect <x,y,w,h>`、`--window <hwnd>` のどれか 1 つが必須である。
+- 範囲や DPI の計算だけを見るなら、`record --dry-run --rect <x,y,w,h>` で開始データを確かめる(録画はしない)。
+- 実際に録るなら、`record --display 0 -o <MP4> --duration <秒>` の結果を `probe <MP4> --expect-*` で確かめる。
 - 中身を目で確かめるなら、`probe <MP4> --frame <秒> -o <PNG>` の画像を読む。
-- 静止画は `screenshot -o <PNG>` で撮る。
+- 静止画は `screenshot --display 0 -o <PNG>` で撮る。
 - 調査では `record --log-level debug` を付けると、録画プロセスの詳しいログが `log[]` に入る。
 
 モニターの番号と座標:
