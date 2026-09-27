@@ -103,7 +103,7 @@ internal sealed class UpdateService
                 {
                     DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新ファイルのハッシュが一致しません: 期待値={manifest.Sha256}、実際の値={UpdatePackage.ComputeSha256(zipPath)}。");
                     TryDelete(zipPath);
-                    throw new UpdatePackageException("ダウンロードしたファイルが最新版情報と一致しないため、中止しました。");
+                    throw new UpdatePackageException("ダウンロードしたファイルが最新バージョン情報と一致しないため、中止しました。");
                 }
                 var files = UpdatePackage.Extract(zipPath, extractDirectory);
                 DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新ファイルを展開しました: フォルダー={extractDirectory}、ファイル数={files.Count}。");

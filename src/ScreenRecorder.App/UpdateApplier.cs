@@ -24,7 +24,7 @@ internal static class UpdateApplier
         ApplicationConfiguration.Initialize();
         var settings = new SettingsRepository().Load();
         DiagnosticLog.Start(settings.DiagnosticLogLevel, AppVersion.Current);
-        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新適用プロセスを開始しました: 版={AppVersion.Current}、引数={string.Join(" | ", args)}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新適用プロセスを開始しました: バージョン={AppVersion.Current}、引数={string.Join(" | ", args)}。");
         // 更新後の起動が .old を消す前に、この処理の終了(15 秒後の生存確認を含む)を待てるようにする。
         Mutex? applierMutex = null;
         var ownsMutex = false;
@@ -104,7 +104,7 @@ internal static class UpdateApplier
             ReportFailure(version, installDirectory, installedExecutable, reason, outcome.RollbackFailures);
             return;
         }
-        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新ファイルを置き換えました: 版={version}、インストール先={installDirectory}、ファイル数={plan.Steps.Count}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新ファイルを置き換えました: バージョン={version}、インストール先={installDirectory}、ファイル数={plan.Steps.Count}。");
         UpdateCleanup.TryWriteCleanupRecord(new UpdateCleanupRecord(installDirectory, version, plan.BackupPaths), UpdatePaths.GetCleanupRecordPath(plan.UpdateId));
 
         if (!WaitForSingletonRelease())
@@ -129,7 +129,7 @@ internal static class UpdateApplier
         {
             if (!newProcess.WaitForExit(NewVersionSurvivalTime))
             {
-                DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新後の ScreenRecorder が起動しました: PID={newProcess.Id}、版={version}。");
+                DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新後の ScreenRecorder が起動しました: PID={newProcess.Id}、バージョン={version}。");
                 return;
             }
             DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新後の ScreenRecorder が早期に終了しました: 終了コード={newProcess.ExitCode}。");
@@ -142,7 +142,7 @@ internal static class UpdateApplier
         TryDelete(UpdatePaths.GetCleanupRecordPath(plan.UpdateId));
         WaitForExclusiveAccess(plan, installDirectory, files);
         var failures = UpdatePlanExecutor.Rollback(UpdateApplyPlanner.CreateFullRollbackPlan(plan), installDirectory, files);
-        DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新を取り消して元の版へ戻しました: 理由={reason}、失敗={string.Join(" / ", failures)}。");
+        DiagnosticLog.Error(DiagnosticLogTags.Update, $"更新を取り消して元のバージョンへ戻しました: 理由={reason}、失敗={string.Join(" / ", failures)}。");
         ReportFailure(version, installDirectory, installedExecutable, reason, failures);
     }
 
@@ -169,11 +169,11 @@ internal static class UpdateApplier
         try
         {
             using var _ = StartProcess(installedExecutable, null);
-            DiagnosticLog.Info(DiagnosticLogTags.Update, "元の版を起動しました。");
+            DiagnosticLog.Info(DiagnosticLogTags.Update, "元のバージョンを起動しました。");
         }
         catch (Exception exception)
         {
-            DiagnosticLog.Error(DiagnosticLogTags.Update, $"元の版を起動できませんでした: {exception}");
+            DiagnosticLog.Error(DiagnosticLogTags.Update, $"元のバージョンを起動できませんでした: {exception}");
         }
     }
 
@@ -364,11 +364,11 @@ internal static class UpdateCleanup
                 if (remaining is null)
                 {
                     File.Delete(recordPath);
-                    DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新前のバックアップを削除しました: 版={record.Version}、ファイル数={record.BackupFiles.Count}。");
+                    DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新前のバックアップを削除しました: バージョン={record.Version}、ファイル数={record.BackupFiles.Count}。");
                     continue;
                 }
                 TryWriteCleanupRecord(remaining, recordPath);
-                DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新前のバックアップが残っています: 版={record.Version}、残り={remaining.BackupFiles.Count}。");
+                DiagnosticLog.Warn(DiagnosticLogTags.Update, $"更新前のバックアップが残っています: バージョン={record.Version}、残り={remaining.BackupFiles.Count}。");
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {

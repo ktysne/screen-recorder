@@ -12,7 +12,7 @@ public sealed record UpdateManifestParseResult(UpdateManifest? Manifest, string?
     public static UpdateManifestParseResult Failure(string error) => new(null, error);
 }
 
-/// <summary>update.json を検証する。条件の正本は docs/design.md「最新版情報」。</summary>
+/// <summary>update.json を検証する。条件の正本は docs/design.md「最新バージョン情報」。</summary>
 public static class UpdateManifestParser
 {
     public const string ManifestUrl = "https://ktysne.info/screen-recorder/update.json";
@@ -23,7 +23,7 @@ public static class UpdateManifestParser
 
     public static UpdateManifestParseResult Parse(string? json)
     {
-        if (string.IsNullOrWhiteSpace(json)) return UpdateManifestParseResult.Failure("最新版情報が空でした。");
+        if (string.IsNullOrWhiteSpace(json)) return UpdateManifestParseResult.Failure("最新バージョン情報が空でした。");
         JsonDocument document;
         try
         {
@@ -31,30 +31,30 @@ public static class UpdateManifestParser
         }
         catch (JsonException)
         {
-            return UpdateManifestParseResult.Failure("最新版情報を JSON として読めませんでした。");
+            return UpdateManifestParseResult.Failure("最新バージョン情報を JSON として読めませんでした。");
         }
 
         using (document)
         {
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return UpdateManifestParseResult.Failure("最新版情報の形式が想定と異なります。");
+            if (root.ValueKind != JsonValueKind.Object) return UpdateManifestParseResult.Failure("最新バージョン情報の形式が想定と異なります。");
             // 1.0 や 1e0 を受け付けないよう、数値の表記そのものを比べる。
             if (!root.TryGetProperty("schema", out var schema) || schema.ValueKind != JsonValueKind.Number || schema.GetRawText() != "1")
-                return UpdateManifestParseResult.Failure("最新版情報の schema が 1 ではありません。");
+                return UpdateManifestParseResult.Failure("最新バージョン情報の schema が 1 ではありません。");
             if (!root.TryGetProperty("latest", out var latest) || latest.ValueKind != JsonValueKind.Object)
-                return UpdateManifestParseResult.Failure("最新版情報に latest がありません。");
+                return UpdateManifestParseResult.Failure("最新バージョン情報に latest がありません。");
 
             var versionText = ReadString(latest, "version");
             if (!UpdateVersion.TryParse(versionText, out var version))
-                return UpdateManifestParseResult.Failure("最新版情報の version が X.Y.Z の形式ではありません。");
+                return UpdateManifestParseResult.Failure("最新バージョン情報の version が X.Y.Z の形式ではありません。");
 
             var url = ReadString(latest, "url");
             if (!IsAllowedDownloadUrl(url))
-                return UpdateManifestParseResult.Failure("最新版情報のダウンロード先が配布サーバーではありません。");
+                return UpdateManifestParseResult.Failure("最新バージョン情報のダウンロード先が配布サーバーではありません。");
 
             var sha256 = ReadString(latest, "sha256");
             if (sha256 is null || sha256.Length != Sha256HexLength || !sha256.All(char.IsAsciiHexDigit))
-                return UpdateManifestParseResult.Failure("最新版情報の sha256 が 16 進 64 文字ではありません。");
+                return UpdateManifestParseResult.Failure("最新バージョン情報の sha256 が 16 進 64 文字ではありません。");
 
             var releasedAt = DateOnly.TryParseExact(ReadString(latest, "releasedAt"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
                 ? date

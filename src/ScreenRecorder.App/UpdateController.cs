@@ -205,7 +205,7 @@ internal sealed class UpdateController : IDisposable
 
         var cancellation = new CancellationTokenSource();
         _downloadCancellation = cancellation;
-        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新のダウンロードを開始します: 版={dialog.Manifest.Version}、URL={dialog.Manifest.Url}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新のダウンロードを開始します: バージョン={dialog.Manifest.Version}、URL={dialog.Manifest.Url}。");
         dialog.ShowDownloading(new UpdateDownloadProgress(0, null));
         var progress = new Progress<UpdateDownloadProgress>(value =>
         {
@@ -250,7 +250,7 @@ internal sealed class UpdateController : IDisposable
 
     private void ApplyPreparedUpdate(PreparedUpdate prepared, UpdateDialog dialog)
     {
-        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新の適用を開始します: 版={prepared.Manifest.Version}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新の適用を開始します: バージョン={prepared.Manifest.Version}。");
         dialog.ShowApplying();
         try
         {
@@ -264,7 +264,7 @@ internal sealed class UpdateController : IDisposable
             start.ArgumentList.Add(prepared.ExtractedDirectory);
             start.ArgumentList.Add(_installDirectory);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("更新の処理を起動できませんでした。");
-            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新適用プロセスを起動しました: PID={process.Id}、版={prepared.Manifest.Version}、展開元={prepared.ExtractedDirectory}、インストール先={_installDirectory}。");
+            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新適用プロセスを起動しました: PID={process.Id}、バージョン={prepared.Manifest.Version}、展開元={prepared.ExtractedDirectory}、インストール先={_installDirectory}。");
         }
         catch (Exception exception)
         {
@@ -284,7 +284,7 @@ internal sealed class UpdateController : IDisposable
             _notify(UiLabels.UpdateSkipSaveFailed, ToolTipIcon.Warning, false);
             return;
         }
-        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新をスキップしました: 版={version}。");
+        DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新をスキップしました: バージョン={version}。");
         dialog.Close();
     }
 

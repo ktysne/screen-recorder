@@ -76,7 +76,7 @@ function escapeHtml(text) {
 // LGPL の動的リンクで同梱する条件(GPL と nonfree を含まない shared ビルド)を満たさないものは止める。
 function ffmpegBuildInfoFrom(versionText) {
   const text = String(versionText ?? '').trim();
-  if (!text) throw new Error('同梱する ffmpeg の版の情報(ffmpeg -version の出力)が必要です');
+  if (!text) throw new Error('同梱する ffmpeg のバージョンの情報(ffmpeg -version の出力)が必要です');
   const forbidden = FORBIDDEN_FFMPEG_CONFIGURATIONS.filter((flag) => text.includes(flag));
   if (forbidden.length > 0) throw new Error(`同梱できない ffmpeg のビルドです(${forbidden.join(', ')})。LGPL の shared ビルドを使ってください`);
   if (!text.includes('--enable-shared')) throw new Error('同梱できない ffmpeg のビルドです(--enable-shared がありません)。LGPL の shared ビルドを使ってください');
@@ -100,7 +100,7 @@ function writeSite(output, values) {
 }
 
 function generateFiles({ version, zip, out, releasedAt, ffmpegInfo }) {
-  if (!isValidVersion(version)) throw new Error(`版は X.Y.Z 形式で指定してください: ${version}`);
+  if (!isValidVersion(version)) throw new Error(`バージョンは X.Y.Z 形式で指定してください: ${version}`);
   const zipPath = path.resolve(ROOT, zip);
   if (!fs.existsSync(zipPath)) throw new Error(`zip が見つかりません: ${zipPath}`);
   const output = path.resolve(ROOT, out);
@@ -119,7 +119,7 @@ function generateFiles({ version, zip, out, releasedAt, ffmpegInfo }) {
 }
 
 function generatePages({ version, out, releasedAt = localDateString(), ffmpegInfo }) {
-  if (!isValidVersion(version)) throw new Error(`版は X.Y.Z 形式で指定してください: ${version}`);
+  if (!isValidVersion(version)) throw new Error(`バージョンは X.Y.Z 形式で指定してください: ${version}`);
   const output = path.resolve(ROOT, out);
   fs.mkdirSync(output, { recursive: true });
   const values = { VERSION: version, DOWNLOAD_URL: downloadUrlOf(version), ZIP_NAME: zipFileName(version), RELEASED_AT: releasedAt, FFMPEG_BUILD_INFO: readFfmpegBuildInfo(ffmpegInfo) };
@@ -147,17 +147,17 @@ function verifyReleaseInputs(version, items) {
   const manifest = JSON.parse(fs.readFileSync(manifestItem.localPath, 'utf8'));
   const sha256 = crypto.createHash('sha256').update(fs.readFileSync(zip.localPath)).digest('hex');
   if (manifest.schema !== 1 || manifest.latest?.version !== version || manifest.latest?.url !== downloadUrlOf(version) || manifest.latest?.sha256 !== sha256) {
-    throw new Error('update.json の版、URL、SHA-256 がアップロードする zip と一致しません。先に release:generate を実行してください');
+    throw new Error('update.json のバージョン、URL、SHA-256 がアップロードする zip と一致しません。先に release:generate を実行してください');
   }
   return sha256;
 }
 
-// 転送の直前に公開中の版と比べ、古い成果物で公開版を巻き戻さない。
-// 同じ版は同じ成果物(SHA-256 が一致)の再試行だけを許し、公開中の zip はサーバ上で同じ大きさなら送り直さない。
+// 転送の直前に公開中のバージョンと比べ、古い成果物で公開バージョンを巻き戻さない。
+// 同じバージョンは同じ成果物(SHA-256 が一致)の再試行だけを許し、公開中の zip はサーバ上で同じ大きさなら送り直さない。
 function decideUploadAgainstPublished(version, localSha256, published) {
   if (!published) return { skipZip: false };
   const order = compareVersions(version, published.version);
-  if (order < 0) throw new Error(`公開中の版 ${published.version} のほうが新しいため、${version} は転送しません`);
+  if (order < 0) throw new Error(`公開中のバージョン ${published.version} のほうが新しいため、${version} は転送しません`);
   if (order === 0 && published.sha256 !== localSha256) {
     throw new Error(`公開中の ${version} と zip の SHA-256 が一致しないため、転送しません`);
   }
@@ -212,7 +212,7 @@ async function checkPublishedVersion(version, fetchImpl = fetch) {
     throw new Error('公開中の update.json の形式が不正です');
   }
   if (compareVersions(version, manifest.latest.version) <= 0) {
-    throw new Error(`新しいバージョン ${version} は公開中の版 ${manifest.latest.version} より大きくありません`);
+    throw new Error(`新しいバージョン ${version} は公開中のバージョン ${manifest.latest.version} より大きくありません`);
   }
   return { firstRelease: false, publishedVersion: manifest.latest.version };
 }
@@ -332,7 +332,7 @@ async function main() {
       console.log(`ページを生成しました: ${generatePages(options)}`);
     } else if (options.command === 'check-version') {
       const result = await checkPublishedVersion(options.version);
-      console.log(result.firstRelease ? '初回公開として続行できます。' : `公開中の版 ${result.publishedVersion} より新しいバージョンです。`);
+      console.log(result.firstRelease ? '初回公開として続行できます。' : `公開中のバージョン ${result.publishedVersion} より新しいバージョンです。`);
     } else {
       await uploadFiles(options);
     }

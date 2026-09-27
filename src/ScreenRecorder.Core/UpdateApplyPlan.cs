@@ -88,7 +88,7 @@ public static class UpdateApplyPlanner
         return actions;
     }
 
-    /// <summary>すべての手順を終えた後で、新しいバージョンが起動できなかったときに旧版へ戻す計画。</summary>
+    /// <summary>すべての手順を終えた後で、新しいバージョンが起動できなかったときに旧バージョンへ戻す計画。</summary>
     public static IReadOnlyList<UpdateRollbackAction> CreateFullRollbackPlan(UpdateApplyPlan plan) =>
         CreateRollbackPlan(plan, plan.Steps.Select(step => new UpdateStepProgress(step.ReplacesExistingFile, true)).ToArray());
 }

@@ -26,7 +26,7 @@ public static class UpdateCheckLog
     public static string CompletedMessage(UpdateCheckTrigger trigger, UpdateCheckResult result, string? currentVersion)
     {
         var hasNewVersion = result.Kind is UpdateCheckKind.Available or UpdateCheckKind.Skipped;
-        return $"更新の確認が完了しました: きっかけ={TriggerName(trigger)}、新しいバージョン={(hasNewVersion ? "あり" : "なし")}、現在の版={currentVersion}、最新の版={result.Manifest?.Version}。";
+        return $"更新の確認が完了しました: きっかけ={TriggerName(trigger)}、新しいバージョン={(hasNewVersion ? "あり" : "なし")}、現在のバージョン={currentVersion}、最新のバージョン={result.Manifest?.Version}。";
     }
 
     public static void Log(UpdateCheckTrigger trigger, UpdateCheckResult result, string? currentVersion)
@@ -50,13 +50,13 @@ public static class UpdateCheckLog
 
 public static class UpdateCheckEvaluator
 {
-    /// <summary>スキップした版は自動の確認でだけ <see cref="UpdateCheckKind.Skipped"/> にし、手動の確認では通知の対象に残す。</summary>
+    /// <summary>スキップしたバージョンは自動の確認でだけ <see cref="UpdateCheckKind.Skipped"/> にし、手動の確認では通知の対象に残す。</summary>
     public static UpdateCheckResult Evaluate(string? currentVersionText, string? manifestJson, string? skippedVersion, UpdateCheckTrigger trigger)
     {
         if (!UpdateVersion.TryParseApplicationVersion(currentVersionText, out var current))
-            return UpdateCheckResult.Failed("実行中の版を判別できませんでした。");
+            return UpdateCheckResult.Failed("実行中のバージョンを判別できませんでした。");
         var parsed = UpdateManifestParser.Parse(manifestJson);
-        if (parsed.Manifest is not { } manifest) return UpdateCheckResult.Failed(parsed.Error ?? "最新版情報を読めませんでした。");
+        if (parsed.Manifest is not { } manifest) return UpdateCheckResult.Failed(parsed.Error ?? "最新バージョン情報を読めませんでした。");
         if (manifest.Version <= current) return new UpdateCheckResult(UpdateCheckKind.UpToDate, manifest, null);
         if (trigger == UpdateCheckTrigger.Automatic && IsSkipped(skippedVersion, manifest.Version))
             return new UpdateCheckResult(UpdateCheckKind.Skipped, manifest, null);

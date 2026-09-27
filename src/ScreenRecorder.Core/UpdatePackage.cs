@@ -70,7 +70,7 @@ public static class UpdatePackage
 
 /// <summary>
 /// 適用を終えた後で消す <c>.old</c> の記録。新しいバージョンが起動し、適用した側が終わってから消す。
-/// 適用した側が 15 秒後の生存確認で旧版へ戻すときに <c>.old</c> が要るため。
+/// 適用した側が 15 秒後の生存確認で旧バージョンへ戻すときに <c>.old</c> が要るため。
 /// </summary>
 public sealed record UpdateCleanupRecord(string InstallDirectory, string Version, IReadOnlyList<string> BackupFiles)
 {
@@ -94,7 +94,7 @@ public sealed record UpdateCleanupRecord(string InstallDirectory, string Version
         }
     }
 
-    /// <summary>記録のインストール先が一致し、記録の版が実行中の版以下なら後始末できる。</summary>
+    /// <summary>記録のインストール先が一致し、記録のバージョンが実行中のバージョン以下なら後始末できる。</summary>
     public bool CanBeCleanedBy(string installDirectory, string currentVersion) =>
         string.Equals(
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(InstallDirectory)),
@@ -112,7 +112,7 @@ public sealed record UpdateCleanupRecord(string InstallDirectory, string Version
 
     /// <summary>一致する記録のうち、削除できなかったバックアップだけを残す。</summary>
     /// <param name="installDirectory">起動した側のインストール先。</param>
-    /// <param name="version">起動した側の版。</param>
+    /// <param name="version">起動した側のバージョン。</param>
     /// <param name="tryDeleteBackup">削除に成功したときに true を返す。</param>
     public UpdateCleanupRecord? KeepUndeletedBackups(string installDirectory, string version, Func<string, bool> tryDeleteBackup)
     {

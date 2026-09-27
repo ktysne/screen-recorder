@@ -123,7 +123,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private bool SaveAndApplySettings(Settings settings, bool stillDirectoryChanged, bool videoDirectoryChanged, bool defaultsRestored)
     {
-        // 設定画面は開いた時点の値を持つため、開いている間に選ばれたスキップの版で上書きさせない。
+        // 設定画面は開いた時点の値を持つため、開いている間に選ばれたスキップのバージョンで上書きさせない。
         settings.SkippedUpdateVersion = _settings.SkippedUpdateVersion;
         if (!stillDirectoryChanged && !defaultsRestored)
         {
@@ -417,7 +417,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             timer.Stop();
             timer.Dispose();
             _updateCompletedNotificationTimer = null;
-            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新後の版を起動しました: 版={AppVersion.Current}。");
+            DiagnosticLog.Info(DiagnosticLogTags.Update, $"更新後のバージョンを起動しました: バージョン={AppVersion.Current}。");
             ShowNotification(NotificationDuration.Standard, UiLabels.AppName, string.Format(UiLabels.UpdateCompleted, AppVersion.Current), ToolTipIcon.Info);
         };
         timer.Start();

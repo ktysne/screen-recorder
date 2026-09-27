@@ -52,7 +52,7 @@ test('配布ページが参照するアイコンを出力先の assets に置く
   }
 });
 
-test('版から配布 zip の URL を組み立てる', () => {
+test('バージョンから配布 zip の URL を組み立てる', () => {
   assert.equal(release.downloadUrlOf('2.3.4'), 'https://ktysne.info/screen-recorder/archives/ScreenRecorder-2.3.4-win-x64.zip');
 });
 
@@ -61,13 +61,13 @@ test('公開中の update.json が 404 の場合は初回公開として扱う',
   assert.deepEqual(result, { firstRelease: true });
 });
 
-test('公開中の版より小さい版と同じ版を拒否する', async () => {
+test('公開中のバージョンより小さいバージョンと同じバージョンを拒否する', async () => {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ schema: 1, latest: { version: '1.2.0' } }) });
   await assert.rejects(release.checkPublishedVersion('1.1.99', fetchImpl), /より大きくありません/);
   await assert.rejects(release.checkPublishedVersion('1.2.0', fetchImpl), /より大きくありません/);
 });
 
-test('ffmpeg の版の情報は HTML としてエスケープして載せる', () => {
+test('ffmpeg のバージョンの情報は HTML としてエスケープして載せる', () => {
   assert.equal(release.ffmpegBuildInfoFrom('ffmpeg version n7.1 <lgpl> & "x" --enable-shared'), 'ffmpeg version n7.1 &lt;lgpl&gt; &amp; &quot;x&quot; --enable-shared');
 });
 
@@ -84,11 +84,11 @@ test('shared でない ffmpeg のビルドは拒否する', () => {
   assert.throws(() => release.ffmpegBuildInfoFrom('configuration: --enable-static'), /--enable-shared/);
 });
 
-test('公開中の版より古い版は転送しない', () => {
+test('公開中のバージョンより古いバージョンは転送しない', () => {
   assert.throws(() => release.decideUploadAgainstPublished('0.1.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /新しい/);
 });
 
-test('公開中と同じ版は、同じ zip の再試行だけを許し、サーバに同じ zip があれば送り直さない', () => {
+test('公開中と同じバージョンは、同じ zip の再試行だけを許し、サーバに同じ zip があれば送り直さない', () => {
   assert.deepEqual(release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'a'.repeat(64) }), { skipZip: true });
   assert.throws(() => release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /一致しない/);
 });
@@ -144,6 +144,6 @@ test('サーバ上に同じ名前で同じ大きさのファイルがあると�
   assert.equal(release.isSameRemoteFile([], 'a.zip', 10), false);
 });
 
-test('ffmpeg の版の情報が無いときは生成を止める', () => {
-  assert.throws(() => release.ffmpegBuildInfoFrom(''), /版の情報/);
+test('ffmpeg のバージョンの情報が無いときは生成を止める', () => {
+  assert.throws(() => release.ffmpegBuildInfoFrom(''), /バージョンの情報/);
 });
