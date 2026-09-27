@@ -1,6 +1,5 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
@@ -25,69 +24,8 @@ internal static class CaptureSelection
     public static bool TryCreateWindowSelection(IntPtr window, out ScreenshotSelection? selection, out string reason)
     {
         selection = null;
-        if (!TryGetWindowInfo(window, out var bounds, out var title, out reason)) return false;
-        // 選択画面ではクリックでデスクトップも撮れるが、前面がデスクトップのときは撮りたいウィンドウを選ばせる。
-        if (IsDesktopWindow(window))
-        {
-            reason = "前面がデスクトップです";
-            return false;
-        }
+        if (!WindowRecordingTarget.TryDescribe(window, out var bounds, out var title, out reason)) return false;
         selection = new ScreenshotSelection(ScreenshotMode.Window, bounds, null, window, title);
-        return true;
-    }
-
-    private static bool IsDesktopWindow(IntPtr window)
-    {
-        var className = new System.Text.StringBuilder(256);
-        return NativeMethods.GetClassName(window, className, className.Capacity) != 0
-            && className.ToString() is "Progman" or "WorkerW";
-    }
-
-    private static bool TryGetWindowInfo(IntPtr window, out Rectangle bounds, out string title, out string reason)
-    {
-        bounds = Rectangle.Empty;
-        title = string.Empty;
-        if (window == IntPtr.Zero || !NativeMethods.IsWindow(window))
-        {
-            reason = "前面のウィンドウがありません";
-            return false;
-        }
-        if (!NativeMethods.IsWindowVisible(window))
-        {
-            reason = "ウィンドウが表示されていません";
-            return false;
-        }
-        if (NativeMethods.IsIconic(window))
-        {
-            reason = "ウィンドウが最小化されています";
-            return false;
-        }
-        if (NativeMethods.DwmGetWindowAttribute(window, NativeMethods.DwmaCloaked, out int cloaked, sizeof(int)) != 0 || cloaked != 0)
-        {
-            reason = "ウィンドウを撮影できません";
-            return false;
-        }
-
-        var hasFrameBounds = NativeMethods.DwmGetWindowAttribute(window, NativeMethods.DwmaExtendedFrameBounds, out NativeMethods.NativeRect frame, Marshal.SizeOf<NativeMethods.NativeRect>()) == 0
-            && frame.Right > frame.Left && frame.Bottom > frame.Top;
-        var rectangle = hasFrameBounds ? frame : default;
-        if (!hasFrameBounds && !NativeMethods.GetWindowRect(window, out rectangle))
-        {
-            reason = "ウィンドウの撮影範囲を取得できません";
-            return false;
-        }
-        bounds = Rectangle.FromLTRB(rectangle.Left, rectangle.Top, rectangle.Right, rectangle.Bottom);
-        if (bounds.Width <= 0 || bounds.Height <= 0)
-        {
-            reason = "ウィンドウの撮影範囲が空です";
-            return false;
-        }
-
-        var length = NativeMethods.GetWindowTextLength(window);
-        var titleBuffer = new System.Text.StringBuilder(Math.Max(1, length + 1));
-        NativeMethods.GetWindowText(window, titleBuffer, titleBuffer.Capacity);
-        title = titleBuffer.ToString();
-        reason = string.Empty;
         return true;
     }
 
@@ -239,7 +177,7 @@ internal static class CaptureSelection
                 try
                 {
                     NativeMethods.GetWindowThreadProcessId(window, out var processId);
-                    if (processId == ownProcessId || excluded.Contains(window) || !CaptureSelection.TryGetWindowInfo(window, out var bounds, out var title, out _)) return true;
+                    if (processId == ownProcessId || excluded.Contains(window) || !WindowRecordingTarget.TryGetWindowInfo(window, out var bounds, out var title, out _)) return true;
                     if (!bounds.Contains(new Point(pointer.X, pointer.Y))) return true;
                     match = (window, bounds, title);
                     return false;

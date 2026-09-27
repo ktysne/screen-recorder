@@ -154,6 +154,7 @@ Media Foundation の MP3 エンコーダ MFT を使う経路は採らない。
 ScreenRecorder.slnx
 src/
   ScreenRecorder.Core/    UI と OS に依存しない純粋な処理(設定、ファイル名、キー表記、更新情報の検証、PNG 書き出しなど)
+  ScreenRecorder.Capture/ 録画プロセスの制御、録画の保存、画面と音声の取得
   ScreenRecorder.App/     WinForms のアプリ本体(トレイ、ホットキー、キャプチャ、録画、更新)
 tests/
   ScreenRecorder.Core.Tests/   xUnit
@@ -162,7 +163,8 @@ docs/
 ```
 
 Core はテストで検証できる形に保つ。
-OS の API を呼ぶ処理は App に置き、判断の部分(値の検証、名前の決定、状態遷移)は Core に切り出す。
+録画で OS の API を呼ぶ処理は Capture に置く。
+App に固有の画面操作は App に残し、判断の部分(値の検証、名前の決定、状態遷移)は Core に切り出す。
 
 ### 保存場所
 

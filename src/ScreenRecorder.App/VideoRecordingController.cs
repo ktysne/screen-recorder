@@ -1,14 +1,10 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
 
 internal sealed class VideoRecordingController : IDisposable
 {
-    private static readonly TimeSpan RecordingTerminationTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan RecordingStartTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan RecordingFinalizationTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan RecordingEngineDisposeWarningThreshold = TimeSpan.FromSeconds(1);
     private readonly Func<Settings> _currentSettings;
     private readonly string _executablePath;
@@ -22,12 +18,12 @@ internal sealed class VideoRecordingController : IDisposable
     private readonly Func<SaveDirectoryKind, string, Exception?, Task<string?>> _confirmSaveDirectory;
     private readonly Action<SaveDirectoryKind, string> _rememberConfirmedDirectory;
     private readonly VideoRecordingStateMachine _recordingState = new();
-    private readonly IVideoRecordingPostProcessor _videoPostProcessor = new FfmpegVideoRecordingPostProcessor();
+    private readonly IVideoRecordingPostProcessor _videoPostProcessor = new FfmpegVideoRecordingPostProcessor(Path.Combine(AppContext.BaseDirectory, "ffmpeg", "ffmpeg.exe"));
+    private readonly SystemSleepInhibitor _systemSleepInhibitor = new();
     private bool _recordingSelectionInProgress;
     private bool _recordingFailureFinalizationStarted;
     private bool _recordingFinalizationTimeoutStarted;
     private bool _recordingCompletionProcessing;
-    private bool _systemSleepInhibited;
     private System.Windows.Forms.Timer? _recordingTimer;
     private System.Windows.Forms.Timer? _windowMonitorTimer;
     private CancellationTokenSource? _recordingCountdownCancellation;
@@ -93,7 +89,7 @@ internal sealed class VideoRecordingController : IDisposable
 
     public void Dispose()
     {
-        SetSystemSleepInhibition(false);
+        _systemSleepInhibitor.Release();
         _recordingTimer?.Stop();
         _recordingTimer?.Dispose();
         _windowMonitorTimer?.Stop();
@@ -178,35 +174,25 @@ internal sealed class VideoRecordingController : IDisposable
 
             var targetBounds = mode == ScreenshotMode.Full ? fullDisplay!.Bounds : selection!.Bounds;
             var display = mode == ScreenshotMode.Full ? fullDisplay! : Screen.FromRectangle(targetBounds);
-            var dimensions = VideoRecordingStateMachine.CalculateDimensions(
-                targetBounds.Width,
-                targetBounds.Height,
-                captureSettings.OutputScalePercent);
-            if (dimensions is null)
+            var startPlanResult = RecordingStartPlanner.Plan(mode, new(display.DeviceName, display.Bounds),
+                targetBounds, (selection?.Window ?? IntPtr.Zero).ToInt64(), string.Empty, captureSettings,
+                !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000));
+            if (startPlanResult.Error is { } planError)
             {
-                var message = targetBounds.Width < 2 || targetBounds.Height < 2
+                var message = planError == RecordingStartPlanError.RegionTooSmall
                     ? UiLabels.RecordingRegionTooSmall
                     : UiLabels.RecordingOutputTooSmall;
                 _notifier.Show(NotificationDuration.Standard, UiLabels.AppName, message, ToolTipIcon.Warning);
                 return;
             }
 
-            var sourceKind = mode switch
+            var plan = startPlanResult.Plan!;
+            var sourceKind = plan.StartData.SourceKind switch
             {
-                ScreenshotMode.Full => RecordingSourceKind.Display,
-                ScreenshotMode.Region => RecordingSourceKind.Region,
-                ScreenshotMode.Window => RecordingSourceKind.Window,
+                RecordingWorkerSourceKind.Display => RecordingSourceKind.Display,
+                RecordingWorkerSourceKind.Region => RecordingSourceKind.Region,
+                RecordingWorkerSourceKind.Window => RecordingSourceKind.Window,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
-            };
-            var sourceRect = mode switch
-            {
-                ScreenshotMode.Full => new Rectangle(0, 0, dimensions.Value.SourceSize.Width, dimensions.Value.SourceSize.Height),
-                ScreenshotMode.Region => new Rectangle(
-                    targetBounds.X - display.Bounds.X,
-                    targetBounds.Y - display.Bounds.Y,
-                    dimensions.Value.SourceSize.Width,
-                    dimensions.Value.SourceSize.Height),
-                _ => (Rectangle?)null
             };
             var capturedAt = DateTime.Now;
             var preparation = await Task.Run(() =>
@@ -231,7 +217,7 @@ internal sealed class VideoRecordingController : IDisposable
             _recordingFailureFinalizationStarted = false;
             _recordingFinalizationTimeoutStarted = false;
             _recordingCompletionProcessing = false;
-            SetSystemSleepInhibition(true);
+            _systemSleepInhibitor.Inhibit();
             _activeRecording = new ActiveRecording(
                 finalPath,
                 temporaryPath,
@@ -269,25 +255,8 @@ internal sealed class VideoRecordingController : IDisposable
                 countdownCancellation.Dispose();
             }
 
-            var request = new RecordingStartRequest(
-                temporaryPath,
-                sourceKind,
-                display.DeviceName,
-                sourceRect,
-                selection?.Window ?? IntPtr.Zero,
-                dimensions.Value.SourceSize,
-                dimensions.Value.OutputSize,
-                captureSettings.FrameRate,
-                captureSettings.VideoBitrateMbps,
-                captureSettings.CaptureVideoCursor,
-                captureSettings.HighlightClicks,
-                captureSettings.Encoder == EncoderMode.Automatic,
-                !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000),
-                captureSettings.CaptureSystemAudio,
-                captureSettings.CaptureMicrophone,
-                captureSettings.MicrophoneDeviceId,
-                captureSettings.AudioFormat == AudioFormat.Mp3 ? 192 : captureSettings.AacBitrateKbps);
-            var engine = new RecordingWorkerProcessEngine(_executablePath);
+            var request = RecordingStartRequest.FromWorkerStartData(plan.StartData with { OutputPath = temporaryPath });
+            var engine = new RecordingWorkerProcessEngine(_executablePath, DiagnosticLog.Level);
             engine.StatusChanged += (_, eventArgs) => DispatchToUi(() => HandleRecordingStatus(engine, eventArgs));
             engine.RecordingCompleted += (_, eventArgs) => DispatchToUi(() => HandleRecordingCompleted(engine, eventArgs));
             engine.RecordingFailed += (_, eventArgs) => DispatchToUi(() => HandleRecordingFailed(engine, eventArgs));
@@ -372,7 +341,7 @@ internal sealed class VideoRecordingController : IDisposable
         if (!_recordingState.TryCancelCountdown()) return;
         _recordingCountdownCancellation?.Cancel();
         _recordingCountdownForm?.Close();
-        SetSystemSleepInhibition(false);
+        _systemSleepInhibitor.Release();
         UpdateRecordingUi();
     }
 
@@ -553,20 +522,21 @@ internal sealed class VideoRecordingController : IDisposable
         try
         {
             var completedPath = string.IsNullOrWhiteSpace(eventArgs.FilePath) ? active.TemporaryPath : eventArgs.FilePath;
-            var processResult = await _videoPostProcessor.ProcessAsync(completedPath, active.Settings, CancellationToken.None);
-            processedPath = processResult.FilePath;
-            var pathToMove = processedPath;
-            var finalPath = await Task.Run(() =>
-            {
-                if (!File.Exists(pathToMove)) throw new FileNotFoundException("録画ライブラリが完了を通知しましたが、一時ファイルが見つかりません。", pathToMove);
-                return MoveRecordingToFinalPath(active, pathToMove);
-            });
+            var result = await RecordingFinalizer.FinalizeAsync(completedPath, active.Settings, active.FinalPath,
+                () => VideoRecordingFileNaming.GetAvailablePath(
+                    active.Settings.VideoDirectory, active.Settings.OrganizeByMonth, active.CapturedAt,
+                    active.Mode, active.WindowTitle, active.Settings.FileNameTemplate,
+                    candidate => File.Exists(candidate) || File.Exists(VideoRecordingFileNaming.GetTemporaryPath(candidate))),
+                _videoPostProcessor, CancellationToken.None, active.TemporaryPath);
+            processedPath = result.RetainedPath;
+            if (result.Failure is { } failure) throw failure;
+            var finalPath = result.FinalPath!;
             DiagnosticLog.Info(DiagnosticLogTags.Record, $"録画を保存しました: {finalPath}");
             await CompleteRecordingSave(finalPath, active.Settings);
-            if (processResult.Warning is not null)
-                _notifier.ShowForCapture(NotificationDuration.Long, UiLabels.AppName, processResult.Warning, ToolTipIcon.Warning, finalPath);
+            if (result.Warning is not null)
+                _notifier.ShowForCapture(NotificationDuration.Long, UiLabels.AppName, result.Warning, ToolTipIcon.Warning, finalPath);
             // 変換前の一時ファイルが残ると次の起動で未完了の録画と誤って知らせるため、削除を終えてから保存を完了する。
-            if (processResult.SupersededPath is { } supersededPath) await DeleteSupersededRecordingAsync(supersededPath);
+            if (result.SupersededPath is { } supersededPath) await RecordingFinalizer.DeleteSupersededAsync(supersededPath);
             _recordingState.TryCompleteSaving();
         }
         catch (Exception exception)
@@ -605,12 +575,12 @@ internal sealed class VideoRecordingController : IDisposable
 
     private async Task FinishRecordingStartFailureAfterTimeoutAsync(IRecordingEngine engine)
     {
-        await Task.Delay(RecordingStartTimeout);
+        await Task.Delay(RecordingTimeouts.Start);
         if (!ReferenceEquals(engine, _recordingEngine) || !_recordingState.IsWaitingForEngineStart) return;
 
         DiagnosticLog.Warn(
             DiagnosticLogTags.Record,
-            $"録画エンジンが {RecordingStartTimeout.TotalSeconds:0} 秒以内に記録を始めなかったため、録画の開始を諦めます。");
+            $"録画エンジンが {RecordingTimeouts.Start.TotalSeconds:0} 秒以内に記録を始めなかったため、録画の開始を諦めます。");
         await FinishRecordingFailureAsync(
             UiLabels.RecordingStartTimedOut,
             _activeRecording?.TemporaryPath,
@@ -627,7 +597,7 @@ internal sealed class VideoRecordingController : IDisposable
 
     private async Task FinishRecordingFailureAfterSuccessfulStopAsync(IRecordingEngine engine)
     {
-        var termination = await engine.WaitForTerminationAsync(RecordingFinalizationTimeout);
+        var termination = await engine.WaitForTerminationAsync(RecordingTimeouts.Finalization);
         var decision = RecordingTerminationRules.Decide(termination);
         if (!ReferenceEquals(engine, _recordingEngine)
             || _recordingCompletionProcessing
@@ -642,7 +612,7 @@ internal sealed class VideoRecordingController : IDisposable
 
     private async Task FinishRecordingFailureAfterTerminationAsync(IRecordingEngine engine, string error, string? temporaryPath)
     {
-        var termination = await engine.WaitForTerminationAsync(RecordingTerminationTimeout);
+        var termination = await engine.WaitForTerminationAsync(RecordingTimeouts.Termination);
         var decision = RecordingTerminationRules.Decide(termination);
         if (!ReferenceEquals(engine, _recordingEngine) || decision is RecordingTerminationDecision.Wait or RecordingTerminationDecision.ContinueCompletedSave)
             return;
@@ -688,19 +658,6 @@ internal sealed class VideoRecordingController : IDisposable
         _notifier.ShowForCapture(NotificationDuration.Long, UiLabels.AppName, message, ToolTipIcon.Error, retainedPath);
     }
 
-    private void SetSystemSleepInhibition(bool inhibit)
-    {
-        if (_systemSleepInhibited == inhibit) return;
-        var executionState = NativeMethods.ExecutionStateContinuous;
-        if (inhibit) executionState |= NativeMethods.ExecutionStateSystemRequired;
-        if (NativeMethods.SetThreadExecutionState(executionState) == 0)
-        {
-            DiagnosticLog.Warn(DiagnosticLogTags.Record, $"スリープを抑止できませんでした: 抑止={inhibit}; Windows エラー={Marshal.GetLastWin32Error()}");
-            return;
-        }
-        _systemSleepInhibited = inhibit;
-    }
-
     private Task CompleteRecordingSave(string finalPath, Settings settings)
     {
         return CaptureCompletion.ExecuteAsync(
@@ -712,39 +669,6 @@ internal sealed class VideoRecordingController : IDisposable
             warning: null,
             _openFolderQuietly,
             _notifier.ShowForCapture);
-    }
-
-    private Task DeleteSupersededRecordingAsync(string path)
-    {
-        return Task.Run(() =>
-        {
-            try { File.Delete(path); }
-            catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Convert, $"変換前の録画ファイルを削除できませんでした: {path}; {exception}"); }
-        });
-    }
-
-    private static string MoveRecordingToFinalPath(ActiveRecording active, string completedPath)
-    {
-        var finalPath = active.FinalPath;
-        while (true)
-        {
-            try
-            {
-                File.Move(completedPath, finalPath);
-                return finalPath;
-            }
-            catch (IOException exception) when (CaptureText.IsAlreadyExists(exception))
-            {
-                finalPath = VideoRecordingFileNaming.GetAvailablePath(
-                    active.Settings.VideoDirectory,
-                    active.Settings.OrganizeByMonth,
-                    active.CapturedAt,
-                    active.Mode,
-                    active.WindowTitle,
-                    active.Settings.FileNameTemplate,
-                    candidate => File.Exists(candidate) || File.Exists(VideoRecordingFileNaming.GetTemporaryPath(candidate)));
-            }
-        }
     }
 
     private void ShowSavingState()
@@ -868,7 +792,7 @@ internal sealed class VideoRecordingController : IDisposable
         _recordingEngine = null;
         if (engine is not null) QueueEngineDisposal(engine);
 
-        SetSystemSleepInhibition(false);
+        _systemSleepInhibitor.Release();
         _recordingTimer?.Stop();
         _recordingTimer?.Dispose();
         _recordingTimer = null;

@@ -1,4 +1,3 @@
-using System.Drawing;
 using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
@@ -36,7 +35,7 @@ internal sealed class RecordingWorkerLibraryHost : IDisposable
 
     public bool HasCompleted => Volatile.Read(ref _hasCompleted) != 0;
 
-    public void Start() => _engine.Start(ToRecordingRequest(_workerRequest));
+    public void Start() => _engine.Start(RecordingStartRequest.FromWorkerStartData(_workerRequest));
 
     public void Pause() => _engine.Pause();
 
@@ -81,32 +80,6 @@ internal sealed class RecordingWorkerLibraryHost : IDisposable
 
     private void HandleWarning(object? sender, RecordingEngineWarningEventArgs eventArgs) => _warning(eventArgs.Message);
 
-    private static RecordingStartRequest ToRecordingRequest(RecordingWorkerStartData request) => new(
-        request.OutputPath,
-        request.SourceKind switch
-        {
-            RecordingWorkerSourceKind.Display => RecordingSourceKind.Display,
-            RecordingWorkerSourceKind.Region => RecordingSourceKind.Region,
-            RecordingWorkerSourceKind.Window => RecordingSourceKind.Window,
-            _ => throw new ArgumentOutOfRangeException(nameof(request))
-        },
-        request.DisplayDeviceName,
-        request.SourceRect is { } sourceRect
-            ? new Rectangle(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height)
-            : null,
-        new IntPtr(request.WindowHandle),
-        new Size(request.SourceFrameSize.Width, request.SourceFrameSize.Height),
-        new Size(request.OutputFrameSize.Width, request.OutputFrameSize.Height),
-        request.FrameRate,
-        request.BitrateMbps,
-        request.CaptureCursor,
-        request.HighlightClicks,
-        request.HardwareEncodingEnabled,
-        request.RequireCaptureBorder,
-        request.CaptureSystemAudio,
-        request.CaptureMicrophone,
-        request.MicrophoneDeviceId,
-        request.AacBitrateKbps);
 }
 
 internal static class RecordingWorkerLibraryBridge

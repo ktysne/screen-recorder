@@ -4,9 +4,11 @@
     <Project Path="src/ScreenRecorder.App/ScreenRecorder.App.csproj">
       <Platform Project="x64" />
     </Project>
+    <Project Path="src/ScreenRecorder.Capture/ScreenRecorder.Capture.csproj" />
     <Project Path="src/ScreenRecorder.Cli/ScreenRecorder.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ScreenRecorder.Capture.Tests/ScreenRecorder.Capture.Tests.csproj" />
     <Project Path="tests/ScreenRecorder.Cli.Tests/ScreenRecorder.Cli.Tests.csproj" />
     <Project Path="tests/ScreenRecorder.Core.Tests/ScreenRecorder.Core.Tests.csproj" />
   </Folder>

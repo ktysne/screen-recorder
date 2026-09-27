@@ -4,15 +4,16 @@ using System.Text;
 using System.Threading.Channels;
 using ScreenRecorder.Core;
 
-namespace ScreenRecorder.App;
+namespace ScreenRecorder.Capture;
 
-internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
+public sealed class RecordingWorkerProcessEngine : IRecordingEngine
 {
     private static readonly TimeSpan ForceTerminationWait = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ReaderDrainWaitOnExit = TimeSpan.FromSeconds(2);
     private readonly object _gate = new();
     private readonly string _executablePath;
-    private readonly RecordingWorkerSession _session = new(DiagnosticLog.Level);
+    private readonly RecordingWorkerSession _session;
+    private readonly DiagnosticLogLevel _workerLogLevel;
     private readonly Channel<RecordingWorkerMessage> _outgoing = Channel.CreateUnbounded<RecordingWorkerMessage>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly Queue<PendingEvent> _pendingEvents = new();
@@ -29,6 +30,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
     private System.Threading.Timer? _timer;
     private Stopwatch? _startupStopwatch;
     private TimeSpan? _startupDuration;
+    private TimeSpan? _recordingStartDuration;
     private long? _readyTimestamp;
     private bool _loggedRecordingStartDelay;
     private bool _started;
@@ -40,11 +42,18 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
 
     private sealed record PendingEvent(RecordingWorkerSessionEvent Event, RecordingTerminationOutcome Outcome);
 
-    public RecordingWorkerProcessEngine(string executablePath)
+    public RecordingWorkerProcessEngine(string executablePath, DiagnosticLogLevel workerLogLevel)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         _executablePath = executablePath;
+        _workerLogLevel = workerLogLevel;
+        _session = new RecordingWorkerSession(workerLogLevel);
         _eventTask = Task.Run(DispatchEventsAsync);
+    }
+
+    public RecordingStartupTimings StartupTimings
+    {
+        get { lock (_gate) return new(_startupDuration, _recordingStartDuration); }
     }
 
     public event EventHandler<RecordingEngineStatusChangedEventArgs>? StatusChanged;
@@ -101,7 +110,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
 
             var now = DateTimeOffset.UtcNow;
             shouldForceTerminate = ApplyTransitionLocked(_session.OnProcessStarted(now, process.Id));
-            shouldForceTerminate |= ApplyTransitionLocked(_session.RequestStart(ToWorkerStartData(request), now));
+            shouldForceTerminate |= ApplyTransitionLocked(_session.RequestStart(request.ToWorkerStartData(), now));
             _timer = new System.Threading.Timer(AdvanceSessionTime, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
 
@@ -198,36 +207,9 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
         };
         startInfo.ArgumentList.Add("--record-worker");
         startInfo.ArgumentList.Add(pipeName);
-        startInfo.ArgumentList.Add(DiagnosticLog.Level.ToSettingName());
+        startInfo.ArgumentList.Add(_workerLogLevel.ToSettingName());
         return startInfo;
     }
-
-    private static RecordingWorkerStartData ToWorkerStartData(RecordingStartRequest request) => new(
-        request.OutputPath,
-        request.SourceKind switch
-        {
-            RecordingSourceKind.Display => RecordingWorkerSourceKind.Display,
-            RecordingSourceKind.Region => RecordingWorkerSourceKind.Region,
-            RecordingSourceKind.Window => RecordingWorkerSourceKind.Window,
-            _ => throw new ArgumentOutOfRangeException(nameof(request))
-        },
-        request.DisplayDeviceName,
-        request.SourceRect is { } sourceRect
-            ? new RecordingWorkerRectangle(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height)
-            : null,
-        request.WindowHandle.ToInt64(),
-        new RecordingWorkerSize(request.SourceFrameSize.Width, request.SourceFrameSize.Height),
-        new RecordingWorkerSize(request.OutputFrameSize.Width, request.OutputFrameSize.Height),
-        request.FrameRate,
-        request.BitrateMbps,
-        request.CaptureCursor,
-        request.HighlightClicks,
-        request.HardwareEncodingEnabled,
-        request.RequireCaptureBorder,
-        request.CaptureSystemAudio,
-        request.CaptureMicrophone,
-        request.MicrophoneDeviceId,
-        request.AacBitrateKbps);
 
     private async Task ConnectAndReadAsync()
     {
@@ -354,6 +336,7 @@ internal sealed class RecordingWorkerProcessEngine : IRecordingEngine
                 _loggedRecordingStartDelay = true;
                 logRecordingStartDelay = true;
                 recordingStartDelay = Stopwatch.GetElapsedTime(readyTimestamp);
+                _recordingStartDuration = recordingStartDelay;
             }
 
             shouldForceTerminate = ApplyTransitionLocked(_session.OnMessage(message, DateTimeOffset.UtcNow));
