@@ -1,6 +1,6 @@
 # 自動化用 CLI と AI からの利用
 
-状態：段階 1、段階 2a の `record` と `probe`、段階 2b の `screenshot` は実装済み。段階 3 以降は未着手。
+状態：段階 1〜3 実装済み。段階 4 と 5 は未着手。
 
 この資料は、AI エージェント(Claude Code、Codex)が ScreenRecorder の開発、テスト、利用者の支援に使う仕組みの設計を定める。
 アプリ本体の仕様の正本は [design.md](design.md) で、この資料は本体に足す部品と CLI の約束だけを扱う。
