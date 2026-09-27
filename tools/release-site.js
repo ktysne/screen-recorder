@@ -212,7 +212,7 @@ async function checkPublishedVersion(version, fetchImpl = fetch) {
     throw new Error('公開中の update.json の形式が不正です');
   }
   if (compareVersions(version, manifest.latest.version) <= 0) {
-    throw new Error(`新しい版 ${version} は公開中の版 ${manifest.latest.version} より大きくありません`);
+    throw new Error(`新しいバージョン ${version} は公開中の版 ${manifest.latest.version} より大きくありません`);
   }
   return { firstRelease: false, publishedVersion: manifest.latest.version };
 }
@@ -332,7 +332,7 @@ async function main() {
       console.log(`ページを生成しました: ${generatePages(options)}`);
     } else if (options.command === 'check-version') {
       const result = await checkPublishedVersion(options.version);
-      console.log(result.firstRelease ? '初回公開として続行できます。' : `公開中の版 ${result.publishedVersion} より新しい版です。`);
+      console.log(result.firstRelease ? '初回公開として続行できます。' : `公開中の版 ${result.publishedVersion} より新しいバージョンです。`);
     } else {
       await uploadFiles(options);
     }

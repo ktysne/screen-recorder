@@ -93,7 +93,7 @@ test('公開中と同じ版は、同じ zip の再試行だけを許し、サー
   assert.throws(() => release.decideUploadAgainstPublished('0.2.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), /一致しない/);
 });
 
-test('初回の公開と、公開中より新しい版は zip も含めて転送する', () => {
+test('初回の公開と、公開中より新しいバージョンは zip も含めて転送する', () => {
   assert.deepEqual(release.decideUploadAgainstPublished('0.1.0', 'a'.repeat(64), null), { skipZip: false });
   assert.deepEqual(release.decideUploadAgainstPublished('0.3.0', 'a'.repeat(64), { version: '0.2.0', sha256: 'b'.repeat(64) }), { skipZip: false });
 });

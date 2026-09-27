@@ -107,7 +107,7 @@ public sealed class UpdateCheckTests
         var result = new UpdateCheckResult(kind, new UpdateManifest(new UpdateVersion(0, 2, 0), "https://ktysne.info/screen-recorder/a.zip", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", null), null);
 
         Assert.Equal(
-            $"更新の確認が完了しました: きっかけ=自動、新しい版={expectedAvailability}、現在の版=0.1.0、最新の版=0.2.0。",
+            $"更新の確認が完了しました: きっかけ=自動、新しいバージョン={expectedAvailability}、現在の版=0.1.0、最新の版=0.2.0。",
             UpdateCheckLog.CompletedMessage(UpdateCheckTrigger.Automatic, result, "0.1.0"));
     }
 

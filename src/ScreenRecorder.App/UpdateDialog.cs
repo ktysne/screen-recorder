@@ -2,7 +2,7 @@ using ScreenRecorder.Core;
 
 namespace ScreenRecorder.App;
 
-/// <summary>新しい版の通知から、ダウンロード、適用の開始までを 1 つの画面で見せる。</summary>
+/// <summary>新しいバージョンの通知から、ダウンロード、適用の開始までを 1 つの画面で見せる。</summary>
 internal sealed class UpdateDialog : Form
 {
     private const int ContentWidth = 480;
