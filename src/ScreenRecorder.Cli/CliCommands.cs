@@ -25,10 +25,10 @@ internal static class CliCommands
 {
     private static readonly CliOptionDefinition FileOption = new("--file", "<パス>", "読み取る設定ファイルのパス。省略時は本体の設定を使います。");
     private static readonly CliOptionDefinition SinceOption = new("--since", "<日時>", "指定した ISO 8601 の日時以降を表示します。");
-    private static readonly CliOptionDefinition LevelOption = new("--level", "<レベル>", "error、warn、info、debug の行だけを表示します。");
+    private static readonly CliOptionDefinition LevelOption = new("--level", "<レベル>", "指定したレベル以上(error、warn、info、debug の順に重い)の行だけを表示します。");
     private static readonly CliOptionDefinition TagOption = new("--tag", "<タグ>", "指定したタグの行だけを表示します。");
     private static readonly CliOptionDefinition GrepOption = new("--grep", "<文字列>", "本文または生行に文字列を含む行だけを表示します。");
-    private static readonly CliOptionDefinition LimitOption = new("--limit", "<件数>", "表示する行数の上限です。");
+    private static readonly CliOptionDefinition LimitOption = new("--limit", "<件数>", "条件に合う行のうち、末尾から表示する行数です。既定は 200 です。");
 
     public static IReadOnlyList<CliOptionDefinition> GlobalOptions { get; } =
     [

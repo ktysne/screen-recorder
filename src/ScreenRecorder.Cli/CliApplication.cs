@@ -37,6 +37,7 @@ internal sealed class CliEnvelope
 
 internal static class CliApplication
 {
+    private const int DefaultLogEntryLimit = 200;
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     public static int Run(
@@ -183,7 +184,7 @@ internal static class CliApplication
                 return InvalidOption(command, "--level は error、warn、info、debug のいずれかを指定してください。");
         }
 
-        int? limit = null;
+        var limit = DefaultLogEntryLimit;
         if (command.Options.TryGetValue("--limit", out var limitValue))
         {
             if (!int.TryParse(limitValue, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)
@@ -195,15 +196,15 @@ internal static class CliApplication
             ? Path.GetFullPath(command.Positionals[0])
             : DiagnosticLogReader.ListFiles(environment.LogDirectory).FirstOrDefault()?.Path
                 ?? throw new FileNotFoundException("診断ログがありません。", environment.LogDirectory);
-        var document = DiagnosticLogReader.ReadFile(path);
-        IEnumerable<DiagnosticLogEntry> entries = document.Entries;
-        if (since is not null) entries = entries.Where(entry => entry.Timestamp >= since);
-        if (level is not null) entries = entries.Where(entry => entry.Level == level);
-        if (command.Options.TryGetValue("--tag", out var tag))
-            entries = entries.Where(entry => string.Equals(entry.Tag, tag, StringComparison.OrdinalIgnoreCase));
-        if (command.Options.TryGetValue("--grep", out var grep))
-            entries = entries.Where(entry => entry.RawLine.Contains(grep!, StringComparison.OrdinalIgnoreCase));
-        if (limit is not null) entries = entries.Take(limit.Value);
+        var maximumRank = DiagnosticLogReader.GetSeverityRank(level);
+        command.Options.TryGetValue("--tag", out var tag);
+        command.Options.TryGetValue("--grep", out var grep);
+        bool Matches(DiagnosticLogEntry entry) =>
+            (since is null || entry.Timestamp >= since)
+            && (maximumRank is null || DiagnosticLogReader.GetSeverityRank(entry.Level) <= maximumRank)
+            && (tag is null || string.Equals(entry.Tag, tag, StringComparison.OrdinalIgnoreCase))
+            && (grep is null || entry.RawLine.Contains(grep, StringComparison.OrdinalIgnoreCase));
+        var document = DiagnosticLogReader.ReadFile(path, Matches, limit);
 
         return new CliExecutionResult(CliExitCode.Success, new
         {
@@ -211,7 +212,8 @@ internal static class CliApplication
             header = document.Header,
             headerVersion = document.HeaderVersion,
             headerLevel = document.HeaderLevel,
-            entries = entries.ToArray()
+            matchedCount = document.MatchedCount,
+            entries = document.Entries
         }, [], null);
     }
 

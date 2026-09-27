@@ -19,12 +19,14 @@ public sealed record DiagnosticLogEntry(
     string? Message,
     string RawLine);
 
-/// <summary>診断ログのヘッダーと行をまとめます。</summary>
+/// <summary>診断ログのヘッダーと、条件に合った行のうち返す分をまとめます。</summary>
+/// <param name="MatchedCount">条件に合った行の総数。Entries は末尾の件数に絞られることがある。</param>
 public sealed record DiagnosticLogDocument(
     IReadOnlyList<string> Header,
     string? HeaderVersion,
     string? HeaderLevel,
-    IReadOnlyList<DiagnosticLogEntry> Entries);
+    IReadOnlyList<DiagnosticLogEntry> Entries,
+    int MatchedCount);
 
 /// <summary>診断ログを読み取り専用で列挙し、書式に合わない行も保持して解析します。</summary>
 public static class DiagnosticLogReader
@@ -52,36 +54,68 @@ public static class DiagnosticLogReader
 
         return paths
             .Where(path => DiagnosticLogFormatting.IsLogFileName(Path.GetFileName(path)))
-            .Select(path =>
-            {
-                var file = new FileInfo(path);
-                var header = ReadHeader(path);
-                return new DiagnosticLogFileInfo(
-                    file.Name,
-                    file.FullName,
-                    ParseStartedAt(file.Name),
-                    file.Length,
-                    header.Version);
-            })
+            .Select(TryReadFileInfo)
+            .OfType<DiagnosticLogFileInfo>()
             .OrderByDescending(file => file.Name, StringComparer.Ordinal)
             .ToArray();
     }
 
-    /// <summary>ログファイルを共有読み取りで開き、全行を返します。</summary>
-    public static DiagnosticLogDocument ReadFile(string path)
+    /// <summary>ログファイルを共有読み取りで 1 行ずつ読み、条件に合う行のうち末尾の lastCount 件を返します。</summary>
+    public static DiagnosticLogDocument ReadFile(string path, Func<DiagnosticLogEntry, bool>? filter = null, int? lastCount = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        var lines = new List<string>();
-        using (var reader = OpenReader(path))
+        if (lastCount is < 1) throw new ArgumentOutOfRangeException(nameof(lastCount));
+
+        using var reader = OpenReader(path);
+        var headLines = new List<string>(HeaderLineCount);
+        for (var i = 0; i < HeaderLineCount && reader.ReadLine() is { } headLine; i++)
+            headLines.Add(headLine);
+        var (header, version, level, entriesStart) = ExtractHeader(headLines);
+
+        // 本体は長時間の常駐で大きなログを書くので、全行を保持せず返す分だけを残す。
+        var entries = new Queue<DiagnosticLogEntry>();
+        var matchedCount = 0;
+        void Accept(string line)
         {
-            string? line;
-            while ((line = reader.ReadLine()) is not null)
-                lines.Add(line);
+            var entry = ParseEntry(line);
+            if (filter is not null && !filter(entry)) return;
+            matchedCount++;
+            entries.Enqueue(entry);
+            if (entries.Count > lastCount) entries.Dequeue();
         }
 
-        var (header, version, level, entriesStart) = ExtractHeader(lines);
-        var entries = lines.Skip(entriesStart).Select(ParseEntry).ToArray();
-        return new DiagnosticLogDocument(header, version, level, entries);
+        foreach (var line in headLines.Skip(entriesStart)) Accept(line);
+        while (reader.ReadLine() is { } line) Accept(line);
+        return new DiagnosticLogDocument(header, version, level, entries.ToArray(), matchedCount);
+    }
+
+    /// <summary>レベル名を重大度の順位に変換します。error が最も小さく、知らない名前は null を返します。</summary>
+    public static int? GetSeverityRank(string? level) => level switch
+    {
+        "error" => 0,
+        "warn" => 1,
+        "info" => 2,
+        "debug" => 3,
+        _ => null
+    };
+
+    // ローテーションで一覧の取得中に消えたファイルは、一覧全体を失敗させずに除く。
+    private static DiagnosticLogFileInfo? TryReadFileInfo(string path)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            var header = ReadHeader(path);
+            return new DiagnosticLogFileInfo(file.Name, file.FullName, ParseStartedAt(file.Name), file.Length, header.Version);
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 
     private static (string[] Lines, string? Version, string? Level) ReadHeader(string path)

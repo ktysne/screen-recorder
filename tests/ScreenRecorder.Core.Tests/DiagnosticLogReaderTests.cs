@@ -47,6 +47,23 @@ public sealed class DiagnosticLogReaderTests : IDisposable
     }
 
     [Fact]
+    public void OnlyTheLastMatchingEntriesAreKeptWithTheTotalMatchCount()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, DiagnosticLogFormatting.MakeFileName(new DateTime(2026, 9, 27, 10, 0, 0)));
+        var levels = new[] { DiagnosticLogLevel.Error, DiagnosticLogLevel.Info, DiagnosticLogLevel.Warn, DiagnosticLogLevel.Debug, DiagnosticLogLevel.Warn };
+        var lines = levels.Select((level, index) =>
+            DiagnosticLogFormatting.FormatLine(new DateTime(2026, 9, 27, 10, 0, index), level, "app", $"行{index}"));
+        File.WriteAllLines(path, DiagnosticLogFormatting.CreateHeader("1.2.3", DiagnosticLogLevel.Debug).Concat(lines));
+        var warnRank = DiagnosticLogReader.GetSeverityRank("warn");
+
+        var document = DiagnosticLogReader.ReadFile(path, entry => DiagnosticLogReader.GetSeverityRank(entry.Level) <= warnRank, lastCount: 2);
+
+        Assert.Equal(3, document.MatchedCount);
+        Assert.Equal(["行2", "行4"], document.Entries.Select(entry => entry.Message));
+    }
+
+    [Fact]
     public void FileListIncludesHeaderVersionAndSize()
     {
         Directory.CreateDirectory(_directory);

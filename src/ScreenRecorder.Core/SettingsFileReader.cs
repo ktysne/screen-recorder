@@ -106,7 +106,9 @@ public static class SettingsFileReader
     {
         try
         {
-            return JsonDocument.Parse(File.ReadAllText(path));
+            // 本体の保存は一時ファイルからの置き換えなので、削除も共有しないと本体の保存を失敗させる。
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return JsonDocument.Parse(stream);
         }
         catch (JsonException)
         {
