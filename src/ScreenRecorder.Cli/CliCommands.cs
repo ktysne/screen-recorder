@@ -128,7 +128,7 @@ internal static class CliCommands
             Option("--defaults", null, "組み込みの既定値を使います。", CliValueKind.Boolean),
             Option("--force", null, "既存の出力を上書きします。", CliValueKind.Boolean)
         ]),
-        new("probe", "<ファイル>", "MP4 または PNG を検査します。", [
+        new("probe", "<ファイル>", "MP4 または静止画を検査します。", [
             Option("--expect-width", "<px>", "期待する幅です。", CliValueKind.Integer),
             Option("--expect-height", "<px>", "期待する高さです。", CliValueKind.Integer),
             Option("--expect-fps", "<fps>", "期待するフレームレートです。", CliValueKind.Number),
@@ -141,7 +141,7 @@ internal static class CliCommands
             Option("--frame", "<秒>", "指定時刻のフレームを書き出します。", CliValueKind.Number),
             Option("-o", "<PNG>", "フレームの保存先です。", CliValueKind.Path),
             Option("--force", null, "既存の出力を上書きします。", CliValueKind.Boolean)
-        ], 1, 1, [new("file", CliValueKind.Path, Description: "検査する MP4 または PNG ファイルのパスです。")]),
+        ], 1, 1, [new("file", CliValueKind.Path, Description: "検査する MP4 または静止画ファイルのパスです。")]),
         new("mcp", "", "標準入出力で MCP サーバーを起動します。", [
             Option("--app", "<パス>", "接続先にする ScreenRecorder.exe の場所です。", CliValueKind.Path),
             Option("--allow-dir", "<フォルダー>", "出力を許可するフォルダーです。複数回指定できます。", CliValueKind.Path, repeatable: true)
