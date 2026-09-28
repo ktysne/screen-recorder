@@ -56,7 +56,6 @@ $cli = "src/ScreenRecorder.Cli/bin/Debug/net10.0-windows10.0.22000.0/screenrecor
 ## 長さを比べるときの注意
 
 - 設定のエンコーダが「自動」だと、画面が静止している間はフレームが間引かれ、動画の末尾が短くなる。長さを比べるときは、`"encoder": "softwareOnly"` の設定ファイルを `--settings` で渡す。
-- 一時停止と再開を挟むと、動画が約 0.9 秒短くなる不具合がある(#74)。
 
 ## 守ること
 
