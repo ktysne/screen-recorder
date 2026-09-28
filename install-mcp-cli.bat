@@ -8,7 +8,9 @@ rem Publish a Release copy of screenrecorder-cli for Claude Desktop (see docs/de
 rem Claude Desktop keeps the registered exe running, so pointing it at the build output blocks rebuilding.
 rem Paths are expanded only outside parenthesized blocks, because a profile path may contain & or ).
 
-set "DEST_DIR=%LOCALAPPDATA%\ScreenRecorder\mcp-cli"
+rem Outside AppData: Claude Desktop is an MSIX package, and AppData files written from inside it are redirected
+rem to a package-private folder that hides the real copy from Claude Desktop.
+set "DEST_DIR=%USERPROFILE%\.screenrecorder\mcp-cli"
 if not "%~1"=="" set "DEST_DIR=%~1"
 set "OLD_DIR=%DEST_DIR%.old"
 set "STAGE_DIR=%CD%\artifacts\mcp-cli"

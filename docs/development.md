@@ -32,8 +32,9 @@ Windows の実機で `SCREENRECORDER_DESKTOP_TESTS=1` を設定して実行し�
 Claude Desktop は、起動している間、登録した MCP のサーバーのプロセスを動かし続けます。
 ビルドの出力先の `screenrecorder-cli.exe` を直接登録すると、Claude Desktop を終了するまでそのファイルを置き換えられず、再ビルドが失敗します。
 これを避けるため、登録には Release の CLI の写しを使います。
+写しは AppData の外に置きます。Claude Desktop は MSIX のパッケージで、その中で動くプロセス(Code タブのセッションのシェルを含む)が AppData に書いたファイルは、パッケージ専用の場所へ振り替えられ、Claude Desktop からは本物の写しより優先して見えるためです。
 
-1. リポジトリ直下の `install-mcp-cli.bat` を実行します。CLI を Release で publish し、`%LOCALAPPDATA%\ScreenRecorder\mcp-cli\` に写します。
+1. リポジトリ直下の `install-mcp-cli.bat` を実行します。CLI を Release で publish し、`%USERPROFILE%\.screenrecorder\mcp-cli\` に写します。
 2. `build-package.bat` で配布用の本体(`artifacts\publish\ScreenRecorder.exe`)を作ります。`record` と `remote` はこの本体を使います。
 3. Claude Desktop の設定ファイル `%APPDATA%\Claude\claude_desktop_config.json` に、写しを次のように登録します。`<ユーザー名>` とリポジトリの場所は、実際の配置に合わせて置き換えてください。
 
@@ -41,7 +42,7 @@ Claude Desktop は、起動している間、登録した MCP のサーバーの
 {
   "mcpServers": {
     "screenrecorder": {
-      "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\ScreenRecorder\\mcp-cli\\screenrecorder-cli.exe",
+      "command": "C:\\Users\\<ユーザー名>\\.screenrecorder\\mcp-cli\\screenrecorder-cli.exe",
       "args": [
         "mcp",
         "--app",

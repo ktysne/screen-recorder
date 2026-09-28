@@ -139,7 +139,8 @@ MCP のクライアントへ渡る道具の入力は、画面や診断ログの�
 ## 登録の方法
 
 [development.md](development.md) に、Claude Desktop の設定ファイルへの登録の例を書く。
-登録するのは、`install-mcp-cli.bat` が Release で publish して `%LOCALAPPDATA%` の下に置いた CLI の写しである。
+登録するのは、`install-mcp-cli.bat` が Release で publish して `%USERPROFILE%\.screenrecorder\mcp-cli\` に置いた CLI の写しである。
+写しを AppData の外に置くのは、Claude Desktop が MSIX のパッケージだからである。その中で動くプロセス(Code タブのセッションのシェルを含む)が AppData に書いたファイルはパッケージ専用の場所へ振り替えられ、Claude Desktop からは本物の写しより優先して見える。AppData に置くと、実行する場所によって Claude Desktop が古い写しを動かし続けることになる。
 Claude Desktop は、起動している間、登録した MCP のサーバーのプロセスを動かし続ける。ビルドの出力先の CLI を登録すると、そのファイルが使用中のままになり、再ビルドが失敗するためである。
 `mcp --app` には、配布用の本体(`build-package.bat` の出力)を渡す。`record` は本体を録画の間だけ起動するので、再ビルドを妨げない。同じ本体を常駐させている場合は、作り直す前に本体を終了する。
 写しの置き換えは、フォルダーごとに行う。使用中のファイルを 1 つずつ置き換えると、古い DLL と新しい DLL が混ざって CLI が起動できなくなるためである。使用中なら、写しに触れずに失敗する。
