@@ -8,10 +8,12 @@ namespace ScreenRecorder.Cli;
 
 internal sealed record McpCallResult(int ExitCode, string Json);
 
+// remoteAppPath が null なら、remote は CLI と同じく実行ファイル名だけで接続先を照合する。
 internal sealed class McpCommandService(
     string appPath,
     McpPathAccessPolicy pathPolicy,
-    Func<CliEnvironment> environmentFactory)
+    Func<CliEnvironment> environmentFactory,
+    string? remoteAppPath = null)
 {
     private const double MaximumRecordDurationSeconds = 30;
     private const int MaximumRemoteWaitSeconds = 45;
@@ -30,10 +32,13 @@ internal sealed class McpCommandService(
         var converted = McpToolInput.BuildArguments(tool, input);
         if (!converted.Success) return Failure(environment.CliVersion, tool.Command.Name, "invalidArguments", converted.Error!, 2);
         var arguments = converted.Arguments!.ToList();
-        if (tool.Command.Name == "record" || tool.Command.Name.StartsWith("remote ", StringComparison.Ordinal))
+        var pinnedAppPath = tool.Command.Name == "record" ? appPath
+            : tool.Command.Name.StartsWith("remote ", StringComparison.Ordinal) ? remoteAppPath
+            : null;
+        if (pinnedAppPath is not null)
         {
             arguments.Add("--app");
-            arguments.Add(appPath);
+            arguments.Add(pinnedAppPath);
         }
 
         var parsed = CliCommands.Parse(arguments);

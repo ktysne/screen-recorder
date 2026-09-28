@@ -20,7 +20,7 @@ internal static class McpServerHost
             var resolvedAppPath = ResolveAppPath(appPath, CliEnvironment.Create().FindApp, standardError);
             var allowedDirectories = new[] { Path.GetTempPath() }.Concat(additionalAllowedDirectories);
             var pathPolicy = McpPathAccessPolicy.Create(allowedDirectories);
-            var service = new McpCommandService(resolvedAppPath, pathPolicy, CliEnvironment.Create);
+            var service = new McpCommandService(resolvedAppPath, pathPolicy, CliEnvironment.Create, remoteAppPath: appPath);
             using var executor = new McpSerialExecutor();
             var transport = new StdioServerTransport("screenrecorder-cli", loggerFactory: null);
             using var shutdown = new CancellationTokenSource();
@@ -173,7 +173,7 @@ internal static class McpServerHost
     {
         var (path, searched) = findApp(requestedAppPath);
         if (path is not null) return path;
-        standardError.WriteLine($"ScreenRecorder.exe が見つかりません。record と remote は appNotFound になります。探した場所: {string.Join(", ", searched)}");
+        standardError.WriteLine($"ScreenRecorder.exe が見つかりません。record は appNotFound になります。探した場所: {string.Join(", ", searched)}");
         return searched[0];
     }
 
