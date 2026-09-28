@@ -51,6 +51,8 @@ internal sealed class UpdateController : IDisposable
 
     public void Start() => _timer.Start();
 
+    public bool IsDialogOpen => _dialog is { IsDisposed: false, Visible: true };
+
     public void CheckManually()
     {
         if (_dialog is { IsDisposed: false, IsWorking: true })

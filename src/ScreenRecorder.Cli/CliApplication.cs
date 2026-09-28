@@ -107,6 +107,8 @@ internal static class CliApplication
         "settings validate" => Settings(command, environment),
         "logs list" => LogsList(environment),
         "logs show" => LogsShow(command, environment),
+        "remote status" => AutomationRemoteCommand.ExecuteStatus(command, environment),
+        "remote wait" => AutomationRemoteCommand.ExecuteWait(command, environment),
         "naming preview" => NamingPreview(command, environment),
         "record" => RecordCommand.Execute(command, environment),
         "screenshot" => ScreenshotCommand.Execute(command, environment),

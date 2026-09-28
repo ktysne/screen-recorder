@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
+using ScreenRecorder.Capture;
 using ScreenRecorder.Cli;
 using ScreenRecorder.Core;
 using Xunit;
@@ -34,7 +36,11 @@ public sealed class CliApplicationTests : IDisposable
                 new CliMonitor("DISPLAY_PRIMARY", 0, 0, 2560, 1440, 0, 0, 2560, 1400, 120, 120, true)
             ],
             () => new DateTimeOffset(2026, 9, 27, 10, 0, 0, TimeSpan.FromHours(9)),
-            "9.8.7");
+            "9.8.7")
+        {
+            AutomationPipeName = $"ScreenRecorder.Automation.Tests.{Guid.NewGuid():N}",
+            VerifyAutomationServer = (_, _) => new CliAutomationServerVerification(Environment.ProcessId, "C:\\ScreenRecorder.exe")
+        };
     }
 
     [Fact]
@@ -278,12 +284,111 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Equal("fileNotFound", missing.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
+    [Fact]
+    public async Task RemoteStatusReturnsStatusJson()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var invocation = await RunAsync(_environment, "remote", "status");
+
+        using var json = AssertRemoteSuccess(invocation, "remote status");
+        Assert.Equal("recording", json.RootElement.GetProperty("result").GetProperty("recording").GetProperty("state").GetString());
+        Assert.Equal(["hello", "status"], server.Methods.ToArray());
+    }
+
+    [Fact]
+    public async Task RemoteWaitReturnsStatusAndSendsWaitConditions()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var invocation = await RunAsync(_environment, "remote", "wait", "--state", "recording", "--timeout", "7");
+
+        using var json = AssertRemoteSuccess(invocation, "remote wait");
+        Assert.Equal("recording", json.RootElement.GetProperty("result").GetProperty("recording").GetProperty("state").GetString());
+        Assert.Equal("waitFor", server.Methods.Last());
+        Assert.True(server.WaitParameters.HasValue);
+        Assert.Equal("recording", server.WaitParameters.Value.GetProperty("state").GetString());
+        Assert.Equal(7000, server.WaitParameters.Value.GetProperty("timeoutMilliseconds").GetInt32());
+        Assert.False(server.WaitParameters.Value.TryGetProperty("captureAfter", out var captureAfter) && captureAfter.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void RemoteWaitRejectsCaptureAfterUntilCapturesAreRecorded()
+    {
+        using var json = AssertJson(Run("remote", "wait", "--state", "idle", "--capture-after", "2026-09-27T10:00:00+09:00"), 2, "remote");
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task RemoteWaitAcceptsResponseAfterTheHelloDeadline()
+    {
+        // hello の応答を待つ 5 秒より長く、--timeout の 7 秒より短くする。
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName, TimeSpan.FromSeconds(6));
+        var invocation = await RunAsync(_environment, "remote", "wait", "--state", "recording", "--timeout", "7");
+
+        using var json = AssertRemoteSuccess(invocation, "remote wait");
+        Assert.Equal("recording", json.RootElement.GetProperty("result").GetProperty("recording").GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task RemoteStatusReportsImpersonatedServerFromVerificationBoundary()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var environment = _environment with
+        {
+            VerifyAutomationServer = (_, expectedApp) =>
+            {
+                Assert.Equal("C:\\Expected\\ScreenRecorder.exe", expectedApp);
+                return new CliAutomationServerVerification(Environment.ProcessId, "C:\\Other\\ScreenRecorder.exe", "impersonatedServer");
+            }
+        };
+        var invocation = await RunAsync(environment, "remote", "status", "--app", "C:\\Expected\\ScreenRecorder.exe");
+
+        using var json = AssertJson(invocation, 3, "remote status");
+        Assert.Equal("impersonatedServer", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Empty(server.Methods);
+    }
+
+    [Fact]
+    public void RemoteStatusReportsNotRunning()
+    {
+        var environment = _environment with
+        {
+            VerifyAutomationServer = (_, _) => throw new InvalidOperationException("確認関数は接続後にだけ使います。")
+        };
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var code = CliApplication.Run(["remote", "status"], output, error, environment);
+
+        using var json = AssertJson(new Invocation(code, output.ToString(), error.ToString()), 3, "remote status");
+        Assert.Equal("notRunning", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
     private Invocation Run(params string[] arguments)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
         var exitCode = CliApplication.Run(arguments, output, error, _environment);
         return new Invocation(exitCode, output.ToString(), error.ToString());
+    }
+
+    private Task<Invocation> RunAsync(CliEnvironment environment, params string[] arguments) =>
+        Task.Run(() =>
+        {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+            var exitCode = CliApplication.Run(arguments, output, error, environment);
+            return new Invocation(exitCode, output.ToString(), error.ToString());
+        });
+
+    private static JsonDocument AssertRemoteSuccess(Invocation invocation, string expectedCommand)
+    {
+        Assert.Equal(0, invocation.ExitCode);
+        Assert.Empty(invocation.StandardError);
+        using var document = JsonDocument.Parse(invocation.StandardOutput);
+        Assert.Equal("cliVersion", document.RootElement.EnumerateObject().First().Name);
+        Assert.Equal(expectedCommand, document.RootElement.GetProperty("command").GetString());
+        Assert.True(document.RootElement.GetProperty("result").ValueKind == JsonValueKind.Object);
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("error").ValueKind);
+        return JsonDocument.Parse(invocation.StandardOutput);
     }
 
     private static JsonDocument AssertJson(Invocation invocation, int expectedExitCode, string expectedCommand)
@@ -304,4 +409,57 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     private sealed record Invocation(int ExitCode, string StandardOutput, string StandardError);
+
+    private sealed class FakeAutomationServer : IAsyncDisposable
+    {
+        private readonly AutomationPipeServer _server;
+        private readonly ConcurrentQueue<string> _methods = new();
+        private readonly TimeSpan _waitForDelay;
+        private JsonElement? _waitParameters;
+
+        private FakeAutomationServer(string pipeName, TimeSpan waitForDelay)
+        {
+            _waitForDelay = waitForDelay;
+            if (!AutomationPipeServer.TryStart(pipeName, HandleLineAsync, out var server) || server is null)
+                throw new InvalidOperationException("自動化用パイプを作成できませんでした。");
+            _server = server;
+        }
+
+        public IReadOnlyCollection<string> Methods => _methods.ToArray();
+        public JsonElement? WaitParameters => _waitParameters;
+
+        public static FakeAutomationServer Start(string pipeName, TimeSpan waitForDelay = default) => new(pipeName, waitForDelay);
+
+        public ValueTask DisposeAsync() => _server.DisposeAsync();
+
+        private async Task<string?> HandleLineAsync(string line, CancellationToken cancellationToken)
+        {
+            var read = AutomationProtocol.ReadRequest(line);
+            if (!read.Success) return AutomationProtocol.WriteError(read.Id, read.Error!);
+            var request = read.Request!;
+            _methods.Enqueue(request.Method!);
+            if (request.Method == "waitFor" && request.Params is { } parameters)
+                _waitParameters = parameters.Clone();
+            if (request.Method == "waitFor" && _waitForDelay > TimeSpan.Zero)
+                await Task.Delay(_waitForDelay, cancellationToken);
+            await Task.Yield();
+            return request.Method switch
+            {
+                "hello" => AutomationProtocol.WriteResult(request.Id, new AutomationHelloResult(AutomationProtocol.CurrentVersion, Environment.ProcessId), AutomationJsonContext.Default.AutomationHelloResult),
+                "status" or "waitFor" => AutomationProtocol.WriteResult(request.Id, Status(), AutomationJsonContext.Default.AutomationStatus),
+                _ => AutomationProtocol.WriteError(request.Id, AutomationProtocol.Error(AutomationRpcErrorCodes.MethodNotFound, "未対応のメソッドです。", "methodNotFound"))
+            };
+        }
+
+        private static AutomationStatus Status() => new(
+            new AutomationRecordingStatus("recording", null, false),
+            false,
+            false,
+            new AutomationMenuStatus(true, true, "一時停止"),
+            [],
+            new AutomationDirectoriesStatus(new AutomationDirectoryStatus("C:\\Pictures", true), new AutomationDirectoryStatus("C:\\Videos", true)),
+            new AutomationUiStatus(false, false, false, false, false, false, null),
+            null,
+            null);
+    }
 }

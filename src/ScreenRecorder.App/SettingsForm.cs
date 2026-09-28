@@ -43,6 +43,7 @@ internal sealed class SettingsForm : Form
     private TabPage _videoTab = null!;
     private bool _loading;
     private bool _defaultsRestored;
+    private bool _modalDialogOpen;
 
     public SettingsForm(
         Settings settings,
@@ -104,6 +105,8 @@ internal sealed class SettingsForm : Form
 
     public void RefreshRecordingState() => UpdateEnablement();
 
+    public bool ModalDialogOpen => _modalDialogOpen;
+
     private TabPage BuildGeneralTab()
     {
         var page = CreatePage(UiLabels.GeneralTab, out var root);
@@ -112,6 +115,10 @@ internal sealed class SettingsForm : Form
         BindCheck(preferences, UiLabels.CheckForUpdatesAutomatically, settings => settings.CheckForUpdatesAutomatically, (settings, value) => settings.CheckForUpdatesAutomatically = value);
         BindCheck(preferences, UiLabels.NotifyWhenSaved, settings => settings.NotifyWhenSaved, (settings, value) => settings.NotifyWhenSaved = value);
         BindCheck(preferences, UiLabels.PlayCaptureSound, settings => settings.PlayCaptureSound, (settings, value) => settings.PlayCaptureSound = value);
+
+        var automation = AddSection(root, UiLabels.AutomationSettings);
+        BindCheck(automation, UiLabels.AutomationEnabled, settings => settings.AutomationEnabled, (settings, value) => settings.AutomationEnabled = value);
+        AddFullWidth(automation, new Label { Text = UiLabels.AutomationEnabledHelp, AutoSize = true, MaximumSize = new Size(760, 0), Margin = new Padding(4, 0, 4, 8) });
 
         var naming = AddSection(root, UiLabels.FilenameOptions);
         BindText(naming, UiLabels.FileNameTemplate, settings => settings.FileNameTemplate, (settings, value) => settings.FileNameTemplate = value, UiLabels.FilenameTemplateHelp);
@@ -134,7 +141,7 @@ internal sealed class SettingsForm : Form
         policyButton.Click += (_, _) =>
         {
             using var dialog = new DiagnosticLogPolicyDialog();
-            dialog.ShowDialog(this);
+            ShowModal(() => dialog.ShowDialog(this));
         };
         diagnosticButtons.Controls.Add(openLogsButton);
         diagnosticButtons.Controls.Add(policyButton);
@@ -646,7 +653,7 @@ internal sealed class SettingsForm : Form
 
     private void RestoreDefaults()
     {
-        if (MessageBox.Show(this, UiLabels.RestoreDefaultsConfirmation, UiLabels.RestoreDefaultsTitle, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        if (ShowModal(() => MessageBox.Show(this, UiLabels.RestoreDefaultsConfirmation, UiLabels.RestoreDefaultsTitle, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2)) != DialogResult.Yes) return;
         _defaultsRestored = true;
         LoadSettings(new Settings());
     }
@@ -654,7 +661,14 @@ internal sealed class SettingsForm : Form
     private void BrowseForDirectory(TextBox input)
     {
         using var dialog = new FolderBrowserDialog { Description = UiLabels.FolderPickerTitle, UseDescriptionForTitle = true, SelectedPath = Directory.Exists(input.Text) ? input.Text : string.Empty };
-        if (dialog.ShowDialog(this) == DialogResult.OK) input.Text = dialog.SelectedPath;
+        if (ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK) input.Text = dialog.SelectedPath;
+    }
+
+    private TResult ShowModal<TResult>(Func<TResult> show)
+    {
+        _modalDialogOpen = true;
+        try { return show(); }
+        finally { _modalDialogOpen = false; }
     }
 
     private async void OpenLogsFolder()

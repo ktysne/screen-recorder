@@ -28,6 +28,7 @@ internal sealed class RecordingToolbarForm : CaptureExcludedOverlayForm
 
     public RecordingToolbarForm(Point location)
     {
+        Name = "RecordingToolbarForm";
         FormBorderStyle = FormBorderStyle.None;
         AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.Manual;

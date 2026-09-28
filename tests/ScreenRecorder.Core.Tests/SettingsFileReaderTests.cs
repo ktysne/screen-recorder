@@ -59,7 +59,25 @@ public sealed class SettingsFileReaderTests : IDisposable
 
         Assert.True(result.Settings.PlayCaptureSound);
         Assert.Contains(nameof(Settings.JpegQuality), result.DefaultedProperties);
+        Assert.Contains(nameof(Settings.AutomationEnabled), result.DefaultedProperties);
         Assert.DoesNotContain(nameof(Settings.PlayCaptureSound), result.DefaultedProperties);
+    }
+
+    [Theory]
+    [InlineData("{\"automationEnabled\":true}", true)]
+    [InlineData("{\"automationEnabled\":false}", false)]
+    [InlineData("{\"automationEnabled\":\"bad\"}", false)]
+    public void AutomationEnabledMatchesRepositoryLoad(string json, bool expected)
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(path, json);
+
+        var read = SettingsFileReader.Read(path).Settings;
+        var loaded = new SettingsRepository(_directory).Load();
+
+        Assert.Equal(expected, read.AutomationEnabled);
+        Assert.Equal(loaded.AutomationEnabled, read.AutomationEnabled);
     }
 
     [Theory]

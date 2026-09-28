@@ -14,6 +14,7 @@ public sealed class SettingsRepositoryTests : IDisposable
         Assert.Equal(DiagnosticLogLevel.Info, settings.DiagnosticLogLevel);
         Assert.True(settings.StartWithWindows);
         Assert.True(settings.CheckForUpdatesAutomatically);
+        Assert.False(settings.AutomationEnabled);
         Assert.True(settings.NotifyWhenSaved);
         Assert.False(settings.PlayCaptureSound);
         Assert.Equal("ScreenRecorder_{date}_{time}", settings.FileNameTemplate);

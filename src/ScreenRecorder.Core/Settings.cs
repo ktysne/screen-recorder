@@ -12,6 +12,7 @@ public sealed class Settings
     public DiagnosticLogLevel DiagnosticLogLevel { get; set; } = global::ScreenRecorder.Core.DiagnosticLogLevel.Info;
     public bool StartWithWindows { get; set; } = true;
     public bool CheckForUpdatesAutomatically { get; set; } = true;
+    public bool AutomationEnabled { get; set; }
     public bool NotifyWhenSaved { get; set; } = true;
     public bool PlayCaptureSound { get; set; }
     public string FileNameTemplate { get; set; } = "ScreenRecorder_{date}_{time}";
@@ -67,6 +68,7 @@ public sealed class Settings
         DiagnosticLogLevel = DiagnosticLogLevel,
         StartWithWindows = StartWithWindows,
         CheckForUpdatesAutomatically = CheckForUpdatesAutomatically,
+        AutomationEnabled = AutomationEnabled,
         NotifyWhenSaved = NotifyWhenSaved,
         PlayCaptureSound = PlayCaptureSound,
         FileNameTemplate = FileNameTemplate,

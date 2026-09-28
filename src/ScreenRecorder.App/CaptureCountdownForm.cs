@@ -25,12 +25,14 @@ internal sealed class CaptureCountdownForm : CaptureExcludedOverlayForm
     private readonly Rectangle _displayBounds;
     private readonly bool _forRecording;
     private readonly int _maxSeconds;
+    private int _remainingSeconds;
 
     public CaptureCountdownForm(Rectangle displayBounds, CaptureCountdownKind kind, int maxSeconds)
     {
         _forRecording = kind == CaptureCountdownKind.Recording;
         _displayBounds = displayBounds;
         _maxSeconds = maxSeconds;
+        _remainingSeconds = maxSeconds;
         _countdownLabel = _forRecording ? UiLabels.RecordingCountdownPrefix : UiLabels.ScreenshotCountdownPrefix;
         _message.AccessibleName = _forRecording ? UiLabels.RecordingCountdownAccessibleName : UiLabels.ScreenshotCountdownAccessibleName;
         _message.Font = _messageFont;
@@ -65,7 +67,14 @@ internal sealed class CaptureCountdownForm : CaptureExcludedOverlayForm
 
     private string FormatMessage(int seconds) => $"{_countdownLabel} {seconds} 秒";
 
-    public void SetRemainingSeconds(int seconds) => _message.Text = FormatMessage(seconds);
+    public CaptureCountdownKind Kind => _forRecording ? CaptureCountdownKind.Recording : CaptureCountdownKind.Screenshot;
+    public int RemainingSeconds => _remainingSeconds;
+
+    public void SetRemainingSeconds(int seconds)
+    {
+        _remainingSeconds = seconds;
+        _message.Text = FormatMessage(seconds);
+    }
 
     protected override void Dispose(bool disposing)
     {

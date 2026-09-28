@@ -1,6 +1,6 @@
 # 起動中の本体の操作
 
-状態：設計済み(未着手)
+状態：段階 4b は実装済み。段階 4c と 4d は未着手。
 
 この資料は、自動化用 CLI から常駐中の本体の状態を読み、操作する仕組み(段階 4)の通信の形式と安全性を定める。
 CLI 全体の約束と段階の位置づけは [automation-cli.md](automation-cli.md) にあり、この資料はその「段階 4」を詳しくしたものである。
@@ -87,6 +87,18 @@ JSON-RPC 2.0 に合わせるのは、段階 5 の MCP が JSON-RPC 2.0 で、変
 - 版は `hello` の `protocolVersion` で確かめる。合わなければ、CLI が `protocolMismatch` で止める。
 - JSON のプロパティは camelCase とし、録画プロセスとの通信と同じく、ソース生成のシリアライザと行の読み取りを使う。
 
+段階 4b で使うエラー番号は次のとおりである。
+
+| `error.code` | `error.data.code` | 意味 |
+|---|---|---|
+| -32700 | `parseError` | JSON を解析できない |
+| -32600 | `invalidRequest` | 要求の形式が正しくない |
+| -32601 | `methodNotFound` | メソッドが未実装か不明 |
+| -32602 | `invalidParams` | 引数の形式か値が正しくない |
+| -32603 | `internalError` | 要求を処理できない |
+| -32001 | `busy` | `waitFor` の同時実行数が上限に達した |
+| -32002 | `timeout` | `waitFor` の期限が切れた |
+
 ## メソッド
 
 | メソッド | 役割 | 受け付ける条件 |
@@ -110,12 +122,16 @@ JSON-RPC 2.0 に合わせるのは、段階 5 の MCP が JSON-RPC 2.0 で、変
 - `shortcuts[]`：各動作の割り当てと有効か、登録に失敗したか
 - `directories`：静止画と動画の保存先と、確認済みか
 - `ui`：設定画面、更新のダイアログ、保存先の確認ダイアログ、選択画面、操作バーのそれぞれが開いているか。モーダルのダイアログが開いているか。カウントダウンは、録画の開始前と静止画の撮影の遅延の両方にあるので、`ui.countdown` に種類(`recording` か `screenshot`)と残り秒数を入れる。
-- `lastCapture` と `lastFailure`：直近の結果の種類、パス、時刻、通知の文言。いまの本体は直近の結果を保持していないので、1 件だけ保持する器を足す。記録するのは、保存の完了の経路(静止画と録画の両方)、保存せずにクリップボードにだけ写した結果の経路、失敗の通知の経路である。保存しなかった結果を落とすと、「保存されなかった」ことが AI から見えないためである。
+- `lastCapture` と `lastFailure`：直近の結果の種類、パス、時刻、通知の文言を表す。段階 4b ではどちらも `null` を返す。段階 4d で、保存の完了(静止画と録画)、保存せずにクリップボードへコピーした結果、失敗の通知を 1 件保持する。
 
 ### waitFor
 
 条件(録画の状態、`lastCapture` が指定の時刻より新しいか、など)と期限を受け取り、本体の側で条件を満たすまで待ってから `status` と同じ内容を返す。
 期限を過ぎたら `timeout` のエラーを返す。
+
+段階 4b で受け付ける録画状態は `idle`、`countdown`、`preparing`、`recording`、`paused`、`saving` である。
+CLI の既定の期限は 30 秒、指定できる範囲は 1〜3600 秒とする。
+`captureAfter` は `lastCapture` を記録する段階 4d まで成立しないので、段階 4b の本体は `captureAfter` を指定した要求を `invalidParams` で断り、CLI も `--capture-after` を受け付けない。
 
 UI スレッドで待つと UI が止まり、状態も変わらない。
 このため、条件の評価だけを UI スレッドで行い、満たさなければ状態の変化の通知(録画の表示の更新、保存の完了と失敗)に登録して UI スレッドを離れ、変化のたびに評価し直す。
@@ -192,7 +208,7 @@ AI が状態を繰り返し読んでも、既定の記録レベルの利用者�
 `remote` のサブコマンドとして足す。
 
 - `remote status`
-- `remote wait --state <状態> [--capture-after <日時>] [--timeout <秒>]`
+- `remote wait --state <状態> [--capture-after <日時>] [--timeout <秒>]`(`--capture-after` は段階 4d から)
 - `remote perform <動作>`
 - `remote select (--rect <x,y,w,h> | --window <hwnd> | --cancel)`
 - `remote exit`
@@ -214,7 +230,7 @@ MCP は長く動き続けるので、`remote` は要求ごとに接続を開い�
 | 段階 | 内容 | 完了条件 | 工数 |
 |---|---|---|---|
 | 4a | この資料 | 資料がレビューを通る | 1〜2 日 |
-| 4b | 設定の項目、パイプのサーバー、`hello`、`status`、`waitFor`、CLI の `remote status` と `remote wait` | Core、Capture、CLI のテストが通り、実機で本体の状態を読める | 5〜7 日 |
+| 4b | 設定の項目、パイプのサーバー、`hello`、`status`、`waitFor`、CLI の `remote status` と `remote wait` | Core、Capture、CLI のテストが通り、本体を起動して状態を読める | 5〜7 日 |
 | 4c | 受け付けの判定、`perform`、`selection`、`exit`、CLI の `remote perform`、`remote select`、`remote exit` | 8 つの動作と選択の完了が、実機の手順で通る | 5〜7 日 |
 | 4d | 直近の保存と失敗の記録、`ui` の詳細、Skill の更新、実機テスト | 実機テストの一連が通り、Skill から案内できる | 3〜4 日 |
 
