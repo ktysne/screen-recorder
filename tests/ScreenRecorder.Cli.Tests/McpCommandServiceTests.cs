@@ -7,7 +7,7 @@ namespace ScreenRecorder.Cli.Tests;
 public sealed class McpCommandServiceTests
 {
     [Fact]
-    public void McpStartupAcceptsRepeatedAllowDirectoriesAndUsesTheSiblingAppByDefault()
+    public void McpStartupAcceptsRepeatedAllowDirectoriesAndLeavesTheAppToTheSearchByDefault()
     {
         var firstAllowed = Path.Combine(Path.GetTempPath(), "mcp-first");
         var secondAllowed = Path.Combine(Path.GetTempPath(), "mcp-second");
@@ -18,9 +18,32 @@ public sealed class McpCommandServiceTests
             out var allowDirectories,
             out var error));
 
-        Assert.Equal(Path.Combine(AppContext.BaseDirectory, "ScreenRecorder.exe"), appPath);
+        Assert.Null(appPath);
         Assert.Equal(new[] { firstAllowed, secondAllowed }, allowDirectories);
         Assert.Empty(error);
+    }
+
+    [Fact]
+    public void McpUsesTheAppFoundByTheSameSearchAsRecord()
+    {
+        var found = Path.Combine(Path.GetTempPath(), "build", "ScreenRecorder.exe");
+        var standardError = new StringWriter();
+
+        var appPath = McpServerHost.ResolveAppPath(null, _ => (found, ["sibling.exe", found]), standardError);
+
+        Assert.Equal(found, appPath);
+        Assert.Empty(standardError.ToString());
+    }
+
+    [Fact]
+    public void McpReportsSearchedPlacesAtStartupWhenTheAppIsMissing()
+    {
+        var standardError = new StringWriter();
+
+        var appPath = McpServerHost.ResolveAppPath(null, _ => (null, ["sibling.exe", "build.exe"]), standardError);
+
+        Assert.Equal("sibling.exe", appPath);
+        Assert.Contains("sibling.exe, build.exe", standardError.ToString());
     }
 
     [Fact]
