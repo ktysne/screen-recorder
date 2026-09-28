@@ -108,6 +108,7 @@ CLI は `ScreenRecorder.exe` を次の順で探す。
 - 標準出力は BOM なしの UTF-8 で書き、日本語を `\u` でエスケープしない。
 - 人が読む形は `--text` を付けたときだけ出す。
 - JSON の基本形は `{ "cliVersion": "...", "command": "logs show", "result": {}, "warnings": [], "error": null }` とする。検査対象に問題がある場合は `result` に問題を含め、終了コード 1 を返す。CLI が処理できない場合は `result` を `null` にし、`error` に識別子と日本語の説明を入れる。
+- `command` には特定できたコマンド定義の名前を入れる。定義を特定できない引数誤りでは `--text` を除いた最初の語を使い、語がなければ `unknown` とする。
 - 知らせるべきことは `warnings[]` に、エラーは `error.code` と `error.message`(日本語)に入れる。`error.code` は英字の識別子で、AI とテストはこちらで判断する。
 - 時刻は ISO 8601 の地方時とオフセット、長さはミリ秒の整数で書く。プロパティ名は camelCase とする。
 - 設定の検査結果は `issues[]` に識別子、項目名、説明を入れる。`defaultedProperties[]` には既定値を補った設定項目名を camelCase で入れる。
