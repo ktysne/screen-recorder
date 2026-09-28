@@ -235,6 +235,9 @@ internal static class CliApplication
 
     private static CliExecutionResult NamingPreview(ParsedCliCommand command, CliEnvironment environment)
     {
+        var kind = command.Options.GetValueOrDefault("--kind") ?? "image";
+        if (kind is not ("image" or "video")) return InvalidOption(command, "--kind は image、video のいずれかを指定してください。");
+        var isVideo = kind == "video";
         var mode = ScreenshotMode.Full;
         if (command.Options.TryGetValue("--mode", out var modeValue))
         {
@@ -262,7 +265,7 @@ internal static class CliApplication
         var settings = settingsRead.Settings;
         var directory = command.Options.TryGetValue("--dir", out var directoryValue)
             ? directoryValue!
-            : settings.StillImageDirectory;
+            : isVideo ? settings.VideoDirectory : settings.StillImageDirectory;
         if (string.IsNullOrWhiteSpace(directory))
             return InvalidOption(command, "保存先フォルダーを空にできません。");
         directory = Path.GetFullPath(directory);
@@ -271,25 +274,29 @@ internal static class CliApplication
             ? templateValue
             : settings.FileNameTemplate;
         var window = command.Options.TryGetValue("--window", out var windowValue) ? windowValue : null;
-        var extension = settings.ImageFormat == StillImageFormat.Png ? ".png" : ".jpg";
-        var path = ScreenshotFileNaming.GetAvailablePath(
-            directory,
-            settings.OrganizeByMonth,
-            capturedAt.DateTime,
-            mode,
-            window,
-            template,
-            extension,
-            File.Exists);
+        var path = isVideo
+            ? VideoRecordingFileNaming.GetAvailablePath(
+                directory, settings.OrganizeByMonth, capturedAt.DateTime, mode, window, template,
+                candidate => File.Exists(candidate) || File.Exists(VideoRecordingFileNaming.GetTemporaryPath(candidate)))
+            : ScreenshotFileNaming.GetAvailablePath(
+                directory,
+                settings.OrganizeByMonth,
+                capturedAt.DateTime,
+                mode,
+                window,
+                template,
+                settings.ImageFormat == StillImageFormat.Png ? ".png" : ".jpg",
+                File.Exists);
 
         return new CliExecutionResult(CliExitCode.Success, new
         {
+            kind,
             mode = mode.ToString().ToLowerInvariant(),
             at = capturedAt,
             directory = Path.GetDirectoryName(path),
             fileName = Path.GetFileName(path),
             path,
-            imageFormat = settings.ImageFormat,
+            imageFormat = isVideo ? (StillImageFormat?)null : settings.ImageFormat,
             organizeByMonth = settings.OrganizeByMonth,
             settingsIssues = ToIssueResults(settingsRead.Issues)
         }, settingsRead.Issues.Select(issue => issue.Message).ToArray(), null);

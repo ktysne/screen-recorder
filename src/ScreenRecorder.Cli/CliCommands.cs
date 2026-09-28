@@ -99,6 +99,7 @@ internal static class CliCommands
         new("remote exit", "", "常駐中の ScreenRecorder の終了を要求します。", [AutomationAppOption]),
         new("naming preview", "", "設定と指定値から保存ファイル名を計算します。", [
             Option("--template", "<ひな形>", "ファイル名のひな形を上書きします。"),
+            Option("--kind", "<対象>", "image(静止画、既定)または video(動画)を指定します。", CliValueKind.Enumeration, ["image", "video"]),
             Option("--mode", "<種類>", "full、region、window のいずれかを指定します。", CliValueKind.Enumeration, ["full", "region", "window"]),
             Option("--window", "<タイトル>", "{window} に使うウィンドウタイトルです。"),
             Option("--at", "<日時>", "計算に使う ISO 8601 の日時です。"),
