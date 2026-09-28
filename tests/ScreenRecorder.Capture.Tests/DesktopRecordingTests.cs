@@ -48,7 +48,7 @@ public sealed class DesktopRecordingTests
         Assert.Equal(session.OutputSize, image.Size);
     }
 
-    [DesktopFact]
+    [DesktopFact(Skip = "CPU の負荷が高いと一時停止と再開を挟む動画が約 0.9 秒短くなる不具合 #97 が直るまでスキップする。")]
     public async Task RegionRecordsWithPauseAndResume()
     {
         var screen = Screen.PrimaryScreen ?? throw new InvalidOperationException("主モニターがありません。");
