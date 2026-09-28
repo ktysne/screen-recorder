@@ -48,7 +48,7 @@ public sealed class DesktopRecordingTests
         Assert.Equal(session.OutputSize, image.Size);
     }
 
-    [DesktopFact(Skip = "CPU の負荷が高いと一時停止と再開を挟む動画が約 0.9 秒短くなる不具合 #97 が直るまでスキップする。")]
+    [DesktopFact]
     public async Task RegionRecordsWithPauseAndResume()
     {
         var screen = Screen.PrimaryScreen ?? throw new InvalidOperationException("主モニターがありません。");
@@ -62,13 +62,13 @@ public sealed class DesktopRecordingTests
         await Task.Delay(TimeSpan.FromSeconds(1));
         session.Engine.Resume(2);
         await session.WaitForStatusAsync(RecordingEngineStatus.Recording);
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
         var path = await session.StopAndFinalizeAsync();
         var info = await MediaFileProbe.InspectAsync(path);
 
         Assert.Equal((uint)400, info.Video.Width);
         Assert.Equal((uint)300, info.Video.Height);
-        Assert.InRange(info.Duration.TotalMilliseconds, 2300, 3700);
+        Assert.InRange(info.Duration.TotalMilliseconds, 2300, 3600);
     }
 
     private sealed class RecordingSession : IDisposable
