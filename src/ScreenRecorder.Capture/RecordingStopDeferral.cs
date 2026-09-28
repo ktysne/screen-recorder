@@ -50,7 +50,6 @@ internal sealed class RecordingStopDeferral : IDisposable
             if (_disposed || _stopIssued || !_isPaused) return;
             _isPaused = false;
             _waitingForFrame = true;
-            _timer = _scheduleTimer(_timeout, OnTimeout);
         }
     }
 
@@ -60,9 +59,11 @@ internal sealed class RecordingStopDeferral : IDisposable
         lock (_gate)
         {
             if (_disposed || _stopIssued) return false;
+            // 再開後の最初のフレームは負荷で期限より遅れうるので、期限は停止を頼まれた時点から数える。
             if (!forceImmediate && _waitingForFrame && !_isPaused)
             {
                 _stopPending = true;
+                _timer ??= _scheduleTimer(_timeout, OnTimeout);
                 return false;
             }
             _stopIssued = true;

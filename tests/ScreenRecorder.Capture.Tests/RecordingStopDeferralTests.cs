@@ -43,6 +43,25 @@ public sealed class RecordingStopDeferralTests
     }
 
     [Fact]
+    public void DeadlineIsCountedFromTheStopRequestNotFromTheResume()
+    {
+        var timers = new FakeTimerScheduler();
+        using var deferral = new RecordingStopDeferral(Timeout, timers.Schedule);
+        var stopCount = 0;
+        deferral.StopReady += () => stopCount++;
+        deferral.MarkPaused();
+        deferral.MarkResumed();
+
+        Assert.Equal(0, timers.Count);
+        Assert.False(deferral.TryRequestStop());
+        Assert.Equal(1, timers.Count);
+        Assert.Equal(0, stopCount);
+        deferral.MarkFrameRecorded();
+
+        Assert.Equal(1, stopCount);
+    }
+
+    [Fact]
     public void StopRunsImmediatelyWhenAFrameWasWrittenAfterResume()
     {
         var timers = new FakeTimerScheduler();
@@ -114,6 +133,8 @@ public sealed class RecordingStopDeferralTests
         private readonly List<FakeTimer> _timers = [];
 
         public TimeSpan? LastDelay { get; private set; }
+
+        public int Count => _timers.Count;
 
         public IDisposable Schedule(TimeSpan delay, Action callback)
         {
