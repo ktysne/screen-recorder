@@ -14,6 +14,18 @@ set "OLD_DIR=%DEST_DIR%.old"
 set "STAGE_DIR=%CD%\artifacts\mcp-cli"
 set "APP_EXE=%CD%\artifacts\publish\ScreenRecorder.exe"
 
+rem A previous copy left by a failed run is kept until a new copy is installed.
+if not exist "%OLD_DIR%\" goto :no_leftover
+if exist "%DEST_DIR%\" goto :leftover_conflict
+move "%OLD_DIR%" "%DEST_DIR%" >nul
+if not errorlevel 1 goto :no_leftover
+
+:leftover_conflict
+echo [ScreenRecorder] ERROR: A previous copy is left in "%OLD_DIR%".
+echo [ScreenRecorder] Keep the one that works as "%DEST_DIR%", delete the other, and run this again.
+goto :failed
+
+:no_leftover
 if exist "%STAGE_DIR%\" rd /s /q "%STAGE_DIR%"
 dotnet publish src\ScreenRecorder.Cli -c Release -o "%STAGE_DIR%"
 if not errorlevel 1 goto :staged
@@ -24,7 +36,6 @@ goto :failed
 :staged
 rem Replacing files one by one while Claude Desktop runs the copy would mix old and new DLLs.
 rem Moving the whole folder fails while any file in it is in use, so the copy is either replaced or left intact.
-if exist "%OLD_DIR%\" rd /s /q "%OLD_DIR%"
 if not exist "%DEST_DIR%\" goto :install
 move "%DEST_DIR%" "%OLD_DIR%" >nul
 if not errorlevel 1 goto :install
@@ -47,7 +58,7 @@ if not errorlevel 1 goto :failed
 
 :restore_failed
 echo [ScreenRecorder] ERROR: "%DEST_DIR%" may be incomplete. Delete it and run this again.
-if exist "%OLD_DIR%\" echo [ScreenRecorder] The previous copy is kept in "%OLD_DIR%".
+if exist "%OLD_DIR%\" echo [ScreenRecorder] The previous copy is kept in "%OLD_DIR%" and is restored on the next run.
 goto :failed
 
 :installed
