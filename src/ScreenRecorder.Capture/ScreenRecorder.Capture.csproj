@@ -10,4 +10,8 @@
   <ItemGroup>
     <ProjectReference Include="..\ScreenRecorder.Core\ScreenRecorder.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ScreenRecorder" />
+    <InternalsVisibleTo Include="ScreenRecorder.Capture.Tests" />
+  </ItemGroup>
 </Project>

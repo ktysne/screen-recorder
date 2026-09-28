@@ -7,8 +7,12 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
 {
     private static readonly TimeSpan FailureFinalizationTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan IdleCompletionGracePeriod = TimeSpan.FromMilliseconds(200);
+    // ScreenRecorderLib 7.0.1 は再開後、画面に変化がないと次のフレームまで最大 1 秒待つため。
+    // 上流で修正されたら、この停止保留を削除できる。
+    private static readonly TimeSpan ResumeFrameWaitTimeout = TimeSpan.FromMilliseconds(1200);
     private readonly object _gate = new();
     private readonly TaskCompletionSource _terminationSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly RecordingStopDeferral _stopDeferral = new(ResumeFrameWaitTimeout, ScheduleOneShotTimer);
     private Recorder? _recorder;
     private string? _outputPath;
     private int _terminalEventRaised;
@@ -20,7 +24,10 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
     private bool _hasObservedRecording;
     private bool _disposed;
 
-    public ScreenRecorderLibRecordingEngine() { }
+    public ScreenRecorderLibRecordingEngine()
+    {
+        _stopDeferral.StopReady += QueueDeferredStop;
+    }
 
     public event EventHandler<RecordingEngineStatusChangedEventArgs>? StatusChanged;
     public event EventHandler<RecordingEngineCompletedEventArgs>? RecordingCompleted;
@@ -107,6 +114,7 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
             _recorder = recorder;
         }
         recorder.OnStatusChanged += OnStatusChanged;
+        recorder.OnFrameRecorded += OnFrameRecorded;
         recorder.OnRecordingComplete += OnRecordingComplete;
         recorder.OnRecordingFailed += OnRecordingFailed;
         recorder.Record(request.OutputPath);
@@ -160,13 +168,27 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
             }
             applyImmediately = recorder?.Status == RecorderStatus.Paused;
         }
-        if (applyImmediately) recorder!.Resume();
+        if (applyImmediately)
+        {
+            lock (_gate)
+            {
+                if (_disposed || !ReferenceEquals(_recorder, recorder)) return;
+                _stopDeferral.MarkResumed();
+            }
+            try { recorder!.Resume(); }
+            catch
+            {
+                _stopDeferral.MarkPaused();
+                throw;
+            }
+        }
     }
 
     public void Stop()
     {
         Recorder? recorder;
         var applyImmediately = false;
+        var forceImmediate = false;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -179,8 +201,9 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
                 return;
             }
             applyImmediately = recorder?.Status is RecorderStatus.Recording or RecorderStatus.Paused;
+            forceImmediate = recorder?.Status == RecorderStatus.Paused;
         }
-        if (applyImmediately) recorder!.Stop();
+        if (applyImmediately) RequestRecorderStop(recorder!, forceImmediate);
     }
 
     public async Task<RecordingTerminationOutcome> WaitForTerminationAsync(TimeSpan timeout)
@@ -204,11 +227,14 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         {
             if (_disposed) return;
             _disposed = true;
+            _stopDeferral.StopReady -= QueueDeferredStop;
+            _stopDeferral.Cancel();
             recorder = _recorder;
             _recorder = null;
         }
         if (recorder is null) return;
         recorder.OnStatusChanged -= OnStatusChanged;
+        recorder.OnFrameRecorded -= OnFrameRecorded;
         recorder.OnRecordingComplete -= OnRecordingComplete;
         recorder.OnRecordingFailed -= OnRecordingFailed;
         recorder.Dispose();
@@ -251,6 +277,14 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
     {
         if (eventArgs.Status == RecorderStatus.Idle)
         {
+            if (sender is Recorder idleRecorder)
+            {
+                lock (_gate)
+                {
+                    if (!_disposed && ReferenceEquals(_recorder, idleRecorder))
+                        _stopDeferral.Cancel();
+                }
+            }
             Interlocked.CompareExchange(ref _terminationKind, (int)RecordingTerminationOutcome.Idle, (int)RecordingTerminationOutcome.Waiting);
             _terminationSignal.TrySetResult();
             return;
@@ -263,6 +297,17 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
             RecorderStatus.Finishing => RecordingEngineStatus.Saving,
             _ => (RecordingEngineStatus?)null
         };
+        if (sender is Recorder statusRecorder && eventArgs.Status is RecorderStatus.Recording or RecorderStatus.Paused)
+        {
+            lock (_gate)
+            {
+                if (!_disposed && ReferenceEquals(_recorder, statusRecorder))
+                {
+                    if (eventArgs.Status == RecorderStatus.Paused) _stopDeferral.MarkPaused();
+                    else _stopDeferral.MarkResumed();
+                }
+            }
+        }
         if (eventArgs.Status == RecorderStatus.Recording && sender is Recorder recorder)
             ApplyPendingCommand(recorder);
         if (status is { } value) StatusChanged?.Invoke(this, new RecordingEngineStatusChangedEventArgs(value));
@@ -279,6 +324,16 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
     private void OnRecordingFailed(object? sender, RecordingFailedEventArgs eventArgs)
     {
         StartFailureFinalization(GetRecorder(), eventArgs.FilePath ?? _outputPath ?? string.Empty, eventArgs.Error, stopIfActive: true);
+    }
+
+    private void OnFrameRecorded(object? sender, FrameRecordedEventArgs eventArgs)
+    {
+        if (sender is not Recorder recorder) return;
+        lock (_gate)
+        {
+            if (_disposed || !ReferenceEquals(_recorder, recorder)) return;
+            _stopDeferral.MarkFrameRecorded();
+        }
     }
 
     private Recorder? GetRecorder()
@@ -310,7 +365,7 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
                     recorder.Pause();
                     break;
                 case RecordingEngineCommand.Stop:
-                    recorder.Stop();
+                    RequestRecorderStop(recorder);
                     break;
             }
         }
@@ -325,11 +380,40 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         if (Interlocked.CompareExchange(ref _failureDispatchPending, 1, 0) != 0) return;
         if (stopIfActive && recorder is not null && recorder.Status is RecorderStatus.Recording or RecorderStatus.Paused)
         {
-            try { recorder.Stop(); }
-            catch (Exception exception) { DiagnosticLog.Error(DiagnosticLogTags.Record, $"失敗した録画を停止できませんでした: {exception}"); }
+            RequestRecorderStop(recorder, forceImmediate: true);
         }
+        else _stopDeferral.Cancel();
         _ = RaiseFailureAfterStopAsync(filePath, error);
     }
+
+    private void RequestRecorderStop(Recorder recorder, bool forceImmediate = false)
+    {
+        if (!_stopDeferral.TryRequestStop(forceImmediate)) return;
+        StopRecorder(recorder);
+    }
+
+    private void QueueDeferredStop()
+    {
+        var recorder = GetRecorder();
+        if (recorder is not null) _ = Task.Run(() => StopRecorder(recorder));
+    }
+
+    private void StopRecorder(Recorder recorder)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !ReferenceEquals(_recorder, recorder)) return;
+            if (recorder.Status is not (RecorderStatus.Recording or RecorderStatus.Paused)) return;
+            try { recorder.Stop(); }
+            catch (Exception exception)
+            {
+                StartFailureFinalization(recorder, _outputPath ?? string.Empty, exception.Message, stopIfActive: false);
+            }
+        }
+    }
+
+    private static IDisposable ScheduleOneShotTimer(TimeSpan delay, Action callback) =>
+        new System.Threading.Timer(_ => callback(), null, delay, Timeout.InfiniteTimeSpan);
 
     private async Task RaiseFailureAfterStopAsync(string filePath, string error)
     {
