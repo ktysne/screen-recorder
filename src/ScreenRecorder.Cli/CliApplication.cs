@@ -56,7 +56,9 @@ internal static class CliApplication
         var parsed = CliCommands.Parse(arguments);
         if (!parsed.Success)
         {
-            var commandName = arguments.FirstOrDefault(argument => !CliCommands.GlobalOptions.Any(option => option.Name == argument)) ?? "unknown";
+            var commandName = parsed.CommandName
+                ?? arguments.FirstOrDefault(argument => !CliCommands.GlobalOptions.Any(option => option.Name == argument))
+                ?? "unknown";
             var textMode = arguments.Any(argument => CliCommands.GlobalOptions.Any(option => option.Name == argument));
             return WriteFailure(standardOutput, environment, commandName, CliExitCode.InvalidArguments, "invalidArguments", parsed.Error!, textMode);
         }
@@ -305,7 +307,7 @@ internal static class CliApplication
             commands = definitions.Select(definition => new
             {
                 name = definition.Name,
-                usage = AddTextOption(CliCommands.GetUsage(definition)),
+                usage = AddTextOption(definition),
                 description = definition.Description,
                 options = definition.Options.Select(option => new
                 {
@@ -400,8 +402,11 @@ internal static class CliApplication
         return string.Join(Environment.NewLine, lines);
     }
 
-    private static string AddTextOption(string usage)
+    private static string AddTextOption(CliCommandDefinition definition)
     {
+        var usage = CliCommands.GetUsage(definition);
+        if (!definition.AcceptsTextOption) return usage;
+
         var commonOptions = CliCommands.GlobalOptions.Select(option => option.ValueName is null
             ? option.Name
             : $"{option.Name} {option.ValueName}");

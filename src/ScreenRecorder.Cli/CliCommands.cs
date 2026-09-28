@@ -35,7 +35,8 @@ internal sealed record CliCommandDefinition(
     IReadOnlyList<CliOptionDefinition> Options,
     int MinimumPositionals = 0,
     int MaximumPositionals = 0,
-    IReadOnlyList<CliPositionDefinition>? McpPositionals = null);
+    IReadOnlyList<CliPositionDefinition>? McpPositionals = null,
+    bool AcceptsTextOption = true);
 
 internal sealed record ParsedCliCommand(
     CliCommandDefinition Definition,
@@ -43,7 +44,7 @@ internal sealed record ParsedCliCommand(
     IReadOnlyDictionary<string, string?> Options,
     bool TextMode);
 
-internal sealed record CliParseResult(ParsedCliCommand? Command, string? Error)
+internal sealed record CliParseResult(ParsedCliCommand? Command, string? Error, string? CommandName = null)
 {
     public bool Success => Command is not null;
 }
@@ -144,7 +145,7 @@ internal static class CliCommands
         new("mcp", "", "標準入出力で MCP サーバーを起動します。", [
             Option("--app", "<パス>", "接続先にする ScreenRecorder.exe の場所です。", CliValueKind.Path),
             Option("--allow-dir", "<フォルダー>", "出力を許可するフォルダーです。複数回指定できます。", CliValueKind.Path, repeatable: true)
-        ]),
+        ], AcceptsTextOption: false),
         new("help", "[<コマンド>]", "コマンド一覧または指定したコマンドの使い方を表示します。", [], 0, 2)
     ];
 
@@ -162,15 +163,18 @@ internal static class CliCommands
     {
         var args = new List<string>(arguments.Count);
         var textMode = false;
+        string? globalOptionError = null;
         foreach (var argument in arguments)
         {
             var globalOption = GlobalOptions.FirstOrDefault(option => option.Name == argument);
             if (globalOption is not null)
             {
                 if (globalOption.ValueName is not null)
-                    return new CliParseResult(null, $"共通オプション {argument} は値を指定する形式に対応していません。");
-                if (textMode) return new CliParseResult(null, $"{argument} は 1 回だけ指定できます。");
-                textMode = true;
+                    globalOptionError ??= $"共通オプション {argument} は値を指定する形式に対応していません。";
+                else if (textMode)
+                    globalOptionError ??= $"{argument} は 1 回だけ指定できます。";
+                else
+                    textMode = true;
             }
             else
             {
@@ -178,14 +182,20 @@ internal static class CliCommands
             }
         }
 
-        if (args.Count == 0) return new CliParseResult(null, "コマンドを指定してください。使い方は help を実行してください。");
-
-        var definition = All
-            .Where(item => args.Count >= item.Name.Split(' ').Length)
-            .OrderByDescending(item => item.Name.Split(' ').Length)
-            .FirstOrDefault(item => item.Name.Split(' ').SequenceEqual(args.Take(item.Name.Split(' ').Length), StringComparer.Ordinal));
+        var definition = args.Count == 0
+            ? null
+            : All
+                .Where(item => args.Count >= item.Name.Split(' ').Length)
+                .OrderByDescending(item => item.Name.Split(' ').Length)
+                .FirstOrDefault(item => item.Name.Split(' ').SequenceEqual(args.Take(item.Name.Split(' ').Length), StringComparer.Ordinal));
+        if (globalOptionError is not null)
+            return new CliParseResult(null, globalOptionError, definition?.Name);
+        if (args.Count == 0)
+            return new CliParseResult(null, "コマンドを指定してください。使い方は help を実行してください。");
         if (definition is null)
             return new CliParseResult(null, $"コマンドを認識できません: {args[0]}");
+        if (textMode && !definition.AcceptsTextOption)
+            return new CliParseResult(null, "このコマンドでは --text を使えません。", definition.Name);
 
         var remaining = args.Skip(definition.Name.Split(' ').Length).ToArray();
         var optionDefinitions = definition.Options.ToDictionary(option => option.Name, StringComparer.Ordinal);
@@ -201,9 +211,9 @@ internal static class CliCommands
             }
 
             if (!optionDefinitions.TryGetValue(token, out var option))
-                return new CliParseResult(null, $"このコマンドでは {token} を使えません。");
+                return new CliParseResult(null, $"このコマンドでは {token} を使えません。", definition.Name);
             if (parsedOptions.ContainsKey(token) && !option.Repeatable)
-                return new CliParseResult(null, $"オプション {token} は 1 回だけ指定できます。");
+                return new CliParseResult(null, $"オプション {token} は 1 回だけ指定できます。", definition.Name);
 
             if (option.ValueName is null)
             {
@@ -212,22 +222,23 @@ internal static class CliCommands
             }
 
             if (index + 1 >= remaining.Length || remaining[index + 1].StartsWith("--", StringComparison.Ordinal))
-                return new CliParseResult(null, $"オプション {token} の値を指定してください。");
+                return new CliParseResult(null, $"オプション {token} の値を指定してください。", definition.Name);
             parsedOptions.Add(token, remaining[++index]);
         }
 
         if (positionals.Count < definition.MinimumPositionals || positionals.Count > definition.MaximumPositionals)
-            return new CliParseResult(null, $"引数の数が正しくありません。使い方: {GetUsage(definition)}");
+            return new CliParseResult(null, $"引数の数が正しくありません。使い方: {GetUsage(definition)}", definition.Name);
 
         if (definition.Name == "help" && positionals.Count > 0)
         {
             var topic = string.Join(' ', positionals);
             if (!All.Any(item => item.Name == topic || item.Name.StartsWith(topic + " ", StringComparison.Ordinal)))
-                return new CliParseResult(null, $"ヘルプに該当するコマンドがありません: {topic}");
+                return new CliParseResult(null, $"ヘルプに該当するコマンドがありません: {topic}", definition.Name);
         }
 
         return new CliParseResult(
             new ParsedCliCommand(definition, positionals, parsedOptions, textMode),
-            null);
+            null,
+            definition.Name);
     }
 }

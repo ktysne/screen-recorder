@@ -157,6 +157,30 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
+    public void RecognizedCommandIsUsedWhenOptionParsingFails()
+    {
+        using var json = AssertJson(Run("remote", "wait", "--unknown"), 2, "remote wait");
+
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void InvalidRemoteWaitTimeoutUsesFullCommandName()
+    {
+        using var json = AssertJson(Run("remote", "wait", "--state", "idle", "--timeout", "x"), 2, "remote wait");
+
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void UnknownCommandKeepsItsFirstWordInTheErrorEnvelope()
+    {
+        using var json = AssertJson(Run("unrecognized", "--unknown"), 2, "unrecognized");
+
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public void JapaneseMessagesAreWrittenWithoutEscaping()
     {
         var invocation = Run("nope");
@@ -471,6 +495,35 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Equal("mcp", command.GetProperty("name").GetString());
         Assert.Contains("[--allow-dir <フォルダー>]...", command.GetProperty("usage").GetString());
         Assert.Contains(command.GetProperty("options").EnumerateArray(), option => option.GetProperty("name").GetString() == "--allow-dir");
+    }
+
+    [Fact]
+    public void HelpUsageShowsTextOptionOnlyForCommandsThatAcceptIt()
+    {
+        using var mcpJson = AssertJson(Run("help", "mcp"), 0, "help");
+        var mcpUsage = mcpJson.RootElement.GetProperty("result").GetProperty("commands")[0].GetProperty("usage").GetString();
+        Assert.DoesNotContain("[--text]", mcpUsage);
+
+        using var remoteJson = AssertJson(Run("help", "remote", "wait"), 0, "help");
+        var remoteUsage = remoteJson.RootElement.GetProperty("result").GetProperty("commands")[0].GetProperty("usage").GetString();
+        Assert.Contains("[--text]", remoteUsage);
+
+        var mcpText = Run("help", "mcp", "--text").StandardOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)[0];
+        Assert.StartsWith("mcp ", mcpText);
+        Assert.DoesNotContain("[--text]", mcpText);
+
+        var remoteText = Run("help", "remote", "wait", "--text").StandardOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)[0];
+        Assert.StartsWith("remote wait ", remoteText);
+        Assert.Contains("[--text]", remoteText);
+    }
+
+    [Fact]
+    public void McpCommandRejectsTextOptionDuringParsing()
+    {
+        var parsed = CliCommands.Parse(["mcp", "--text"]);
+
+        Assert.False(parsed.Success);
+        Assert.Equal("mcp", parsed.CommandName);
     }
 
     [McpPipeFact]
