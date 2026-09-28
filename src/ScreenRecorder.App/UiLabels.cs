@@ -55,6 +55,7 @@ public static class UiLabels
     public const string VideoImageOptions = "映像";
     public const string AudioOptions = "音声";
     public const string ShortcutsTab = "ショートカット";
+    public const string AdvancedTab = "高度な設定";
     public const string ShortcutInstructions = "入力方法";
     public const string ShortcutAssignments = "操作ごとの割り当て";
     public const string StartWithWindows = "サインイン時に起動";
