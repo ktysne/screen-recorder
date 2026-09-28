@@ -54,9 +54,10 @@ Claude Desktop は、起動している間、登録した MCP のサーバーの
 }
 ```
 
-`--app` の本体は、録画の間だけ起動されます。
-そのため、`--app` に指定した本体も、Debug と Release の再ビルドも、Claude Desktop の起動中に作り直せます。
-`--app` には、`dotnet build` で作った `src\ScreenRecorder.Appin\...\ScreenRecorder.exe` も指定できます。
+MCP の `record` は、`--app` の本体を録画の間だけ起動します。
+そのため、Claude Desktop の起動中でも、Debug と Release の再ビルドや `build-package.bat` が通ります。
+ただし、`--app` の本体を常駐させている場合は、その本体を終了してから作り直してください。
+`--app` には、`dotnet build` で作った `src\ScreenRecorder.App\bin\...\ScreenRecorder.exe` も指定できます。
 `remote` の各道具は、`--app` に指定した場所の本体だけを接続先として受け付けます。常駐させている本体と同じ場所を指定してください。
 `--app` を省くと、`remote` は実行ファイルの名前が `ScreenRecorder.exe` の本体を接続先として受け付けます。
 

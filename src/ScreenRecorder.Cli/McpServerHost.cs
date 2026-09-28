@@ -173,7 +173,7 @@ internal static class McpServerHost
     {
         var (path, searched) = findApp(requestedAppPath);
         if (path is not null) return path;
-        standardError.WriteLine($"ScreenRecorder.exe が見つかりません。record と remote は appNotFound になります。探した場所: {string.Join(", ", searched)}");
+        standardError.WriteLine($"ScreenRecorder.exe が見つかりません。record は appNotFound になります。探した場所: {string.Join(", ", searched)}");
         return searched[0];
     }
 

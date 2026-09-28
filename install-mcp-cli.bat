@@ -40,7 +40,14 @@ if not errorlevel 1 goto :installed
 echo.
 echo [ScreenRecorder] ERROR: Could not copy the new copy to "%DEST_DIR%".
 if exist "%DEST_DIR%\" rd /s /q "%DEST_DIR%"
-if exist "%OLD_DIR%\" move "%OLD_DIR%" "%DEST_DIR%" >nul
+if exist "%DEST_DIR%\" goto :restore_failed
+if not exist "%OLD_DIR%\" goto :failed
+move "%OLD_DIR%" "%DEST_DIR%" >nul
+if not errorlevel 1 goto :failed
+
+:restore_failed
+echo [ScreenRecorder] ERROR: "%DEST_DIR%" may be incomplete. Delete it and run this again.
+if exist "%OLD_DIR%\" echo [ScreenRecorder] The previous copy is kept in "%OLD_DIR%".
 goto :failed
 
 :installed
