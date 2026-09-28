@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\ScreenRecorder.Capture\ScreenRecorder.Capture.csproj" />
     <ProjectReference Include="..\..\src\ScreenRecorder.Core\ScreenRecorder.Core.csproj" />
     <ProjectReference Include="..\..\src\ScreenRecorder.Cli\ScreenRecorder.Cli.csproj" />
+    <ProjectReference Include="..\..\src\ScreenRecorder.App\ScreenRecorder.App.csproj" />
   </ItemGroup>
 </Project>

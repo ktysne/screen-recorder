@@ -30,6 +30,7 @@ internal static class CliCommands
     private static readonly CliOptionDefinition GrepOption = new("--grep", "<文字列>", "本文または生行に文字列を含む行だけを表示します。");
     private static readonly CliOptionDefinition LimitOption = new("--limit", "<件数>", "条件に合う行のうち、末尾から表示する行数です。既定は 200 です。");
     private static readonly CliOptionDefinition AutomationAppOption = new("--app", "<パス>", "接続先の実行ファイルを指定して照合します。");
+    private static readonly CliOptionDefinition CaptureAfterOption = new("--capture-after", "<日時>", "指定した時刻より後の撮影結果を待ちます。時刻と時差を含む ISO 8601(例: 2026-09-28T10:00:00+09:00)で指定します。");
 
     public static IReadOnlyList<CliOptionDefinition> GlobalOptions { get; } =
     [
@@ -46,6 +47,7 @@ internal static class CliCommands
         new("remote status", "", "常駐中の ScreenRecorder の状態を表示します。", [AutomationAppOption]),
         new("remote wait", "", "常駐中の ScreenRecorder が指定状態になるまで待ちます。", [
             new("--state", "<状態>", "idle、countdown、preparing、recording、paused、saving のいずれかです。"),
+            CaptureAfterOption,
             new("--timeout", "<秒>", "待ち時間です。既定は 30 秒、上限は 3600 秒です。"),
             AutomationAppOption
         ]),

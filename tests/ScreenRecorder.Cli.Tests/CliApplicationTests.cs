@@ -311,9 +311,19 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
-    public void RemoteWaitRejectsCaptureAfterUntilCapturesAreRecorded()
+    public async Task RemoteWaitSendsCaptureAfterTimestamp()
     {
-        using var json = AssertJson(Run("remote", "wait", "--state", "idle", "--capture-after", "2026-09-27T10:00:00+09:00"), 2, "remote");
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var invocation = await RunAsync(_environment, "remote", "wait", "--state", "idle", "--capture-after", "2026-09-27T10:00:00+09:00");
+
+        using var json = AssertRemoteSuccess(invocation, "remote wait");
+        Assert.Equal("2026-09-27T10:00:00+09:00", server.WaitParameters!.Value.GetProperty("captureAfter").GetString());
+    }
+
+    [Fact]
+    public void RemoteWaitRejectsInvalidCaptureAfterTimestamp()
+    {
+        using var json = AssertJson(Run("remote", "wait", "--state", "idle", "--capture-after", "not-a-date"), 2, "remote wait");
         Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 

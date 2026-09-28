@@ -38,6 +38,8 @@ internal static class CaptureCompletion
         string actionFailureDetails,
         string? warning,
         Func<string, Task<bool>> openFolder,
+        Action<string?> recordCapture,
+        Action<string> recordActionFailure,
         Action<NotificationDuration, string, string, ToolTipIcon, string?> showNotification)
     {
         if (settings.PlayCaptureSound)
@@ -58,7 +60,10 @@ internal static class CaptureCompletion
                     break;
                 case CaptureAfterAction.OpenFolder:
                     if (!await openFolder(Path.GetDirectoryName(filePath) ?? defaultDirectory))
+                    {
                         warning = kind.ActionFailureNotification;
+                        recordActionFailure(warning);
+                    }
                     break;
             }
         }
@@ -66,11 +71,19 @@ internal static class CaptureCompletion
         {
             DiagnosticLog.Warn(kind.LogTag, $"{kind.ActionFailureMessage}: {actionFailureDetails}; {exception}");
             warning = kind.ActionFailureNotification;
+            recordActionFailure(warning);
         }
 
         var notification = CaptureCompletionRules.DecideNotification(warning is not null, settings.NotifyWhenSaved);
-        if (notification == CaptureNotification.None) return;
-        var message = notification == CaptureNotification.Warning ? warning! : kind.SavedNotification;
+        var message = notification switch
+        {
+            CaptureNotification.None => null,
+            CaptureNotification.Warning => warning,
+            CaptureNotification.Saved => kind.SavedNotification,
+            _ => throw new ArgumentOutOfRangeException(nameof(notification))
+        };
+        recordCapture(message);
+        if (message is null) return;
         var icon = notification == CaptureNotification.Warning ? ToolTipIcon.Warning : ToolTipIcon.Info;
         try { showNotification(NotificationDuration.Standard, UiLabels.AppName, message, icon, filePath); }
         catch (Exception exception) { DiagnosticLog.Warn(kind.LogTag, $"保存の通知を表示できませんでした: ファイル={filePath}; {exception}"); }

@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Threading.Channels;
+using ScreenRecorder.App;
 using ScreenRecorder.Capture;
 using ScreenRecorder.Core;
 using Xunit;
@@ -10,10 +11,17 @@ namespace ScreenRecorder.Capture.Tests;
 
 public sealed class DesktopFactAttribute : FactAttribute
 {
-    public DesktopFactAttribute()
+    public DesktopFactAttribute() : this(false) { }
+
+    public DesktopFactAttribute(bool skipIfApplicationRunning)
     {
         if (Environment.GetEnvironmentVariable("SCREENRECORDER_DESKTOP_TESTS") != "1")
             Skip = "SCREENRECORDER_DESKTOP_TESTS=1 を設定すると実機テストを実行します。";
+        else if (skipIfApplicationRunning && Mutex.TryOpenExisting(UpdatePaths.SingletonMutexName, out var runningInstance))
+        {
+            runningInstance?.Dispose();
+            Skip = "ScreenRecorder がすでに常駐しているため、実機テストをスキップしました。";
+        }
     }
 }
 
