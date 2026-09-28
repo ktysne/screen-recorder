@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using ScreenRecorder.Capture;
 
@@ -58,7 +59,9 @@ internal static class ProbeCommand
             using var image = Image.FromFile(path);
             Compare("width", numbers.TryGetValue("--expect-width", out var width) ? width : null, (double)image.Width);
             Compare("height", numbers.TryGetValue("--expect-height", out var height) ? height : null, (double)image.Height);
-            result = new { path, format = imageFormat, width = image.Width, height = image.Height, mismatches };
+            var contentFormat = ToFormatName(image.RawFormat);
+            Compare("format", imageFormat, contentFormat);
+            result = new { path, format = contentFormat, width = image.Width, height = image.Height, mismatches };
         }
         else
         {
@@ -99,4 +102,10 @@ internal static class ProbeCommand
         }
         return new(mismatches.Count == 0 ? CliExitCode.Success : CliExitCode.CheckFailed, result, [], null);
     }
+
+    // 拡張子と中身の形式が食い違う保存の誤りを見逃さないよう、形式は中身から決める。
+    private static string ToFormatName(ImageFormat format) =>
+        format.Guid == ImageFormat.Png.Guid ? "png"
+        : format.Guid == ImageFormat.Jpeg.Guid ? "jpeg"
+        : format.ToString().ToLowerInvariant();
 }

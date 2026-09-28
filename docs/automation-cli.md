@@ -184,7 +184,7 @@ CLI が途中で止められると録画プロセスはこの状態になるの�
   `--rect` はモニター相対の範囲へ変換される。
 - `probe <ファイル> [--expect-width <px>] [--expect-height <px>] [--expect-fps <fps>] [--expect-duration-ms <ms>] [--tolerance-ms <ms>] [--expect-video-codec <名称>] [--expect-audio-channels <数>] [--expect-audio-rate <Hz>] [--expect-no-audio]`：MP4 と静止画(PNG、JPEG)を検査する。
   MP4 は長さ、解像度、フレームレート、映像と音声のコーデック、音声のチャンネル数、サンプリングレート、ビットレートを返す。
-  静止画は形式、幅、高さを返す。動画と音声の検査、フレームの書き出しには使えない。
+  静止画は中身から判定した形式、幅、高さを返す。形式が拡張子と違えば `mismatches[]` に入れる。動画と音声の検査、フレームの書き出しには使えない。
   期待値との差は `result.mismatches[]` に入り、終了コードは 1 になる。
 - `probe <MP4> --frame <秒> -o <PNG> [--force]`：指定時刻のフレームを PNG に書き出す。
   既存の出力は `--force` を指定したときだけ上書きする。

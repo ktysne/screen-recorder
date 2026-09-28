@@ -324,6 +324,21 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
+    public void ProbeReportsContentFormatAndFailsWhenItDiffersFromTheExtension()
+    {
+        var path = WriteProbeImage("renamed.jpg", ImageFormat.Png);
+
+        using var json = AssertJson(Run("probe", path), 1, "probe");
+        var result = json.RootElement.GetProperty("result");
+
+        Assert.Equal("png", result.GetProperty("format").GetString());
+        Assert.Contains(result.GetProperty("mismatches").EnumerateArray(), mismatch =>
+            mismatch.GetProperty("property").GetString() == "format"
+            && mismatch.GetProperty("expected").GetString() == "jpeg"
+            && mismatch.GetProperty("actual").GetString() == "png");
+    }
+
+    [Fact]
     public void ProbeJpegAddsWidthMismatchAndReturnsCheckFailure()
     {
         var path = WriteProbeImage("image.jpg", ImageFormat.Jpeg);
