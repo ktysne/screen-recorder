@@ -48,7 +48,7 @@ public sealed class DesktopRecordingTests
         Assert.Equal(session.OutputSize, image.Size);
     }
 
-    [DesktopFact(Skip = "一時停止と再開を挟むと動画が約 0.9 秒短くなる不具合 #74 が直るまでスキップする。")]
+    [DesktopFact]
     public async Task RegionRecordsWithPauseAndResume()
     {
         var screen = Screen.PrimaryScreen ?? throw new InvalidOperationException("主モニターがありません。");
