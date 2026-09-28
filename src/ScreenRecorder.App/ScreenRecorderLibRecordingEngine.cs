@@ -398,17 +398,18 @@ internal sealed class ScreenRecorderLibRecordingEngine : IRecordingEngine
         if (recorder is not null) _ = Task.Run(() => StopRecorder(recorder));
     }
 
+    // ライブラリの状態通知もこのロックを取るため、Stop はロックの外で呼ぶ。
     private void StopRecorder(Recorder recorder)
     {
         lock (_gate)
         {
             if (_disposed || !ReferenceEquals(_recorder, recorder)) return;
             if (recorder.Status is not (RecorderStatus.Recording or RecorderStatus.Paused)) return;
-            try { recorder.Stop(); }
-            catch (Exception exception)
-            {
-                StartFailureFinalization(recorder, _outputPath ?? string.Empty, exception.Message, stopIfActive: false);
-            }
+        }
+        try { recorder.Stop(); }
+        catch (Exception exception)
+        {
+            StartFailureFinalization(recorder, _outputPath ?? string.Empty, exception.Message, stopIfActive: false);
         }
     }
 
