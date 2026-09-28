@@ -316,7 +316,7 @@ internal static class CliApplication
                     description = option.Description
                 }).ToArray()
             }).ToArray(),
-            commonOptions = CliCommands.GlobalOptions.Select(option => new
+            commonOptions = CliCommands.GlobalOptions.Where(_ => definitions.Any(definition => definition.AcceptsTextOption)).Select(option => new
             {
                 name = option.Name,
                 description = option.Description
@@ -391,8 +391,15 @@ internal static class CliApplication
                     }
                 }
             }
-            foreach (var option in CliCommands.GlobalOptions)
-                lines.Add($"  {option.Name}  {option.Description}");
+            if (result.GetType().GetProperty("commonOptions")?.GetValue(result) is System.Collections.IEnumerable commonOptions)
+            {
+                foreach (var option in commonOptions)
+                {
+                    if (option is null) continue;
+                    var optionType = option.GetType();
+                    lines.Add($"  {optionType.GetProperty("name")?.GetValue(option)}  {optionType.GetProperty("description")?.GetValue(option)}");
+                }
+            }
         }
         else
         {

@@ -503,10 +503,13 @@ public sealed class CliApplicationTests : IDisposable
         using var mcpJson = AssertJson(Run("help", "mcp"), 0, "help");
         var mcpUsage = mcpJson.RootElement.GetProperty("result").GetProperty("commands")[0].GetProperty("usage").GetString();
         Assert.DoesNotContain("[--text]", mcpUsage);
+        Assert.Equal(0, mcpJson.RootElement.GetProperty("result").GetProperty("commonOptions").GetArrayLength());
+        Assert.DoesNotContain("--text", Run("help", "mcp", "--text").StandardOutput);
 
         using var remoteJson = AssertJson(Run("help", "remote", "wait"), 0, "help");
         var remoteUsage = remoteJson.RootElement.GetProperty("result").GetProperty("commands")[0].GetProperty("usage").GetString();
         Assert.Contains("[--text]", remoteUsage);
+        Assert.Equal(1, remoteJson.RootElement.GetProperty("result").GetProperty("commonOptions").GetArrayLength());
 
         var mcpText = Run("help", "mcp", "--text").StandardOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)[0];
         Assert.StartsWith("mcp ", mcpText);
