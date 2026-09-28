@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO.Pipes;
 using System.Text.Json;
 using ScreenRecorder.Capture;
 using ScreenRecorder.Cli;
@@ -41,6 +43,7 @@ public sealed class CliApplicationTests : IDisposable
             "9.8.7")
         {
             AutomationPipeName = $"ScreenRecorder.Automation.Tests.{Guid.NewGuid():N}",
+            AutomationPipeExists = _ => true,
             VerifyAutomationServer = (_, _) => new CliAutomationServerVerification(Environment.ProcessId, "C:\\ScreenRecorder.exe")
         };
     }
@@ -548,14 +551,68 @@ public sealed class CliApplicationTests : IDisposable
     {
         var environment = _environment with
         {
+            AutomationPipeExists = _ => false,
+            IsApplicationRunning = () => false,
             VerifyAutomationServer = (_, _) => throw new InvalidOperationException("確認関数は接続後にだけ使います。")
         };
-        using var output = new StringWriter();
-        using var error = new StringWriter();
-        var code = CliApplication.Run(["remote", "status"], output, error, environment);
+        var invocation = Run(environment, "remote", "status");
 
-        using var json = AssertJson(new Invocation(code, output.ToString(), error.ToString()), 3, "remote status");
+        using var json = AssertJson(invocation, 3, "remote status");
         Assert.Equal("notRunning", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void RemoteStatusReportsAutomationDisabledWithoutWaitingWhenPipeIsMissingAndApplicationIsRunning()
+    {
+        var environment = _environment with
+        {
+            AutomationPipeExists = _ => false,
+            IsApplicationRunning = () => true,
+            VerifyAutomationServer = (_, _) => throw new InvalidOperationException("確認関数は接続後にだけ使います。")
+        };
+        var stopwatch = Stopwatch.StartNew();
+
+        var invocation = Run(environment, "remote", "status");
+
+        stopwatch.Stop();
+        using var json = AssertJson(invocation, 3, "remote status");
+        Assert.Equal("automationDisabled", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("ScreenRecorder は起動していますが、自動化用の接続を受け付けていません。設定の「自動化用の接続を受け付ける」をオンにして保存してください。", json.RootElement.GetProperty("error").GetProperty("message").GetString());
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"判定に {stopwatch.Elapsed} かかりました。");
+    }
+
+    [Fact]
+    public void RemoteStatusReportsNotRunningWithoutWaitingWhenPipeAndApplicationAreMissing()
+    {
+        var environment = _environment with
+        {
+            AutomationPipeExists = _ => false,
+            IsApplicationRunning = () => false,
+            VerifyAutomationServer = (_, _) => throw new InvalidOperationException("確認関数は接続後にだけ使います。")
+        };
+        var stopwatch = Stopwatch.StartNew();
+
+        var invocation = Run(environment, "remote", "status");
+
+        stopwatch.Stop();
+        using var json = AssertJson(invocation, 3, "remote status");
+        Assert.Equal("notRunning", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"判定に {stopwatch.Elapsed} かかりました。");
+    }
+
+    [McpPipeFact]
+    public void AutomationPipeAvailabilityDetectsExistingAndMissingPipes()
+    {
+        var pipeName = $"ScreenRecorder.Automation.Exists.{Guid.NewGuid():N}";
+        using var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var environment = _environment with
+        {
+            AutomationPipeName = pipeName,
+            AutomationPipeExists = AutomationRemoteCommand.AutomationPipeExists
+        };
+
+        Assert.True(environment.AutomationPipeExists(environment.AutomationPipeName));
+        Assert.False(environment.AutomationPipeExists($"{pipeName}.Missing"));
     }
 
     [Fact]
@@ -643,11 +700,13 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Equal("remote status", availableJson.RootElement.GetProperty("command").GetString());
     }
 
-    private Invocation Run(params string[] arguments)
+    private Invocation Run(params string[] arguments) => Run(_environment, arguments);
+
+    private static Invocation Run(CliEnvironment environment, params string[] arguments)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
-        var exitCode = CliApplication.Run(arguments, output, error, _environment);
+        var exitCode = CliApplication.Run(arguments, output, error, environment);
         return new Invocation(exitCode, output.ToString(), error.ToString());
     }
 

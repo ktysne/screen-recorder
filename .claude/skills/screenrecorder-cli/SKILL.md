@@ -50,7 +50,7 @@ $cli = "src/ScreenRecorder.Cli/bin/Debug/net10.0-windows10.0.22000.0/screenrecor
 - 撮影の保存を確認するときは、開始前の ISO 8601 時刻を指定して `remote wait --state idle --capture-after <日時>` を実行し、返った `result.lastCapture.path` を `probe` に渡す。
 - `remote perform` で本体の撮影や録画を始め、`remote select` で開いている選択画面を完了または取り消す。
 - `remote exit` で本体を終了する。テスト後にトレイを残さないために使う。
-- 接続先が見つからないときは、本体で自動化用接続が有効かを確認する。
+- `automationDisabled` は本体が起動中で自動化用接続が無効、`notRunning` は本体が起動していない状態を示す。
 - 引数と選択画面が操作を受け付ける条件は `help remote` と `help remote select` を正本とする。
 
 ## 長さを比べるときの注意
