@@ -106,8 +106,8 @@ public sealed class AutomationPipeServerTests
         {
             using var client = await ConnectAsync(pipeName);
             using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            using var writer = new StreamWriter(client, new UTF8Encoding(false), leaveOpen: true) { NewLine = "\n", AutoFlush = true };
-            await writer.WriteLineAsync("123456789");
+            // サーバーが閉じた後のパイプへ Flush すると例外になるため、Dispose で Flush する StreamWriter を使わない。
+            await client.WriteAsync(Encoding.UTF8.GetBytes("123456789\n"));
 
             Assert.Null(await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
         }
