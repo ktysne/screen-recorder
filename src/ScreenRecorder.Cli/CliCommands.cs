@@ -1,6 +1,32 @@
 namespace ScreenRecorder.Cli;
 
-internal sealed record CliOptionDefinition(string Name, string? ValueName, string Description);
+internal enum CliValueKind
+{
+    String,
+    Integer,
+    Number,
+    Enumeration,
+    Path,
+    Boolean
+}
+
+internal sealed record CliOptionDefinition(
+    string Name,
+    string? ValueName,
+    string Description,
+    CliValueKind ValueKind,
+    IReadOnlyList<string>? Choices = null,
+    bool Repeatable = false,
+    string? McpName = null)
+{
+    public string McpPropertyName => McpName ?? (Name == "-o" ? "output" : Name.TrimStart('-').Replace('-', '_'));
+}
+
+internal sealed record CliPositionDefinition(
+    string McpPropertyName,
+    CliValueKind ValueKind = CliValueKind.String,
+    IReadOnlyList<string>? Choices = null,
+    string Description = "");
 
 internal sealed record CliCommandDefinition(
     string Name,
@@ -8,7 +34,8 @@ internal sealed record CliCommandDefinition(
     string Description,
     IReadOnlyList<CliOptionDefinition> Options,
     int MinimumPositionals = 0,
-    int MaximumPositionals = 0);
+    int MaximumPositionals = 0,
+    IReadOnlyList<CliPositionDefinition>? McpPositionals = null);
 
 internal sealed record ParsedCliCommand(
     CliCommandDefinition Definition,
@@ -23,18 +50,27 @@ internal sealed record CliParseResult(ParsedCliCommand? Command, string? Error)
 
 internal static class CliCommands
 {
-    private static readonly CliOptionDefinition FileOption = new("--file", "<パス>", "読み取る設定ファイルのパス。省略時は本体の設定を使います。");
-    private static readonly CliOptionDefinition SinceOption = new("--since", "<日時>", "指定した ISO 8601 の日時以降を表示します。");
-    private static readonly CliOptionDefinition LevelOption = new("--level", "<レベル>", "指定したレベル以上(error、warn、info、debug の順に重い)の行だけを表示します。");
-    private static readonly CliOptionDefinition TagOption = new("--tag", "<タグ>", "指定したタグの行だけを表示します。");
-    private static readonly CliOptionDefinition GrepOption = new("--grep", "<文字列>", "本文または生行に文字列を含む行だけを表示します。");
-    private static readonly CliOptionDefinition LimitOption = new("--limit", "<件数>", "条件に合う行のうち、末尾から表示する行数です。既定は 200 です。");
-    private static readonly CliOptionDefinition AutomationAppOption = new("--app", "<パス>", "接続先の実行ファイルを指定して照合します。");
-    private static readonly CliOptionDefinition CaptureAfterOption = new("--capture-after", "<日時>", "指定した時刻より後の撮影結果を待ちます。時刻と時差を含む ISO 8601(例: 2026-09-28T10:00:00+09:00)で指定します。");
+    private static CliOptionDefinition Option(
+        string name,
+        string? valueName,
+        string description,
+        CliValueKind kind = CliValueKind.String,
+        IReadOnlyList<string>? choices = null,
+        bool repeatable = false,
+        string? mcpName = null) => new(name, valueName, description, kind, choices, repeatable, mcpName);
+
+    private static readonly CliOptionDefinition FileOption = Option("--file", "<パス>", "読み取る設定ファイルのパス。省略時は本体の設定を使います。", CliValueKind.Path);
+    private static readonly CliOptionDefinition SinceOption = Option("--since", "<日時>", "指定した ISO 8601 の日時以降を表示します。");
+    private static readonly CliOptionDefinition LevelOption = Option("--level", "<レベル>", "指定したレベル以上(error、warn、info、debug の順に重い)の行だけを表示します。", CliValueKind.Enumeration, ["error", "warn", "info", "debug"]);
+    private static readonly CliOptionDefinition TagOption = Option("--tag", "<タグ>", "指定したタグの行だけを表示します。");
+    private static readonly CliOptionDefinition GrepOption = Option("--grep", "<文字列>", "本文または生行に文字列を含む行だけを表示します。");
+    private static readonly CliOptionDefinition LimitOption = Option("--limit", "<件数>", "条件に合う行のうち、末尾から表示する行数です。既定は 200 です。", CliValueKind.Integer);
+    private static readonly CliOptionDefinition AutomationAppOption = Option("--app", "<パス>", "接続先の実行ファイルを指定して照合します。", CliValueKind.Path);
+    private static readonly CliOptionDefinition CaptureAfterOption = Option("--capture-after", "<日時>", "指定した時刻より後の撮影結果を待ちます。時刻と時差を含む ISO 8601(例: 2026-09-28T10:00:00+09:00)で指定します。");
 
     public static IReadOnlyList<CliOptionDefinition> GlobalOptions { get; } =
     [
-        new("--text", null, "人が読む形式で出力します。")
+        Option("--text", null, "人が読む形式で出力します。", CliValueKind.Boolean)
     ];
 
     public static IReadOnlyList<CliCommandDefinition> All { get; } =
@@ -43,67 +79,72 @@ internal static class CliCommands
         new("settings show", "", "設定を読み取り、既定値を補った内容を表示します。", [FileOption]),
         new("settings validate", "", "設定ファイルの形式と値を検査します。", [FileOption]),
         new("logs list", "", "診断ログの一覧を表示します。", []),
-        new("logs show", "[<ファイル>]", "診断ログのヘッダーと行を表示します。ファイルを省くと最新のログを使います。", [SinceOption, LevelOption, TagOption, GrepOption, LimitOption], 0, 1),
+        new("logs show", "[<ファイル>]", "診断ログのヘッダーと行を表示します。ファイルを省くと最新のログを使います。", [SinceOption, LevelOption, TagOption, GrepOption, LimitOption], 0, 1, [new("file", CliValueKind.Path, Description: "読み取る診断ログのパスです。省略時は最新のログを使います。")]),
         new("remote status", "", "常駐中の ScreenRecorder の状態を表示します。", [AutomationAppOption]),
         new("remote wait", "", "常駐中の ScreenRecorder が指定状態になるまで待ちます。", [
-            new("--state", "<状態>", "idle、countdown、preparing、recording、paused、saving のいずれかです。"),
+            Option("--state", "<状態>", "idle、countdown、preparing、recording、paused、saving のいずれかです。", CliValueKind.Enumeration, ["idle", "countdown", "preparing", "recording", "paused", "saving"]),
             CaptureAfterOption,
-            new("--timeout", "<秒>", "待ち時間です。既定は 30 秒、上限は 3600 秒です。"),
+            Option("--timeout", "<秒>", "待ち時間です。既定は 30 秒、上限は 3600 秒です。", CliValueKind.Integer),
             AutomationAppOption
         ]),
-        new("remote perform", "<動作>", "status の shortcuts[] に表示された動作を常駐中の ScreenRecorder で始めます。", [AutomationAppOption], 1, 1),
+        new("remote perform", "<動作>", "status の shortcuts[] に表示された動作を常駐中の ScreenRecorder で始めます。", [AutomationAppOption], 1, 1,
+            [new("action", CliValueKind.Enumeration, ["screenshotRegion", "screenshotFullScreen", "screenshotWindow", "recordingRegion", "recordingFullScreen", "recordingWindow", "pauseResume", "stopRecording"], "status の shortcuts[] にある動作です。")]),
         new("remote select", "", "開いている選択画面を範囲、ウィンドウ、取り消しのいずれかで完了させます。", [
-            new("--rect", "<x,y,w,h>", "仮想画面上の物理ピクセル範囲です。"),
-            new("--window", "<hwnd>", "選択画面が受け付けるウィンドウハンドルです。"),
-            new("--cancel", null, "選択を取り消します。"),
+            Option("--rect", "<x,y,w,h>", "仮想画面上の物理ピクセル範囲です。"),
+            Option("--window", "<hwnd>", "選択画面が受け付けるウィンドウハンドルです。"),
+            Option("--cancel", null, "選択を取り消します。", CliValueKind.Boolean),
             AutomationAppOption
         ]),
         new("remote exit", "", "常駐中の ScreenRecorder の終了を要求します。", [AutomationAppOption]),
         new("naming preview", "", "設定と指定値から保存ファイル名を計算します。", [
-            new("--template", "<ひな形>", "ファイル名のひな形を上書きします。"),
-            new("--mode", "<種類>", "full、region、window のいずれかを指定します。"),
-            new("--window", "<タイトル>", "{window} に使うウィンドウタイトルです。"),
-            new("--at", "<日時>", "計算に使う ISO 8601 の日時です。"),
-            new("--dir", "<フォルダー>", "保存先フォルダーを上書きします。")
+            Option("--template", "<ひな形>", "ファイル名のひな形を上書きします。"),
+            Option("--mode", "<種類>", "full、region、window のいずれかを指定します。", CliValueKind.Enumeration, ["full", "region", "window"]),
+            Option("--window", "<タイトル>", "{window} に使うウィンドウタイトルです。"),
+            Option("--at", "<日時>", "計算に使う ISO 8601 の日時です。"),
+            Option("--dir", "<フォルダー>", "保存先フォルダーを上書きします。", CliValueKind.Path)
         ]),
         new("record", "", "画面を録画します。--dry-run では開始データだけを計算します。", [
-            new("--display", "<番号>", "info の順のモニター番号です。"),
-            new("--rect", "<x,y,w,h>", "仮想画面上の範囲です。"),
-            new("--window", "<hwnd>", "ウィンドウハンドルです。"),
-            new("-o", "<MP4>", "保存先です。"),
-            new("--duration", "<秒>", "録画する実時間です。"),
-            new("--pause-at", "<秒>", "録画開始から一時停止までの時間です。"),
-            new("--resume-at", "<秒>", "録画開始から再開までの時間です。"),
-            new("--settings", "<パス>", "設定ファイルです。"),
-            new("--defaults", null, "組み込みの既定値を使います。"),
-            new("--app", "<パス>", "ScreenRecorder.exe の場所です。"),
-            new("--force", null, "既存の出力を上書きします。"),
-            new("--dry-run", null, "録画せずに開始データを表示します。"),
-            new("--log-level", "<レベル>", "silent、error、warn、info、debug。")
+            Option("--display", "<番号>", "info の順のモニター番号です。", CliValueKind.Integer),
+            Option("--rect", "<x,y,w,h>", "仮想画面上の範囲です。"),
+            Option("--window", "<hwnd>", "ウィンドウハンドルです。"),
+            Option("-o", "<MP4>", "保存先です。", CliValueKind.Path),
+            Option("--duration", "<秒>", "録画する実時間です。", CliValueKind.Number),
+            Option("--pause-at", "<秒>", "録画開始から一時停止までの時間です。", CliValueKind.Number),
+            Option("--resume-at", "<秒>", "録画開始から再開までの時間です。", CliValueKind.Number),
+            Option("--settings", "<パス>", "設定ファイルです。", CliValueKind.Path),
+            Option("--defaults", null, "組み込みの既定値を使います。", CliValueKind.Boolean),
+            Option("--app", "<パス>", "ScreenRecorder.exe の場所です。", CliValueKind.Path),
+            Option("--force", null, "既存の出力を上書きします。", CliValueKind.Boolean),
+            Option("--dry-run", null, "録画せずに開始データを表示します。", CliValueKind.Boolean),
+            Option("--log-level", "<レベル>", "silent、error、warn、info、debug。", CliValueKind.Enumeration, ["silent", "error", "warn", "info", "debug"])
         ]),
         new("screenshot", "", "画面を静止画として保存します。", [
-            new("--display", "<番号>", "info の順のモニター番号です。"),
-            new("--rect", "<x,y,w,h>", "仮想画面上の範囲です。"),
-            new("--window", "<hwnd>", "ウィンドウハンドルです。"),
-            new("-o", "<パス>", "保存先です。.png、.jpg、.jpeg を指定できます。"),
-            new("--settings", "<パス>", "設定ファイルです。"),
-            new("--defaults", null, "組み込みの既定値を使います。"),
-            new("--force", null, "既存の出力を上書きします。")
+            Option("--display", "<番号>", "info の順のモニター番号です。", CliValueKind.Integer),
+            Option("--rect", "<x,y,w,h>", "仮想画面上の範囲です。"),
+            Option("--window", "<hwnd>", "ウィンドウハンドルです。"),
+            Option("-o", "<パス>", "保存先です。.png、.jpg、.jpeg を指定できます。", CliValueKind.Path),
+            Option("--settings", "<パス>", "設定ファイルです。", CliValueKind.Path),
+            Option("--defaults", null, "組み込みの既定値を使います。", CliValueKind.Boolean),
+            Option("--force", null, "既存の出力を上書きします。", CliValueKind.Boolean)
         ]),
         new("probe", "<ファイル>", "MP4 または PNG を検査します。", [
-            new("--expect-width", "<px>", "期待する幅です。"),
-            new("--expect-height", "<px>", "期待する高さです。"),
-            new("--expect-fps", "<fps>", "期待するフレームレートです。"),
-            new("--expect-duration-ms", "<ms>", "期待する長さです。"),
-            new("--tolerance-ms", "<ms>", "長さの許容差です。既定は 500 ms。"),
-            new("--expect-video-codec", "<名称>", "期待する映像コーデックです。"),
-            new("--expect-audio-channels", "<数>", "期待する音声チャンネル数です。"),
-            new("--expect-audio-rate", "<Hz>", "期待する音声サンプリングレートです。"),
-            new("--expect-no-audio", null, "音声がないことを確認します。"),
-            new("--frame", "<秒>", "指定時刻のフレームを書き出します。"),
-            new("-o", "<PNG>", "フレームの保存先です。"),
-            new("--force", null, "既存の出力を上書きします。")
-        ], 1, 1),
+            Option("--expect-width", "<px>", "期待する幅です。", CliValueKind.Integer),
+            Option("--expect-height", "<px>", "期待する高さです。", CliValueKind.Integer),
+            Option("--expect-fps", "<fps>", "期待するフレームレートです。", CliValueKind.Number),
+            Option("--expect-duration-ms", "<ms>", "期待する長さです。", CliValueKind.Integer),
+            Option("--tolerance-ms", "<ms>", "長さの許容差です。既定は 500 ms。", CliValueKind.Integer),
+            Option("--expect-video-codec", "<名称>", "期待する映像コーデックです。"),
+            Option("--expect-audio-channels", "<数>", "期待する音声チャンネル数です。", CliValueKind.Integer),
+            Option("--expect-audio-rate", "<Hz>", "期待する音声サンプリングレートです。", CliValueKind.Integer),
+            Option("--expect-no-audio", null, "音声がないことを確認します。", CliValueKind.Boolean),
+            Option("--frame", "<秒>", "指定時刻のフレームを書き出します。", CliValueKind.Number),
+            Option("-o", "<PNG>", "フレームの保存先です。", CliValueKind.Path),
+            Option("--force", null, "既存の出力を上書きします。", CliValueKind.Boolean)
+        ], 1, 1, [new("file", CliValueKind.Path, Description: "検査する MP4 または PNG ファイルのパスです。")]),
+        new("mcp", "", "標準入出力で MCP サーバーを起動します。", [
+            Option("--app", "<パス>", "接続先にする ScreenRecorder.exe の場所です。", CliValueKind.Path),
+            Option("--allow-dir", "<フォルダー>", "出力を許可するフォルダーです。複数回指定できます。", CliValueKind.Path, repeatable: true)
+        ]),
         new("help", "[<コマンド>]", "コマンド一覧または指定したコマンドの使い方を表示します。", [], 0, 2)
     ];
 
@@ -112,8 +153,8 @@ internal static class CliCommands
         var parts = new List<string> { definition.Name };
         if (definition.PositionalSyntax.Length > 0) parts.Add(definition.PositionalSyntax);
         parts.AddRange(definition.Options.Select(option => option.ValueName is null
-            ? $"[{option.Name}]"
-            : $"[{option.Name} {option.ValueName}]"));
+            ? $"[{option.Name}]" + (option.Repeatable ? "..." : "")
+            : $"[{option.Name} {option.ValueName}]" + (option.Repeatable ? "..." : "")));
         return string.Join(' ', parts);
     }
 
@@ -161,7 +202,7 @@ internal static class CliCommands
 
             if (!optionDefinitions.TryGetValue(token, out var option))
                 return new CliParseResult(null, $"このコマンドでは {token} を使えません。");
-            if (parsedOptions.ContainsKey(token))
+            if (parsedOptions.ContainsKey(token) && !option.Repeatable)
                 return new CliParseResult(null, $"オプション {token} は 1 回だけ指定できます。");
 
             if (option.ValueName is null)

@@ -462,6 +462,59 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Equal("notRunning", json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
+    [Fact]
+    public void HelpListsMcpAndRepeatableAllowDirectoryOption()
+    {
+        using var json = AssertJson(Run("help", "mcp"), 0, "help");
+        var command = json.RootElement.GetProperty("result").GetProperty("commands")[0];
+
+        Assert.Equal("mcp", command.GetProperty("name").GetString());
+        Assert.Contains("[--allow-dir <フォルダー>]...", command.GetProperty("usage").GetString());
+        Assert.Contains(command.GetProperty("options").EnumerateArray(), option => option.GetProperty("name").GetString() == "--allow-dir");
+    }
+
+    [McpPipeFact]
+    public async Task McpCallsBecomeBusyAndRemoteWaitCancellationReleasesTheStaExecutor()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName, TimeSpan.FromSeconds(8));
+        var service = new McpCommandService(
+            "C:\\ScreenRecorder.exe",
+            McpPathAccessPolicy.Create([Path.GetTempPath()]),
+            () => _environment);
+        using var executor = new McpSerialExecutor();
+        using var cancellation = new CancellationTokenSource();
+        var waitInput = McpInput("""{"state":"idle","timeout":45}""");
+        var first = executor.ExecuteAsync(
+            () => service.Invoke("remote_wait", waitInput, cancellation.Token),
+            () => service.Busy("remote_wait"),
+            cancellation.Token);
+        await WaitUntilAsync(() => server.Methods.Contains("waitFor"), TimeSpan.FromSeconds(5));
+
+        var busy = await executor.ExecuteAsync(
+            () => service.Invoke("info", new Dictionary<string, JsonElement>(), CancellationToken.None),
+            () => service.Busy("info"),
+            CancellationToken.None);
+        Assert.NotNull(busy);
+        Assert.Equal(3, busy.ExitCode);
+        using (var busyJson = JsonDocument.Parse(busy.Json))
+            Assert.Equal("busy", busyJson.RootElement.GetProperty("error").GetProperty("code").GetString());
+
+        cancellation.Cancel();
+        var cancelled = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(cancelled);
+        using (var cancelledJson = JsonDocument.Parse(cancelled.Json))
+            Assert.Equal("cancelled", cancelledJson.RootElement.GetProperty("error").GetProperty("code").GetString());
+
+        var available = await executor.ExecuteAsync(
+            () => service.Invoke("remote_status", new Dictionary<string, JsonElement>(), CancellationToken.None),
+            () => service.Busy("remote_status"),
+            CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(available);
+        Assert.Equal(0, available.ExitCode);
+        using var availableJson = JsonDocument.Parse(available.Json);
+        Assert.Equal("remote status", availableJson.RootElement.GetProperty("command").GetString());
+    }
+
     private Invocation Run(params string[] arguments)
     {
         using var output = new StringWriter();
@@ -478,6 +531,25 @@ public sealed class CliApplicationTests : IDisposable
             var exitCode = CliApplication.Run(arguments, output, error, environment);
             return new Invocation(exitCode, output.ToString(), error.ToString());
         });
+
+    private static IReadOnlyDictionary<string, JsonElement> McpInput(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.EnumerateObject().ToDictionary(
+            property => property.Name,
+            property => property.Value.Clone(),
+            StringComparer.Ordinal);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline) throw new TimeoutException("指定した状態を待ち受けましたが、期限内に届きませんでした。");
+            await Task.Delay(25);
+        }
+    }
 
     private static JsonDocument AssertRemoteSuccess(Invocation invocation, string expectedCommand)
     {

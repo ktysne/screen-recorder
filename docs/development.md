@@ -27,6 +27,32 @@ Windows の実機で `SCREENRECORDER_DESKTOP_TESTS=1` を設定して実行し�
 実機テストが本体を起動するときは、`SCREENRECORDER_TEST_DATA_DIR` に一時フォルダーを指定します。
 設定、診断ログ、更新用ファイル、自動起動の登録をそのフォルダーの下に置くため、利用者の状態を変更しません。
 
+## Claude Desktop から MCP を使う
+
+`dotnet build ScreenRecorder.slnx` の Debug ビルドを使う場合は、Claude Desktop の設定ファイル `%APPDATA%\Claude\claude_desktop_config.json` に次を登録します。
+CLI と `--app` は同じビルドのファイルを指定します。
+`D:\Desktop\Develop\screen-recorder` と出力先は、実際の配置に合わせて置き換えてください。
+
+```json
+{
+  "mcpServers": {
+    "screenrecorder": {
+      "command": "D:\\Desktop\\Develop\\screen-recorder\\src\\ScreenRecorder.Cli\\bin\\Debug\\net10.0-windows10.0.22000.0\\screenrecorder-cli.exe",
+      "args": [
+        "mcp",
+        "--app",
+        "D:\\Desktop\\Develop\\screen-recorder\\src\\ScreenRecorder.App\\bin\\x64\\Debug\\net10.0-windows10.0.22000.0\\win-x64\\ScreenRecorder.exe",
+        "--allow-dir",
+        "D:\\ScreenRecorder-MCP-output"
+      ]
+    }
+  }
+}
+```
+
+`--allow-dir` は複数指定できます。
+`%TEMP%` は常に出力先として許可されます。
+
 ## アプリのアイコン
 
 `src/ScreenRecorder.App/app.ico` と配布ページのアイコン `site/assets/app-icon-256.png` は、`assets/screen-recorder-a1-transparent.png` から作ります。
