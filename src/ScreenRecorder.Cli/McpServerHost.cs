@@ -110,12 +110,8 @@ internal static class McpServerHost
                 && context.Params.ProgressToken is { } progressToken
                 && (toolName is "record" or "remote_wait"))
             {
-                var progress = 0;
-                while (!execution.IsCompleted)
+                await WaitWithProgressAsync(execution, async (progress, token) =>
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1), requestToken).ConfigureAwait(false);
-                    if (execution.IsCompleted) break;
-                    progress++;
                     var parameters = new JsonObject
                     {
                         ["progressToken"] = JsonSerializer.SerializeToNode(progressToken.Token),
@@ -126,8 +122,8 @@ internal static class McpServerHost
                     {
                         Method = "notifications/progress",
                         Params = parameters
-                    }, requestToken).ConfigureAwait(false);
-                }
+                    }, token).ConfigureAwait(false);
+                }, TimeSpan.FromSeconds(1), requestToken).ConfigureAwait(false);
             }
 
             var result = await execution.ConfigureAwait(false);
@@ -136,6 +132,23 @@ internal static class McpServerHost
                 Content = [new TextContentBlock { Text = result!.Json }],
                 IsError = result.ExitCode != 0
             };
+        }
+    }
+
+    // 取り消し後も録画の停止と MP4 の書き終えを待ってから返すため、待ちは取り消しで抜けず、進捗の送信だけを止める。
+    internal static async Task WaitWithProgressAsync(
+        Task execution,
+        Func<int, CancellationToken, Task> sendProgress,
+        TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        var progress = 0;
+        while (!execution.IsCompleted)
+        {
+            await Task.WhenAny(execution, Task.Delay(interval)).ConfigureAwait(false);
+            if (execution.IsCompleted || cancellationToken.IsCancellationRequested) continue;
+            try { await sendProgress(++progress, cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }
     }
 
