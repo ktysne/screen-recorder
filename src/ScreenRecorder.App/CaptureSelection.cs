@@ -21,6 +21,21 @@ internal sealed class ScreenshotSelection(ScreenshotMode mode, Rectangle bounds,
 
 internal static class CaptureSelection
 {
+    private static readonly object ActiveSessionSync = new();
+    private static CaptureSelectionSession? _activeSession;
+
+    public static bool TrySelectRegion(Rectangle bounds) => GetActiveSession()?.TrySelectRegion(bounds) ?? false;
+
+    public static bool TrySelectWindow(IntPtr window) => GetActiveSession()?.TrySelectWindow(window) ?? false;
+
+    public static bool CancelActiveSelection()
+    {
+        var session = GetActiveSession();
+        if (session is null || session.IsCompleted) return false;
+        session.Cancel();
+        return true;
+    }
+
     public static bool TryCreateWindowSelection(IntPtr window, out ScreenshotSelection? selection, out string reason)
     {
         selection = null;
@@ -48,6 +63,7 @@ internal static class CaptureSelection
         var forms = new List<CaptureSelectionForm>();
         try
         {
+            SetActiveSession(session);
             foreach (var display in displays) forms.Add(new CaptureSelectionForm(session, display));
             session.SetForms(forms.ToArray());
             foreach (var form in forms) _ = form.Handle;
@@ -58,13 +74,41 @@ internal static class CaptureSelection
         }
         finally
         {
-            foreach (var form in forms)
+            try
             {
-                if (!form.IsDisposed) form.Close();
-                form.Dispose();
+                foreach (var form in forms)
+                {
+                    if (!form.IsDisposed) form.Close();
+                    form.Dispose();
+                }
             }
-            foreach (var display in displays) display.Dispose();
+            finally
+            {
+                ClearActiveSession(session);
+                foreach (var display in displays) display.Dispose();
+            }
         }
+    }
+
+    private static CaptureSelectionSession? GetActiveSession()
+    {
+        lock (ActiveSessionSync) return _activeSession;
+    }
+
+    private static void SetActiveSession(CaptureSelectionSession session)
+    {
+        lock (ActiveSessionSync)
+        {
+            if (_activeSession is { IsCompleted: false })
+                throw new InvalidOperationException("選択画面は同時に 1 つだけ開けます。");
+            _activeSession = session;
+        }
+    }
+
+    private static void ClearActiveSession(CaptureSelectionSession session)
+    {
+        lock (ActiveSessionSync)
+            if (ReferenceEquals(_activeSession, session)) _activeSession = null;
     }
 
     internal sealed class DisplaySnapshot(Rectangle bounds, Bitmap? image) : IDisposable
@@ -127,17 +171,32 @@ internal static class CaptureSelection
                 return;
             }
 
+            CompleteRegion(bounds.Value, display);
+        }
+
+        public bool TrySelectRegion(Rectangle bounds)
+        {
+            if (mode != ScreenshotMode.Region || IsCompleted) return false;
+            var display = displays.FirstOrDefault(item => Contains(item.Bounds, bounds));
+            if (display is null) return false;
+
+            CompleteRegion(bounds, display.Bounds);
+            return true;
+        }
+
+        private void CompleteRegion(Rectangle bounds, Rectangle display)
+        {
             var snapshot = displays.First(item => item.Bounds == display).Image;
             Bitmap? frozen = null;
             if (snapshot is not null)
             {
-                frozen = new Bitmap(bounds.Value.Width, bounds.Value.Height, PixelFormat.Format32bppArgb);
+                frozen = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
                 try
                 {
                     using var graphics = Graphics.FromImage(frozen);
                     graphics.DrawImage(snapshot,
-                        new Rectangle(Point.Empty, bounds.Value.Size),
-                        new Rectangle(bounds.Value.X - display.X, bounds.Value.Y - display.Y, bounds.Value.Width, bounds.Value.Height),
+                        new Rectangle(Point.Empty, bounds.Size),
+                        new Rectangle(bounds.X - display.X, bounds.Y - display.Y, bounds.Width, bounds.Height),
                         GraphicsUnit.Pixel);
                 }
                 catch
@@ -146,7 +205,7 @@ internal static class CaptureSelection
                     throw;
                 }
             }
-            Complete(new ScreenshotSelection(ScreenshotMode.Region, bounds.Value, frozen, IntPtr.Zero, null));
+            Complete(new ScreenshotSelection(ScreenshotMode.Region, bounds, frozen, IntPtr.Zero, null));
         }
 
         public void SelectWindowAtPointer()
@@ -154,6 +213,15 @@ internal static class CaptureSelection
             var target = FindWindowUnderCursor();
             if (target is null) return;
             Complete(new ScreenshotSelection(ScreenshotMode.Window, target.Value.Bounds, null, target.Value.Window, target.Value.Title));
+        }
+
+        public bool TrySelectWindow(IntPtr window)
+        {
+            if (mode != ScreenshotMode.Window || IsCompleted || !IsEnumeratedTopLevelWindow(window)) return false;
+            var target = GetSelectableWindow(window);
+            if (target is null) return false;
+            Complete(new ScreenshotSelection(ScreenshotMode.Window, target.Value.Bounds, null, target.Value.Window, target.Value.Title));
+            return true;
         }
 
         public void Cancel() => Complete(null);
@@ -168,18 +236,15 @@ internal static class CaptureSelection
         private (IntPtr Window, Rectangle Bounds, string Title)? FindWindowUnderCursor()
         {
             if (!NativeMethods.GetCursorPos(out var pointer)) return null;
-            var ownProcessId = (uint)Environment.ProcessId;
-            var excluded = _forms.Select(form => form.Handle).ToHashSet();
             (IntPtr Window, Rectangle Bounds, string Title)? match = null;
             Exception? failure = null;
             NativeMethods.EnumWindows((window, parameter) =>
             {
                 try
                 {
-                    NativeMethods.GetWindowThreadProcessId(window, out var processId);
-                    if (processId == ownProcessId || excluded.Contains(window) || !WindowRecordingTarget.TryGetWindowInfo(window, out var bounds, out var title, out _)) return true;
-                    if (!bounds.Contains(new Point(pointer.X, pointer.Y))) return true;
-                    match = (window, bounds, title);
+                    var target = GetSelectableWindow(window);
+                    if (target is null || !target.Value.Bounds.Contains(new Point(pointer.X, pointer.Y))) return true;
+                    match = target;
                     return false;
                 }
                 catch (Exception exception)
@@ -190,6 +255,27 @@ internal static class CaptureSelection
             }, IntPtr.Zero);
             if (failure is not null) throw new InvalidOperationException("ウィンドウを判定できませんでした。", failure);
             return match;
+        }
+
+        // マウスでの選択は EnumWindows の候補から選ぶので、外から渡すウィンドウも同じ候補に限る。
+        private static bool IsEnumeratedTopLevelWindow(IntPtr window)
+        {
+            var found = false;
+            NativeMethods.EnumWindows((candidate, parameter) =>
+            {
+                found = candidate == window;
+                return !found;
+            }, IntPtr.Zero);
+            return found;
+        }
+
+        private (IntPtr Window, Rectangle Bounds, string Title)? GetSelectableWindow(IntPtr window)
+        {
+            NativeMethods.GetWindowThreadProcessId(window, out var processId);
+            if (processId == (uint)Environment.ProcessId || _forms.Any(form => form.Handle == window)) return null;
+            return WindowRecordingTarget.TryGetWindowInfo(window, out var bounds, out var title, out _)
+                ? (window, bounds, title)
+                : null;
         }
 
         private void Complete(ScreenshotSelection? selection)
@@ -213,6 +299,19 @@ internal static class CaptureSelection
             foreach (var form in _forms)
                 if (!form.IsDisposed) form.Invalidate();
         }
+    }
+
+    private static bool Contains(Rectangle display, Rectangle selection)
+    {
+        if (selection.Width <= 0 || selection.Height <= 0) return false;
+        var selectionLeft = (long)selection.X;
+        var selectionTop = (long)selection.Y;
+        var selectionRight = selectionLeft + selection.Width;
+        var selectionBottom = selectionTop + selection.Height;
+        return selectionLeft >= display.X
+            && selectionTop >= display.Y
+            && selectionRight <= (long)display.X + display.Width
+            && selectionBottom <= (long)display.Y + display.Height;
     }
 
     private sealed class CaptureSelectionForm : Form

@@ -491,13 +491,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception exception) { DiagnosticLog.Warn(DiagnosticLogTags.Automation, $"自動化用パイプを閉じられませんでした: {exception.Message}"); }
     }
 
-    private async Task<string?> HandleAutomationLineAsync(string line, CancellationToken cancellationToken)
+    private async Task<AutomationPipeResponse?> HandleAutomationLineAsync(string line, CancellationToken cancellationToken)
     {
         var read = AutomationProtocol.ReadRequest(line);
         if (!read.Success)
         {
             DiagnosticLog.Info(DiagnosticLogTags.Automation, $"自動化要求を断りました: メソッド=unknown、理由={read.Error!.Data.Code}");
-            return AutomationProtocol.WriteError(read.Id, read.Error);
+            return new AutomationPipeResponse(AutomationProtocol.WriteError(read.Id, read.Error));
         }
 
         var request = read.Request!;
@@ -506,23 +506,26 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var level = method is "status" or "waitFor" ? DiagnosticLogLevel.Debug : DiagnosticLogLevel.Info;
         WriteAutomationLog(level, $"自動化要求を受け取りました: メソッド={method}");
 
-        string response;
+        AutomationLineResult response;
         string? failureCode = null;
         try
         {
             response = method switch
             {
-                "hello" => AutomationProtocol.WriteResult(
+                "hello" => new(AutomationProtocol.WriteResult(
                     request.Id,
                     new AutomationHelloResult(AutomationProtocol.CurrentVersion, Environment.ProcessId),
-                    AutomationJsonContext.Default.AutomationHelloResult),
-                "status" => await WriteStatusAsync(request.Id, cancellationToken),
-                "waitFor" => await WriteWaitForStatusAsync(request, cancellationToken),
-                _ => AutomationProtocol.WriteError(
+                    AutomationJsonContext.Default.AutomationHelloResult)),
+                "status" => new(await WriteStatusAsync(request.Id, cancellationToken)),
+                "waitFor" => new(await WriteWaitForStatusAsync(request, cancellationToken)),
+                "perform" => await WritePerformAsync(request, cancellationToken),
+                "selection" => await WriteSelectionAsync(request, cancellationToken),
+                "exit" => await WriteExitAsync(request, cancellationToken),
+                _ => new(AutomationProtocol.WriteError(
                     request.Id,
-                    AutomationProtocol.Error(AutomationRpcErrorCodes.MethodNotFound, "このメソッドはまだ利用できません。", "methodNotFound"))
+                    AutomationProtocol.Error(AutomationRpcErrorCodes.MethodNotFound, "このメソッドはまだ利用できません。", "methodNotFound")), "methodNotFound")
             };
-            if (method is not ("hello" or "status" or "waitFor")) failureCode = "methodNotFound";
+            failureCode = response.FailureCode;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -531,38 +534,188 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (JsonException)
         {
             failureCode = "invalidParams";
-            response = AutomationProtocol.WriteError(
+            response = new(AutomationProtocol.WriteError(
                 request.Id,
-                AutomationProtocol.Error(AutomationRpcErrorCodes.InvalidParams, "要求の引数の形式が正しくありません。", failureCode));
+                AutomationProtocol.Error(AutomationRpcErrorCodes.InvalidParams, "要求の引数の形式が正しくありません。", failureCode)));
         }
         catch (AutomationWaitBusyException)
         {
             failureCode = "busy";
-            response = AutomationProtocol.WriteError(
+            response = new(AutomationProtocol.WriteError(
                 request.Id,
-                AutomationProtocol.Error(AutomationRpcErrorCodes.Busy, "待機中の要求が上限に達しています。", failureCode));
+                AutomationProtocol.Error(AutomationRpcErrorCodes.Busy, "待機中の要求が上限に達しています。", failureCode)));
         }
         catch (TimeoutException)
         {
             failureCode = "timeout";
-            response = AutomationProtocol.WriteError(
+            response = new(AutomationProtocol.WriteError(
                 request.Id,
-                AutomationProtocol.Error(AutomationRpcErrorCodes.Timeout, "指定された状態になる前に期限が切れました。", failureCode));
+                AutomationProtocol.Error(AutomationRpcErrorCodes.Timeout, "指定された状態になる前に期限が切れました。", failureCode)));
         }
         catch (Exception)
         {
             failureCode = "internalError";
-            response = AutomationProtocol.WriteError(
+            response = new(AutomationProtocol.WriteError(
                 request.Id,
-                AutomationProtocol.Error(AutomationRpcErrorCodes.InternalError, "要求を処理できませんでした。", failureCode));
+                AutomationProtocol.Error(AutomationRpcErrorCodes.InternalError, "要求を処理できませんでした。", failureCode)));
         }
 
         if (failureCode is null)
             WriteAutomationLog(level, $"自動化応答を作成しました: メソッド={method}、成否=成功");
         else
             WriteAutomationLog(level, $"自動化要求を断りました: メソッド={method}、理由={failureCode}、成否=失敗");
-        return response;
+        return new AutomationPipeResponse(response.Line, response.AfterWrite);
     }
+
+    private async Task<AutomationLineResult> WritePerformAsync(AutomationJsonRpcRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Params is not { ValueKind: JsonValueKind.Object } parameters)
+            throw new JsonException("perform の引数がありません。");
+        var perform = AutomationProtocol.ReadParameters(parameters, AutomationJsonContext.Default.AutomationPerformParams);
+        if (!TryParseAutomationAction(perform.Action, out var action))
+            throw new JsonException("perform の動作が正しくありません。");
+
+        return await _uiDispatcher.InvokeAsync(() =>
+        {
+            var decision = DecideAutomationRequest(CreateAutomationStatus(), "perform", action);
+            if (!decision.Accepted) return RejectedAutomationRequest(request.Id, decision.ErrorDataCode!);
+            WriteAutomationLog(DiagnosticLogLevel.Info, $"自動化の動作を受け付けました: 動作={AutomationActionName(action)}");
+            PerformAction(action);
+            return new AutomationLineResult(AutomationProtocol.WriteResult(
+                request.Id,
+                new AutomationAcceptedResult(true),
+                AutomationJsonContext.Default.AutomationAcceptedResult));
+        }, cancellationToken);
+    }
+
+    private async Task<AutomationLineResult> WriteSelectionAsync(AutomationJsonRpcRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Params is not { ValueKind: JsonValueKind.Object } parameters)
+            throw new JsonException("selection の引数がありません。");
+        var selection = AutomationProtocol.ReadParameters(parameters, AutomationJsonContext.Default.AutomationSelectionParams);
+        if (!IsValidSelectionParameters(selection)) throw new JsonException("selection の引数が正しくありません。");
+
+        return await _uiDispatcher.InvokeAsync(() =>
+        {
+            var decision = DecideAutomationRequest(CreateAutomationStatus(), "selection");
+            if (!decision.Accepted) return RejectedAutomationRequest(request.Id, decision.ErrorDataCode!);
+
+            var accepted = selection.Kind switch
+            {
+                "rect" => CaptureSelection.TrySelectRegion(new Rectangle(selection.X!.Value, selection.Y!.Value, selection.Width!.Value, selection.Height!.Value)),
+                "window" => CaptureSelection.TrySelectWindow(ToWindowHandle(selection.Hwnd!.Value)),
+                "cancel" => CaptureSelection.CancelActiveSelection(),
+                _ => false
+            };
+            if (!accepted)
+            {
+                if (selection.Kind == "cancel")
+                    return RejectedAutomationRequest(request.Id, "selectionNotOpen");
+                return new AutomationLineResult(AutomationProtocol.WriteError(
+                    request.Id,
+                    AutomationProtocol.Error(AutomationRpcErrorCodes.InvalidParams, "範囲またはウィンドウを選択画面で受け付けられません。", "invalidParams")), "invalidParams");
+            }
+
+            WriteAutomationLog(DiagnosticLogLevel.Info, selection.Kind == "rect"
+                ? $"選択画面を範囲で完了しました: x={selection.X}、y={selection.Y}、w={selection.Width}、h={selection.Height}"
+                : $"選択画面を完了しました: 種類={selection.Kind}");
+            return new AutomationLineResult(AutomationProtocol.WriteResult(
+                request.Id,
+                new AutomationAcceptedResult(true),
+                AutomationJsonContext.Default.AutomationAcceptedResult));
+        }, cancellationToken);
+    }
+
+    private async Task<AutomationLineResult> WriteExitAsync(AutomationJsonRpcRequest request, CancellationToken cancellationToken) =>
+        await _uiDispatcher.InvokeAsync(() =>
+        {
+            var status = CreateAutomationStatus();
+            var decision = DecideAutomationRequest(status, "exit");
+            if (!decision.Accepted) return RejectedAutomationRequest(request.Id, decision.ErrorDataCode!);
+            if (status.Ui.SelectionScreenOpen) CaptureSelection.CancelActiveSelection();
+
+            return new AutomationLineResult(
+                AutomationProtocol.WriteResult(
+                    request.Id,
+                    new AutomationAcceptedResult(true),
+                    AutomationJsonContext.Default.AutomationAcceptedResult),
+                AfterWrite: () => DispatchToUi(RequestExit));
+        }, cancellationToken);
+
+    private static bool IsValidSelectionParameters(AutomationSelectionParams selection) => selection.Kind switch
+    {
+        "rect" => selection.X is not null
+            && selection.Y is not null
+            && selection.Width is > 0
+            && selection.Height is > 0
+            && selection.Hwnd is null,
+        "window" => selection.Hwnd is not null
+            && selection.X is null
+            && selection.Y is null
+            && selection.Width is null
+            && selection.Height is null,
+        "cancel" => selection.X is null
+            && selection.Y is null
+            && selection.Width is null
+            && selection.Height is null
+            && selection.Hwnd is null,
+        _ => false
+    };
+
+    private static IntPtr ToWindowHandle(long value)
+    {
+        if (IntPtr.Size == sizeof(int) && (value < int.MinValue || value > int.MaxValue))
+            throw new JsonException("ウィンドウハンドルの値が正しくありません。");
+        return new IntPtr(value);
+    }
+
+    private AutomationRequestDecision DecideAutomationRequest(AutomationStatus status, string method, RecorderAction? action = null) =>
+        AutomationRequestAdmission.Decide(
+            new AutomationRequestState(
+                status.Ui.ModalDialogOpen,
+                status.Ui.SelectionScreenOpen,
+                status.Ui.Countdown?.Kind switch
+                {
+                    "recording" => AutomationCountdownKind.Recording,
+                    "screenshot" => AutomationCountdownKind.Screenshot,
+                    _ => null
+                },
+                _updateController.IsDownloadingOrPreparing,
+                status.Menu.StopEnabled),
+            method,
+            action);
+
+    private static bool TryParseAutomationAction(string? action, out RecorderAction result)
+    {
+        result = action switch
+        {
+            "screenshotRegion" => RecorderAction.ScreenshotRegion,
+            "screenshotFullScreen" => RecorderAction.ScreenshotFullScreen,
+            "screenshotWindow" => RecorderAction.ScreenshotWindow,
+            "recordingRegion" => RecorderAction.RecordingRegion,
+            "recordingFullScreen" => RecorderAction.RecordingFullScreen,
+            "recordingWindow" => RecorderAction.RecordingWindow,
+            "pauseResume" => RecorderAction.PauseResume,
+            "stopRecording" => RecorderAction.StopRecording,
+            _ => (RecorderAction)(-1)
+        };
+        return Enum.IsDefined(result);
+    }
+
+    private static AutomationLineResult RejectedAutomationRequest(JsonElement? id, string code) => new(
+        AutomationProtocol.WriteError(
+            id,
+            AutomationProtocol.Error(AutomationRpcErrorCodes.RequestRejected, code switch
+            {
+                "rejectedWhileModal" => "モーダルのダイアログが開いているため操作を受け付けられません。",
+                "rejectedWhileSelection" => "選択画面が開いているため操作を受け付けられません。",
+                "rejectedDuringCountdown" => "カウントダウン中は操作を受け付けられません。",
+                "rejectedDuringUpdate" => "更新のダウンロードまたは準備中は操作を受け付けられません。",
+                _ => "選択画面が開いていません。"
+            }, code)),
+        code);
+
+    private sealed record AutomationLineResult(string Line, string? FailureCode = null, Action? AfterWrite = null);
 
     private async Task<string> WriteStatusAsync(JsonElement? id, CancellationToken cancellationToken)
     {

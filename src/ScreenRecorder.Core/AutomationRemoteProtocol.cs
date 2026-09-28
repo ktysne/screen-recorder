@@ -105,6 +105,7 @@ public static class AutomationRpcErrorCodes
     public const int InternalError = -32603;
     public const int Busy = -32001;
     public const int Timeout = -32002;
+    public const int RequestRejected = -32003;
 }
 
 public sealed record AutomationJsonRpcRequest(string Jsonrpc, JsonElement? Id, string? Method, JsonElement? Params);
@@ -132,6 +133,18 @@ public sealed record AutomationRequestReadResult(
 }
 
 public sealed record AutomationHelloResult(int ProtocolVersion, int ProcessId);
+
+public sealed record AutomationAcceptedResult(bool Accepted);
+
+public sealed record AutomationPerformParams(string Action);
+
+public sealed record AutomationSelectionParams(
+    string Kind,
+    int? X,
+    int? Y,
+    int? Width,
+    int? Height,
+    long? Hwnd);
 
 public sealed record AutomationWaitForParams(string State, DateTimeOffset? CaptureAfter, int TimeoutMilliseconds);
 
@@ -180,6 +193,9 @@ public sealed record AutomationStatus(
 [JsonSerializable(typeof(AutomationJsonRpcError))]
 [JsonSerializable(typeof(AutomationJsonRpcErrorData))]
 [JsonSerializable(typeof(AutomationHelloResult))]
+[JsonSerializable(typeof(AutomationAcceptedResult))]
+[JsonSerializable(typeof(AutomationPerformParams))]
+[JsonSerializable(typeof(AutomationSelectionParams))]
 [JsonSerializable(typeof(AutomationWaitForParams))]
 [JsonSerializable(typeof(AutomationStatus))]
 public partial class AutomationJsonContext : JsonSerializerContext

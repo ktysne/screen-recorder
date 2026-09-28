@@ -329,6 +329,96 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task RemotePerformSendsTheRequestedAction()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var invocation = await RunAsync(_environment, "remote", "perform", "screenshotFullScreen");
+
+        using var json = AssertRemoteSuccess(invocation, "remote perform");
+        Assert.True(json.RootElement.GetProperty("result").GetProperty("accepted").GetBoolean());
+        Assert.Equal("screenshotFullScreen", server.ParametersFor("perform").GetProperty("action").GetString());
+        Assert.Equal(["hello", "perform"], server.Methods.ToArray());
+    }
+
+    [Fact]
+    public async Task RemoteSelectSendsPhysicalRectangleParameters()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var invocation = await RunAsync(_environment, "remote", "select", "--rect", "-1920,20,320,240");
+
+        using var json = AssertRemoteSuccess(invocation, "remote select");
+        var parameters = server.ParametersFor("selection");
+        Assert.Equal("rect", parameters.GetProperty("kind").GetString());
+        Assert.Equal(-1920, parameters.GetProperty("x").GetInt32());
+        Assert.Equal(20, parameters.GetProperty("y").GetInt32());
+        Assert.Equal(320, parameters.GetProperty("width").GetInt32());
+        Assert.Equal(240, parameters.GetProperty("height").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("--window", "0x1234", "window")]
+    [InlineData("--cancel", "", "cancel")]
+    public async Task RemoteSelectSendsWindowOrCancelParameters(string option, string value, string kind)
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var arguments = option == "--cancel"
+            ? new[] { "remote", "select", option }
+            : new[] { "remote", "select", option, value };
+        var invocation = await RunAsync(_environment, arguments);
+
+        using var json = AssertRemoteSuccess(invocation, "remote select");
+        var parameters = server.ParametersFor("selection");
+        Assert.Equal(kind, parameters.GetProperty("kind").GetString());
+        if (kind == "window") Assert.Equal(4660, parameters.GetProperty("hwnd").GetInt64());
+    }
+
+    [Fact]
+    public void RemotePerformAndSelectRejectInvalidArguments()
+    {
+        using var invalidAction = AssertJson(Run("remote", "perform", "unknown"), 2, "remote perform");
+        using var multipleSelections = AssertJson(Run("remote", "select", "--cancel", "--window", "0x1234"), 2, "remote select");
+        using var invalidRectangle = AssertJson(Run("remote", "select", "--rect", "0,0,0,10"), 2, "remote select");
+
+        Assert.Equal("invalidArguments", invalidAction.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalidArguments", multipleSelections.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalidArguments", invalidRectangle.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task RemoteCommandsMapServerRejectionDataCodeToCliError()
+    {
+        await using var server = FakeAutomationServer.Start(
+            _environment.AutomationPipeName,
+            errorMethod: "perform",
+            errorCode: "rejectedDuringCountdown");
+        var invocation = await RunAsync(_environment, "remote", "perform", "stopRecording");
+
+        using var json = AssertJson(invocation, 3, "remote perform");
+        Assert.Equal("rejectedDuringCountdown", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task RemoteExitSucceedsWhenTheServerReturnsAnAcceptedResponse()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
+        var invocation = await RunAsync(_environment, "remote", "exit");
+
+        using var json = AssertRemoteSuccess(invocation, "remote exit");
+        Assert.True(json.RootElement.GetProperty("result").GetProperty("accepted").GetBoolean());
+        Assert.Equal(["hello", "exit"], server.Methods.ToArray());
+    }
+
+    [Fact]
+    public async Task RemoteExitReportsDisconnectedWhenTheServerClosesBeforeItsResponse()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName, disconnectMethod: "exit");
+        var invocation = await RunAsync(_environment, "remote", "exit");
+
+        using var json = AssertJson(invocation, 3, "remote exit");
+        Assert.Equal("disconnected", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task RemoteStatusReportsImpersonatedServerFromVerificationBoundary()
     {
         await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName);
@@ -415,11 +505,18 @@ public sealed class CliApplicationTests : IDisposable
         private readonly AutomationPipeServer _server;
         private readonly ConcurrentQueue<string> _methods = new();
         private readonly TimeSpan _waitForDelay;
+        private readonly string? _errorMethod;
+        private readonly string? _errorCode;
+        private readonly string? _disconnectMethod;
         private JsonElement? _waitParameters;
+        private readonly ConcurrentDictionary<string, JsonElement> _parameters = new(StringComparer.Ordinal);
 
-        private FakeAutomationServer(string pipeName, TimeSpan waitForDelay)
+        private FakeAutomationServer(string pipeName, TimeSpan waitForDelay, string? errorMethod, string? errorCode, string? disconnectMethod)
         {
             _waitForDelay = waitForDelay;
+            _errorMethod = errorMethod;
+            _errorCode = errorCode;
+            _disconnectMethod = disconnectMethod;
             if (!AutomationPipeServer.TryStart(pipeName, HandleLineAsync, out var server) || server is null)
                 throw new InvalidOperationException("自動化用パイプを作成できませんでした。");
             _server = server;
@@ -427,28 +524,40 @@ public sealed class CliApplicationTests : IDisposable
 
         public IReadOnlyCollection<string> Methods => _methods.ToArray();
         public JsonElement? WaitParameters => _waitParameters;
+        public JsonElement ParametersFor(string method) => _parameters[method];
 
-        public static FakeAutomationServer Start(string pipeName, TimeSpan waitForDelay = default) => new(pipeName, waitForDelay);
+        public static FakeAutomationServer Start(
+            string pipeName,
+            TimeSpan waitForDelay = default,
+            string? errorMethod = null,
+            string? errorCode = null,
+            string? disconnectMethod = null) => new(pipeName, waitForDelay, errorMethod, errorCode, disconnectMethod);
 
         public ValueTask DisposeAsync() => _server.DisposeAsync();
 
-        private async Task<string?> HandleLineAsync(string line, CancellationToken cancellationToken)
+        private async Task<AutomationPipeResponse?> HandleLineAsync(string line, CancellationToken cancellationToken)
         {
             var read = AutomationProtocol.ReadRequest(line);
-            if (!read.Success) return AutomationProtocol.WriteError(read.Id, read.Error!);
+            if (!read.Success) return new AutomationPipeResponse(AutomationProtocol.WriteError(read.Id, read.Error!));
             var request = read.Request!;
             _methods.Enqueue(request.Method!);
+            if (request.Params is { } sentParameters)
+                _parameters[request.Method!] = sentParameters.Clone();
             if (request.Method == "waitFor" && request.Params is { } parameters)
                 _waitParameters = parameters.Clone();
             if (request.Method == "waitFor" && _waitForDelay > TimeSpan.Zero)
                 await Task.Delay(_waitForDelay, cancellationToken);
+            if (request.Method == _disconnectMethod) throw new IOException("応答前に切断しました。");
             await Task.Yield();
-            return request.Method switch
+            var response = request.Method switch
             {
+                _ when request.Method == _errorMethod => AutomationProtocol.WriteError(request.Id, AutomationProtocol.Error(AutomationRpcErrorCodes.RequestRejected, "要求を断りました。", _errorCode ?? "requestRejected")),
                 "hello" => AutomationProtocol.WriteResult(request.Id, new AutomationHelloResult(AutomationProtocol.CurrentVersion, Environment.ProcessId), AutomationJsonContext.Default.AutomationHelloResult),
                 "status" or "waitFor" => AutomationProtocol.WriteResult(request.Id, Status(), AutomationJsonContext.Default.AutomationStatus),
+                "perform" or "selection" or "exit" => AutomationProtocol.WriteResult(request.Id, new AutomationAcceptedResult(true), AutomationJsonContext.Default.AutomationAcceptedResult),
                 _ => AutomationProtocol.WriteError(request.Id, AutomationProtocol.Error(AutomationRpcErrorCodes.MethodNotFound, "未対応のメソッドです。", "methodNotFound"))
             };
+            return new AutomationPipeResponse(response);
         }
 
         private static AutomationStatus Status() => new(
