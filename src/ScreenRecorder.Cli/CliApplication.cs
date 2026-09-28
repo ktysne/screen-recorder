@@ -275,7 +275,9 @@ internal static class CliApplication
             : settings.FileNameTemplate;
         var window = command.Options.TryGetValue("--window", out var windowValue) ? windowValue : null;
         var path = isVideo
-            ? VideoRecordingFileNaming.GetAvailablePath(directory, settings.OrganizeByMonth, capturedAt.DateTime, mode, window, template, File.Exists)
+            ? VideoRecordingFileNaming.GetAvailablePath(
+                directory, settings.OrganizeByMonth, capturedAt.DateTime, mode, window, template,
+                candidate => File.Exists(candidate) || File.Exists(VideoRecordingFileNaming.GetTemporaryPath(candidate)))
             : ScreenshotFileNaming.GetAvailablePath(
                 directory,
                 settings.OrganizeByMonth,

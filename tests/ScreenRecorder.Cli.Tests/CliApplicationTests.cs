@@ -160,6 +160,18 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
+    public void NamingPreviewForVideoSkipsNamesWhoseRecordingIsInProgress()
+    {
+        var videos = Path.Combine(_root, "videos");
+        Directory.CreateDirectory(videos);
+        File.WriteAllText(Path.Combine(videos, "clip.recording.mp4"), "");
+
+        using var json = AssertJson(Run("naming", "preview", "--kind", "video", "--template", "clip", "--dir", videos), 0, "naming preview");
+
+        Assert.NotEqual("clip.mp4", json.RootElement.GetProperty("result").GetProperty("fileName").GetString());
+    }
+
+    [Fact]
     public void NamingPreviewRejectsUnknownKind()
     {
         using var json = AssertJson(Run("naming", "preview", "--kind", "audio"), 2, "naming preview");
