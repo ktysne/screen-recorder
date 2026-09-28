@@ -29,19 +29,23 @@ Windows の実機で `SCREENRECORDER_DESKTOP_TESTS=1` を設定して実行し�
 
 ## Claude Desktop から MCP を使う
 
-`dotnet build ScreenRecorder.slnx` の Debug ビルドを使う場合は、Claude Desktop の設定ファイル `%APPDATA%\Claude\claude_desktop_config.json` に次を登録します。
-CLI と `--app` は同じビルドのファイルを指定します。
-`D:\Desktop\Develop\screen-recorder` と出力先は、実際の配置に合わせて置き換えてください。
+Claude Desktop は、起動している間、登録した MCP のサーバーのプロセスを動かし続けます。
+ビルドの出力先の `screenrecorder-cli.exe` を直接登録すると、Claude Desktop を終了するまでそのファイルを置き換えられず、再ビルドが失敗します。
+これを避けるため、登録には Release の CLI の写しを使います。
+
+1. リポジトリ直下の `install-mcp-cli.bat` を実行します。CLI を Release で publish し、`%LOCALAPPDATA%\ScreenRecorder\mcp-cli\` に写します。
+2. `build-package.bat` で配布用の本体(`artifacts\publish\ScreenRecorder.exe`)を作ります。`record` と `remote` はこの本体を使います。
+3. Claude Desktop の設定ファイル `%APPDATA%\Claude\claude_desktop_config.json` に、写しを次のように登録します。`<ユーザー名>` とリポジトリの場所は、実際の配置に合わせて置き換えてください。
 
 ```json
 {
   "mcpServers": {
     "screenrecorder": {
-      "command": "D:\\Desktop\\Develop\\screen-recorder\\src\\ScreenRecorder.Cli\\bin\\Debug\\net10.0-windows10.0.22000.0\\screenrecorder-cli.exe",
+      "command": "C:\\Users\\<ユーザー名>\\AppData\\Local\\ScreenRecorder\\mcp-cli\\screenrecorder-cli.exe",
       "args": [
         "mcp",
         "--app",
-        "D:\\Desktop\\Develop\\screen-recorder\\src\\ScreenRecorder.App\\bin\\x64\\Debug\\net10.0-windows10.0.22000.0\\win-x64\\ScreenRecorder.exe",
+        "D:\\Desktop\\Develop\\screen-recorder\\artifacts\\publish\\ScreenRecorder.exe",
         "--allow-dir",
         "D:\\ScreenRecorder-MCP-output"
       ]
@@ -49,6 +53,15 @@ CLI と `--app` は同じビルドのファイルを指定します。
   }
 }
 ```
+
+`--app` の本体は、録画の間だけ起動されます。
+そのため、`--app` に指定した本体も、Debug と Release の再ビルドも、Claude Desktop の起動中に作り直せます。
+`--app` には、`dotnet build` で作った `src\ScreenRecorder.Appin\...\ScreenRecorder.exe` も指定できます。
+`remote` の各道具は、`--app` に指定した場所の本体だけを接続先として受け付けます。常駐させている本体と同じ場所を指定してください。
+`--app` を省くと、`remote` は実行ファイルの名前が `ScreenRecorder.exe` の本体を接続先として受け付けます。
+
+写しを新しくしたいときは、Claude Desktop を終了してから `install-mcp-cli.bat` を実行し直します。
+Claude Desktop の起動中は写しを置き換えられないので、スクリプトはその旨を表示して、写しに触れずに失敗します。
 
 `--allow-dir` は複数指定できます。
 `%TEMP%` は常に出力先として許可されます。

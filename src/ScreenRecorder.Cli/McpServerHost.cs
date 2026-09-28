@@ -20,7 +20,7 @@ internal static class McpServerHost
             var resolvedAppPath = ResolveAppPath(appPath, CliEnvironment.Create().FindApp, standardError);
             var allowedDirectories = new[] { Path.GetTempPath() }.Concat(additionalAllowedDirectories);
             var pathPolicy = McpPathAccessPolicy.Create(allowedDirectories);
-            var service = new McpCommandService(resolvedAppPath, pathPolicy, CliEnvironment.Create);
+            var service = new McpCommandService(resolvedAppPath, pathPolicy, CliEnvironment.Create, remoteAppPath: appPath);
             using var executor = new McpSerialExecutor();
             var transport = new StdioServerTransport("screenrecorder-cli", loggerFactory: null);
             using var shutdown = new CancellationTokenSource();

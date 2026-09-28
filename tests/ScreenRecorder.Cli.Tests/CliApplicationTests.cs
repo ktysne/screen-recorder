@@ -701,6 +701,29 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [McpPipeFact]
+    public async Task McpRemotePinsTheServerOnlyWhenTheAppWasGivenExplicitly()
+    {
+        await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName, TimeSpan.Zero);
+        var expectedPaths = new List<string?>();
+        var environment = _environment with
+        {
+            VerifyAutomationServer = (_, expected) =>
+            {
+                expectedPaths.Add(expected);
+                return new CliAutomationServerVerification(Environment.ProcessId, "C:\\ScreenRecorder.exe");
+            }
+        };
+        var policy = McpPathAccessPolicy.Create([Path.GetTempPath()]);
+
+        new McpCommandService("C:\\found\\ScreenRecorder.exe", policy, () => environment)
+            .Invoke("remote_status", McpInput("{}"), CancellationToken.None);
+        new McpCommandService("C:\\found\\ScreenRecorder.exe", policy, () => environment, remoteAppPath: "C:\\ScreenRecorder.exe")
+            .Invoke("remote_status", McpInput("{}"), CancellationToken.None);
+
+        Assert.Equal(new string?[] { null, "C:\\ScreenRecorder.exe" }, expectedPaths);
+    }
+
+    [McpPipeFact]
     public async Task McpCallsBecomeBusyAndRemoteWaitCancellationReleasesTheStaExecutor()
     {
         await using var server = FakeAutomationServer.Start(_environment.AutomationPipeName, TimeSpan.FromSeconds(8));
