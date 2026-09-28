@@ -137,6 +137,36 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
+    public void NamingPreviewForVideoUsesTheVideoDirectoryAndMp4()
+    {
+        var videos = Path.Combine(_root, "videos");
+        var stills = Path.Combine(_root, "stills");
+        File.WriteAllText(
+            Path.Combine(_settingsDirectory, "settings.json"),
+            JsonSerializer.Serialize(new { videoDirectory = videos, stillImageDirectory = stills, imageFormat = "png" }));
+
+        using var video = AssertJson(Run("naming", "preview", "--kind", "video", "--at", "2026-09-27T11:22:33+09:00"), 0, "naming preview");
+        var videoResult = video.RootElement.GetProperty("result");
+        Assert.Equal("video", videoResult.GetProperty("kind").GetString());
+        Assert.Equal(videos, videoResult.GetProperty("directory").GetString());
+        Assert.EndsWith(".mp4", videoResult.GetProperty("fileName").GetString());
+        Assert.Equal(JsonValueKind.Null, videoResult.GetProperty("imageFormat").ValueKind);
+
+        using var image = AssertJson(Run("naming", "preview", "--at", "2026-09-27T11:22:33+09:00"), 0, "naming preview");
+        var imageResult = image.RootElement.GetProperty("result");
+        Assert.Equal("image", imageResult.GetProperty("kind").GetString());
+        Assert.Equal(stills, imageResult.GetProperty("directory").GetString());
+        Assert.EndsWith(".png", imageResult.GetProperty("fileName").GetString());
+    }
+
+    [Fact]
+    public void NamingPreviewRejectsUnknownKind()
+    {
+        using var json = AssertJson(Run("naming", "preview", "--kind", "audio"), 2, "naming preview");
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public void HelpJsonIsGeneratedFromCommandDefinitions()
     {
         var invocation = Run("help");
