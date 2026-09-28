@@ -17,9 +17,10 @@ internal static class McpServerHost
 
         try
         {
+            var resolvedAppPath = ResolveAppPath(appPath, CliEnvironment.Create().FindApp, standardError);
             var allowedDirectories = new[] { Path.GetTempPath() }.Concat(additionalAllowedDirectories);
             var pathPolicy = McpPathAccessPolicy.Create(allowedDirectories);
-            var service = new McpCommandService(appPath!, pathPolicy, CliEnvironment.Create);
+            var service = new McpCommandService(resolvedAppPath, pathPolicy, CliEnvironment.Create);
             using var executor = new McpSerialExecutor();
             var transport = new StdioServerTransport("screenrecorder-cli", loggerFactory: null);
             using var shutdown = new CancellationTokenSource();
@@ -164,6 +165,18 @@ internal static class McpServerHost
         }
     };
 
+    // 本体の場所は起動時に決めて固定する(docs/automation-mcp.md「安全性」)。
+    internal static string ResolveAppPath(
+        string? requestedAppPath,
+        Func<string?, (string? Path, IReadOnlyList<string> Searched)> findApp,
+        TextWriter standardError)
+    {
+        var (path, searched) = findApp(requestedAppPath);
+        if (path is not null) return path;
+        standardError.WriteLine($"ScreenRecorder.exe が見つかりません。record と remote は appNotFound になります。探した場所: {string.Join(", ", searched)}");
+        return searched[0];
+    }
+
     internal static bool TryParseStartupOptions(
         IReadOnlyList<string> arguments,
         out string? appPath,
@@ -212,9 +225,7 @@ internal static class McpServerHost
 
         try
         {
-            appPath = requestedAppPath is null
-                ? Path.Combine(AppContext.BaseDirectory, "ScreenRecorder.exe")
-                : Path.GetFullPath(requestedAppPath);
+            appPath = requestedAppPath is null ? null : Path.GetFullPath(requestedAppPath);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
