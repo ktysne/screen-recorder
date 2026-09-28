@@ -83,6 +83,7 @@ internal sealed class SettingsForm : Form
         _videoTab = BuildVideoTab();
         _tabs.TabPages.Add(_videoTab);
         _tabs.TabPages.Add(BuildShortcutsTab());
+        _tabs.TabPages.Add(BuildAdvancedTab());
         root.Controls.Add(_tabs, 0, 0);
 
         var footer = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1 };
@@ -115,10 +116,6 @@ internal sealed class SettingsForm : Form
         BindCheck(preferences, UiLabels.CheckForUpdatesAutomatically, settings => settings.CheckForUpdatesAutomatically, (settings, value) => settings.CheckForUpdatesAutomatically = value);
         BindCheck(preferences, UiLabels.NotifyWhenSaved, settings => settings.NotifyWhenSaved, (settings, value) => settings.NotifyWhenSaved = value);
         BindCheck(preferences, UiLabels.PlayCaptureSound, settings => settings.PlayCaptureSound, (settings, value) => settings.PlayCaptureSound = value);
-
-        var automation = AddSection(root, UiLabels.AutomationSettings);
-        BindCheck(automation, UiLabels.AutomationEnabled, settings => settings.AutomationEnabled, (settings, value) => settings.AutomationEnabled = value);
-        AddFullWidth(automation, new Label { Text = UiLabels.AutomationEnabledHelp, AutoSize = true, MaximumSize = new Size(760, 0), Margin = new Padding(4, 0, 4, 8) });
 
         var naming = AddSection(root, UiLabels.FilenameOptions);
         BindText(naming, UiLabels.FileNameTemplate, settings => settings.FileNameTemplate, (settings, value) => settings.FileNameTemplate = value, UiLabels.FilenameTemplateHelp);
@@ -289,6 +286,15 @@ internal sealed class SettingsForm : Form
         _openKeyboardSettings.Click += (_, _) => OpenKeyboardSettings();
         _printScreenPanel.Controls.Add(_openKeyboardSettings, 1, 0);
         AddFullWidth(feedback, _printScreenPanel);
+        return page;
+    }
+
+    private TabPage BuildAdvancedTab()
+    {
+        var page = CreatePage(UiLabels.AdvancedTab, out var root);
+        var automation = AddSection(root, UiLabels.AutomationSettings);
+        BindCheck(automation, UiLabels.AutomationEnabled, settings => settings.AutomationEnabled, (settings, value) => settings.AutomationEnabled = value);
+        AddFullWidth(automation, new Label { Text = UiLabels.AutomationEnabledHelp, AutoSize = true, MaximumSize = new Size(760, 0), Margin = new Padding(4, 0, 4, 8) });
         return page;
     }
 
