@@ -21,7 +21,7 @@ internal static class AppVersion
 
 internal static class UpdatePaths
 {
-    public const string SingletonMutexName = "Local\\ScreenRecorder.Singleton";
+    public const string SingletonMutexName = AutomationProtocol.SingletonMutexName;
     public const string ApplierMutexName = "Local\\ScreenRecorder.UpdateApplier";
     public static string UpdateDirectory { get; } = StoragePaths.GetUpdateDirectory();
     public static string GetCleanupRecordPath(string updateId) => Path.Combine(UpdateDirectory, UpdateCleanupRecord.GetFileName(updateId));

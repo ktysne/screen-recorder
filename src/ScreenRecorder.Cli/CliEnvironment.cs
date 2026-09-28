@@ -29,6 +29,8 @@ internal sealed record CliEnvironment(
 {
     public Func<string?, (string? Path, IReadOnlyList<string> Searched)> FindApp { get; init; } = FindApplication;
     public Func<NamedPipeClientStream, string?, CliAutomationServerVerification> VerifyAutomationServer { get; init; } = AutomationRemoteCommand.VerifyServer;
+    public Func<string, bool> AutomationPipeExists { get; init; } = AutomationRemoteCommand.AutomationPipeExists;
+    public Func<bool> IsApplicationRunning { get; init; } = AutomationRemoteCommand.IsApplicationRunning;
     public string AutomationPipeName { get; init; } = AutomationProtocol.PipeName;
 
     public static CliEnvironment Create() => new(

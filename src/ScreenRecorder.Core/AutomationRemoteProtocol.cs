@@ -9,6 +9,7 @@ public static class AutomationProtocol
 {
     public const int CurrentVersion = 1;
     public const string PipeName = "ScreenRecorder.Automation";
+    public const string SingletonMutexName = "Local\\ScreenRecorder.Singleton";
 
     public static AutomationRequestReadResult ReadRequest(string line)
     {

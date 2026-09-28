@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using ScreenRecorder.Capture;
@@ -11,6 +12,7 @@ internal sealed record CliAutomationServerVerification(int? ProcessId, string? E
 
 internal static class AutomationRemoteCommand
 {
+    private const int ErrorFileNotFound = 2;
     private const int DefaultTimeoutSeconds = 30;
     private const int MaximumTimeoutSeconds = 3600;
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(5);
@@ -218,6 +220,13 @@ internal static class AutomationRemoteCommand
         TimeSpan waitTimeout,
         CancellationToken cancellationToken)
     {
+        if (!environment.AutomationPipeExists(environment.AutomationPipeName))
+        {
+            if (environment.IsApplicationRunning())
+                return Failure(CliExitCode.IoFailure, "automationDisabled", "ScreenRecorder は起動していますが、自動化用の接続を受け付けていません。設定の「自動化用の接続を受け付ける」をオンにして保存してください。");
+            return Failure(CliExitCode.IoFailure, "notRunning", "ScreenRecorder の自動化用接続を見つけられませんでした。");
+        }
+
         using var pipe = new NamedPipeClientStream(".", environment.AutomationPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         try
         {
@@ -278,6 +287,28 @@ internal static class AutomationRemoteCommand
             return Failure(CliExitCode.IoFailure, "disconnected", "接続先が応答を返す前に切断しました。");
         }
     }
+
+    internal static bool AutomationPipeExists(string pipeName) =>
+        WaitNamedPipe($@"\\.\pipe\{pipeName}", 0) || Marshal.GetLastWin32Error() != ErrorFileNotFound;
+
+    internal static bool IsApplicationRunning()
+    {
+        try
+        {
+            if (!Mutex.TryOpenExisting(AutomationProtocol.SingletonMutexName, out var mutex)) return false;
+            mutex.Dispose();
+            return true;
+        }
+        // 本体を管理者として起動していると開く権限が無いが、ミューテックス自体は存在する。
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "WaitNamedPipeW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WaitNamedPipe(string pipeName, uint timeoutMilliseconds);
 
     private static CliApplication.CliExecutionResult RemoteError(AutomationJsonRpcError error)
     {
