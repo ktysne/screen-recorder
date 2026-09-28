@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Text.Json;
 using ScreenRecorder.Capture;
 using ScreenRecorder.Cli;
@@ -306,6 +308,61 @@ public sealed class CliApplicationTests : IDisposable
         using var invalid = AssertJson(Run("probe", "x.mp4", "--frame", "1"), 2, "probe");
         using var missing = AssertJson(Run("probe", Path.Combine(_root, "missing.mp4")), 3, "probe");
         Assert.Equal("fileNotFound", missing.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void ProbeJpegReturnsDimensionsAndFormat()
+    {
+        var path = WriteProbeImage("image.JPEG", ImageFormat.Jpeg);
+
+        using var json = AssertJson(Run("probe", path), 0, "probe");
+        var result = json.RootElement.GetProperty("result");
+
+        Assert.Equal("jpeg", result.GetProperty("format").GetString());
+        Assert.Equal(320, result.GetProperty("width").GetInt32());
+        Assert.Equal(180, result.GetProperty("height").GetInt32());
+    }
+
+    [Fact]
+    public void ProbeJpegAddsWidthMismatchAndReturnsCheckFailure()
+    {
+        var path = WriteProbeImage("image.jpg", ImageFormat.Jpeg);
+
+        using var json = AssertJson(Run("probe", path, "--expect-width", "640"), 1, "probe");
+        var mismatches = json.RootElement.GetProperty("result").GetProperty("mismatches");
+
+        Assert.Contains(mismatches.EnumerateArray(), mismatch =>
+            mismatch.GetProperty("property").GetString() == "width"
+            && mismatch.GetProperty("expected").GetDouble() == 640
+            && mismatch.GetProperty("actual").GetDouble() == 320);
+    }
+
+    [Fact]
+    public void ProbeJpegRejectsVideoExpectations()
+    {
+        var path = WriteProbeImage("image.jpeg", ImageFormat.Jpeg);
+
+        using var json = AssertJson(Run("probe", path, "--expect-fps", "30"), 2, "probe");
+
+        Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void ProbePngReturnsPngFormat()
+    {
+        var path = WriteProbeImage("image.png", ImageFormat.Png);
+
+        using var json = AssertJson(Run("probe", path), 0, "probe");
+
+        Assert.Equal("png", json.RootElement.GetProperty("result").GetProperty("format").GetString());
+    }
+
+    private string WriteProbeImage(string fileName, ImageFormat format)
+    {
+        var path = Path.Combine(_root, fileName);
+        using var image = new Bitmap(320, 180);
+        image.Save(path, format);
+        return path;
     }
 
     [Fact]

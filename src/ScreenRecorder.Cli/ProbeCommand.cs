@@ -14,12 +14,18 @@ internal static class ProbeCommand
         var options = command.Options;
         var path = Path.GetFullPath(command.Positionals[0]);
         var isMp4 = string.Equals(Path.GetExtension(path), ".mp4", StringComparison.OrdinalIgnoreCase);
-        var isPng = string.Equals(Path.GetExtension(path), ".png", StringComparison.OrdinalIgnoreCase);
-        if (!isMp4 && !isPng) return Invalid("MP4 または PNG を指定してください。");
+        var extension = Path.GetExtension(path);
+        var imageFormat = string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+            ? "png"
+            : string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase)
+                ? "jpeg"
+                : null;
+        var isImage = imageFormat is not null;
+        if (!isMp4 && !isImage) return Invalid("MP4、PNG、JPEG のいずれかを指定してください。");
         if (options.ContainsKey("--frame") != options.ContainsKey("-o"))
             return Invalid("--frame と -o は一緒に指定してください。");
-        if (isPng && (options.ContainsKey("--frame") || options.Keys.Any(key => key.StartsWith("--expect-", StringComparison.Ordinal) && key is not ("--expect-width" or "--expect-height"))))
-            return Invalid("PNG では動画と音声の検査、フレームの書き出しはできません。");
+        if (isImage && (options.ContainsKey("--frame") || options.Keys.Any(key => key.StartsWith("--expect-", StringComparison.Ordinal) && key is not ("--expect-width" or "--expect-height"))))
+            return Invalid("静止画では動画と音声の検査、フレームの書き出しはできません。");
         var numbers = new Dictionary<string, double>();
         foreach (var key in new[] { "--expect-width", "--expect-height", "--expect-fps", "--expect-duration-ms", "--tolerance-ms", "--expect-audio-channels", "--expect-audio-rate", "--frame" })
         {
@@ -47,12 +53,12 @@ internal static class ProbeCommand
             mismatches.Add(new { property = key, expected, actual });
         }
         object result;
-        if (isPng)
+        if (isImage)
         {
             using var image = Image.FromFile(path);
             Compare("width", numbers.TryGetValue("--expect-width", out var width) ? width : null, (double)image.Width);
             Compare("height", numbers.TryGetValue("--expect-height", out var height) ? height : null, (double)image.Height);
-            result = new { path, width = image.Width, height = image.Height, mismatches };
+            result = new { path, format = imageFormat, width = image.Width, height = image.Height, mismatches };
         }
         else
         {
