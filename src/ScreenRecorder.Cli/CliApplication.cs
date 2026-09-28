@@ -45,7 +45,8 @@ internal static class CliApplication
         IReadOnlyList<string> arguments,
         TextWriter standardOutput,
         TextWriter standardError,
-        CliEnvironment environment)
+        CliEnvironment environment,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(standardOutput);
@@ -63,12 +64,16 @@ internal static class CliApplication
         var command = parsed.Command!;
         try
         {
-            var response = Execute(command, environment);
+            var response = Execute(command, environment, cancellationToken);
             if (command.TextMode)
                 standardOutput.WriteLine(FormatText(response.Result, response.Warnings, response.Error));
             else
                 WriteJson(standardOutput, environment, command.Definition.Name, response.Result, response.Warnings, response.Error);
             return (int)response.ExitCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return WriteFailure(standardOutput, environment, command.Definition.Name, CliExitCode.IoFailure, "cancelled", "コマンドを取り消しました。", command.TextMode);
         }
         catch (FileNotFoundException exception)
         {
@@ -100,20 +105,20 @@ internal static class CliApplication
         }
     }
 
-    private static CliExecutionResult Execute(ParsedCliCommand command, CliEnvironment environment) => command.Definition.Name switch
+    private static CliExecutionResult Execute(ParsedCliCommand command, CliEnvironment environment, CancellationToken cancellationToken) => command.Definition.Name switch
     {
         "info" => Info(environment),
         "settings show" => Settings(command, environment),
         "settings validate" => Settings(command, environment),
         "logs list" => LogsList(environment),
         "logs show" => LogsShow(command, environment),
-        "remote status" => AutomationRemoteCommand.ExecuteStatus(command, environment),
-        "remote wait" => AutomationRemoteCommand.ExecuteWait(command, environment),
-        "remote perform" => AutomationRemoteCommand.ExecutePerform(command, environment),
-        "remote select" => AutomationRemoteCommand.ExecuteSelect(command, environment),
-        "remote exit" => AutomationRemoteCommand.ExecuteExit(command, environment),
+        "remote status" => AutomationRemoteCommand.ExecuteStatus(command, environment, cancellationToken),
+        "remote wait" => AutomationRemoteCommand.ExecuteWait(command, environment, cancellationToken),
+        "remote perform" => AutomationRemoteCommand.ExecutePerform(command, environment, cancellationToken),
+        "remote select" => AutomationRemoteCommand.ExecuteSelect(command, environment, cancellationToken),
+        "remote exit" => AutomationRemoteCommand.ExecuteExit(command, environment, cancellationToken),
         "naming preview" => NamingPreview(command, environment),
-        "record" => RecordCommand.Execute(command, environment),
+        "record" => RecordCommand.Execute(command, environment, cancellationToken),
         "screenshot" => ScreenshotCommand.Execute(command, environment),
         "probe" => ProbeCommand.Execute(command),
         "help" => Help(command),

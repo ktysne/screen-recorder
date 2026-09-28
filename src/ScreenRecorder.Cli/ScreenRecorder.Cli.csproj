@@ -12,6 +12,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.2.0" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\ScreenRecorder.Core\ScreenRecorder.Core.csproj" />
     <ProjectReference Include="..\ScreenRecorder.Capture\ScreenRecorder.Capture.csproj" />
   </ItemGroup>

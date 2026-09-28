@@ -74,10 +74,10 @@ internal static class AutomationRemoteCommand
         }
     }
 
-    public static CliApplication.CliExecutionResult ExecuteStatus(ParsedCliCommand command, CliEnvironment environment) =>
-        Execute(command, environment, "status", null, TimeSpan.Zero);
+    public static CliApplication.CliExecutionResult ExecuteStatus(ParsedCliCommand command, CliEnvironment environment, CancellationToken cancellationToken = default) =>
+        Execute(command, environment, "status", null, TimeSpan.Zero, cancellationToken);
 
-    public static CliApplication.CliExecutionResult ExecuteWait(ParsedCliCommand command, CliEnvironment environment)
+    public static CliApplication.CliExecutionResult ExecuteWait(ParsedCliCommand command, CliEnvironment environment, CancellationToken cancellationToken = default)
     {
         if (!command.Options.TryGetValue("--state", out var state) || state is null)
             return Invalid("--state を指定してください。");
@@ -101,10 +101,10 @@ internal static class AutomationRemoteCommand
 
         var parameters = new AutomationWaitForParams(state, captureAfter, checked(timeoutSeconds * 1000));
         var json = JsonSerializer.SerializeToElement(parameters, AutomationJsonContext.Default.AutomationWaitForParams);
-        return Execute(command, environment, "waitFor", json, TimeSpan.FromSeconds(timeoutSeconds));
+        return Execute(command, environment, "waitFor", json, TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
     }
 
-    public static CliApplication.CliExecutionResult ExecutePerform(ParsedCliCommand command, CliEnvironment environment)
+    public static CliApplication.CliExecutionResult ExecutePerform(ParsedCliCommand command, CliEnvironment environment, CancellationToken cancellationToken = default)
     {
         var action = command.Positionals.SingleOrDefault();
         if (action is null || !ActionNames.Contains(action))
@@ -112,10 +112,10 @@ internal static class AutomationRemoteCommand
 
         var parameters = new AutomationPerformParams(action);
         var json = JsonSerializer.SerializeToElement(parameters, AutomationJsonContext.Default.AutomationPerformParams);
-        return Execute(command, environment, "perform", json, TimeSpan.Zero);
+        return Execute(command, environment, "perform", json, TimeSpan.Zero, cancellationToken);
     }
 
-    public static CliApplication.CliExecutionResult ExecuteSelect(ParsedCliCommand command, CliEnvironment environment)
+    public static CliApplication.CliExecutionResult ExecuteSelect(ParsedCliCommand command, CliEnvironment environment, CancellationToken cancellationToken = default)
     {
         var rectSpecified = command.Options.TryGetValue("--rect", out var rectValue);
         var windowSpecified = command.Options.TryGetValue("--window", out var windowValue);
@@ -142,11 +142,11 @@ internal static class AutomationRemoteCommand
         }
 
         var json = JsonSerializer.SerializeToElement(selection, AutomationJsonContext.Default.AutomationSelectionParams);
-        return Execute(command, environment, "selection", json, TimeSpan.Zero);
+        return Execute(command, environment, "selection", json, TimeSpan.Zero, cancellationToken);
     }
 
-    public static CliApplication.CliExecutionResult ExecuteExit(ParsedCliCommand command, CliEnvironment environment) =>
-        Execute(command, environment, "exit", null, TimeSpan.Zero);
+    public static CliApplication.CliExecutionResult ExecuteExit(ParsedCliCommand command, CliEnvironment environment, CancellationToken cancellationToken = default) =>
+        Execute(command, environment, "exit", null, TimeSpan.Zero, cancellationToken);
 
     private static bool TryParseRectangle(string? value, out int x, out int y, out int width, out int height)
     {
@@ -203,10 +203,11 @@ internal static class AutomationRemoteCommand
         CliEnvironment environment,
         string method,
         JsonElement? parameters,
-        TimeSpan waitTimeout)
+        TimeSpan waitTimeout,
+        CancellationToken cancellationToken)
     {
         command.Options.TryGetValue("--app", out var expectedAppPath);
-        return ExecuteAsync(environment, expectedAppPath, method, parameters, waitTimeout).GetAwaiter().GetResult();
+        return ExecuteAsync(environment, expectedAppPath, method, parameters, waitTimeout, cancellationToken).GetAwaiter().GetResult();
     }
 
     private static async Task<CliApplication.CliExecutionResult> ExecuteAsync(
@@ -214,12 +215,17 @@ internal static class AutomationRemoteCommand
         string? expectedAppPath,
         string method,
         JsonElement? parameters,
-        TimeSpan waitTimeout)
+        TimeSpan waitTimeout,
+        CancellationToken cancellationToken)
     {
         using var pipe = new NamedPipeClientStream(".", environment.AutomationPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         try
         {
-            await pipe.ConnectAsync(3000);
+            await pipe.ConnectAsync(3000, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception) when (exception is IOException or TimeoutException or UnauthorizedAccessException or OperationCanceledException)
         {
@@ -243,8 +249,8 @@ internal static class AutomationRemoteCommand
         using var idDocument = JsonDocument.Parse("1");
         try
         {
-            await session.SendAsync(idDocument.RootElement, "hello", null, CancellationToken.None);
-            var hello = await session.ReceiveAsync(ResponseTimeout, CancellationToken.None);
+            await session.SendAsync(idDocument.RootElement, "hello", null, cancellationToken);
+            var hello = await session.ReceiveAsync(ResponseTimeout, cancellationToken);
             if (hello.Error is not null) return RemoteError(hello.Error);
             if (hello.Result is not { } helloResult
                 || !helloResult.TryGetProperty("protocolVersion", out var version)
@@ -253,9 +259,9 @@ internal static class AutomationRemoteCommand
                 return Failure(CliExitCode.IoFailure, "protocolMismatch", "接続先と通信プロトコルの版が一致しません。");
 
             using var requestIdDocument = JsonDocument.Parse("2");
-            await session.SendAsync(requestIdDocument.RootElement, method, parameters, CancellationToken.None);
+            await session.SendAsync(requestIdDocument.RootElement, method, parameters, cancellationToken);
             // 本体は期限ちょうどに timeout を返すので、その応答が届く分だけ長く待つ。
-            var response = await session.ReceiveAsync(waitTimeout + ResponseTimeout, CancellationToken.None);
+            var response = await session.ReceiveAsync(waitTimeout + ResponseTimeout, cancellationToken);
             if (response.Error is not null) return RemoteError(response.Error);
             if (response.Result is not { } result)
                 return Failure(CliExitCode.IoFailure, "invalidResponse", "接続先の応答に状態がありません。");
@@ -264,6 +270,7 @@ internal static class AutomationRemoteCommand
         }
         catch (OperationCanceledException)
         {
+            if (cancellationToken.IsCancellationRequested) throw;
             return Failure(CliExitCode.IoFailure, "timeout", "接続先からの応答を待つ時間を超えました。");
         }
         catch (Exception exception) when (exception is IOException or JsonException or DecoderFallbackException or ObjectDisposedException)

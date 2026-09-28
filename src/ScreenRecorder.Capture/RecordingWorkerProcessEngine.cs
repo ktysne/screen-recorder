@@ -26,6 +26,7 @@ public sealed class RecordingWorkerProcessEngine : IRecordingEngine
     private Task? _connectionTask;
     private Task? _readerTask;
     private Task? _writerTask;
+    private Task? _standardOutputTask;
     private Task? _eventTask;
     private System.Threading.Timer? _timer;
     private Stopwatch? _startupStopwatch;
@@ -97,6 +98,7 @@ public sealed class RecordingWorkerProcessEngine : IRecordingEngine
             try
             {
                 if (!process.Start()) throw new InvalidOperationException("録画プロセスを起動できませんでした。");
+                _standardOutputTask = DrainStandardOutputAsync(process.StandardOutput);
             }
             catch
             {
@@ -186,6 +188,8 @@ public sealed class RecordingWorkerProcessEngine : IRecordingEngine
         catch (AggregateException) { }
         try { _writerTask?.Wait(TimeSpan.FromSeconds(5)); }
         catch (AggregateException) { }
+        try { _standardOutputTask?.Wait(ReaderDrainWaitOnExit); }
+        catch (AggregateException) { }
         lock (_gate)
         {
             _eventQueueCompleted = true;
@@ -203,12 +207,19 @@ public sealed class RecordingWorkerProcessEngine : IRecordingEngine
         var startInfo = new ProcessStartInfo
         {
             FileName = _executablePath,
-            UseShellExecute = false
+            UseShellExecute = false,
+            RedirectStandardOutput = true
         };
         startInfo.ArgumentList.Add("--record-worker");
         startInfo.ArgumentList.Add(pipeName);
         startInfo.ArgumentList.Add(_workerLogLevel.ToSettingName());
         return startInfo;
+    }
+
+    private static async Task DrainStandardOutputAsync(StreamReader reader)
+    {
+        var buffer = new char[4096];
+        while (await reader.ReadAsync(buffer.AsMemory()).ConfigureAwait(false) != 0) { }
     }
 
     private async Task ConnectAndReadAsync()

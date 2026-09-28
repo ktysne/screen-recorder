@@ -39,6 +39,75 @@ public sealed class CliDesktopTests
     }
 
     [DesktopFact]
+    public async Task CancellingRecordWaitsForTheMp4ToBeFinalized()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "test-output", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var video = Path.Combine(directory, "cancelled.mp4");
+        var settings = Path.Combine(directory, "settings.json");
+        File.WriteAllText(settings, """{ "encoder": "softwareOnly" }""");
+        var appFound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var baseEnvironment = CliEnvironment.Create();
+        var environment = baseEnvironment with
+        {
+            FindApp = path =>
+            {
+                var result = baseEnvironment.FindApp(path);
+                appFound.TrySetResult();
+                return result;
+            }
+        };
+        using var cancellation = new CancellationTokenSource();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var completed = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                completed.TrySetResult(CliApplication.Run(
+                    ["record", "--display", "0", "--duration", "60", "--settings", settings, "-o", video],
+                    output,
+                    error,
+                    environment,
+                    cancellation.Token));
+            }
+            catch (Exception exception)
+            {
+                completed.TrySetException(exception);
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        try
+        {
+            await appFound.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            cancellation.Cancel();
+            var exitCode = await completed.Task.WaitAsync(TimeSpan.FromMinutes(2));
+
+            Assert.Equal(0, exitCode);
+            using var response = JsonDocument.Parse(output.ToString());
+            Assert.True(response.RootElement.GetProperty("result").GetProperty("interrupted").GetBoolean());
+            Assert.Equal(video, response.RootElement.GetProperty("result").GetProperty("finalPath").GetString());
+            var info = await MediaFileProbe.InspectAsync(video);
+            Assert.True(info.Video.Width > 0);
+            Assert.True(info.Duration > TimeSpan.Zero);
+        }
+        finally
+        {
+            if (!completed.Task.IsCompleted) cancellation.Cancel();
+            if (completed.Task.IsCompleted && Directory.Exists(directory))
+            {
+                try { Directory.Delete(directory, recursive: true); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    [DesktopFact]
     public void ForcedRecordKeepsTheExistingFileAndReturnsTheSavedVideoWhenReplacingFails()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "test-output", Guid.NewGuid().ToString("N"));

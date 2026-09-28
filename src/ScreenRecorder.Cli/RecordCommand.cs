@@ -13,7 +13,10 @@ internal static class RecordCommand
     private static CliApplication.CliExecutionResult Invalid(string message, string code = "invalidArguments") =>
         new(CliExitCode.InvalidArguments, null, [], new CliError(code, message));
 
-    public static CliApplication.CliExecutionResult Execute(ParsedCliCommand command, CliEnvironment environment)
+    public static CliApplication.CliExecutionResult Execute(
+        ParsedCliCommand command,
+        CliEnvironment environment,
+        CancellationToken cancellationToken = default)
     {
         var options = command.Options;
         var dryRun = options.ContainsKey("--dry-run");
@@ -106,7 +109,7 @@ internal static class RecordCommand
         if (!Directory.Exists(directory)) return Invalid("保存先のフォルダーがありません。");
         warnings.AddRange(Directory.EnumerateFiles(directory, "*.cli-partial.mp4"));
         return Record(plan, target, settings, outputPath, temporaryPath, appSearch, duration, pauseAt, resumeAt, hasPause,
-            options.ContainsKey("--force"), level, warnings);
+            options.ContainsKey("--force"), level, warnings, cancellationToken);
     }
 
     private static Settings ReadSettings(IReadOnlyDictionary<string, string?> options, CliEnvironment environment, List<string> warnings)
@@ -131,7 +134,8 @@ internal static class RecordCommand
 
     private static CliApplication.CliExecutionResult Record(RecordingStartPlan plan, object target, Settings settings,
         string outputPath, string temporaryPath, (string? Path, IReadOnlyList<string> Searched) app, double duration,
-        double pauseAt, double resumeAt, bool hasPause, bool force, DiagnosticLogLevel level, List<string> warnings)
+        double pauseAt, double resumeAt, bool hasPause, bool force, DiagnosticLogLevel level, List<string> warnings,
+        CancellationToken cancellationToken)
     {
         var logs = new ConcurrentQueue<object>();
         var events = new BlockingCollection<object>();
@@ -147,7 +151,8 @@ internal static class RecordCommand
         RecordingStartupTimings? timings = null;
         var recordingClock = new Stopwatch();
         using var inhibitor = new SystemSleepInhibitor();
-        ConsoleCancelEventHandler cancel = (_, args) => { args.Cancel = true; Interlocked.Exchange(ref interrupted, 1); };
+        ConsoleCancelEventHandler cancel = (_, args) => { args.Cancel = true; RequestStop(); };
+        using var cancellationRegistration = cancellationToken.Register(RequestStop);
         DiagnosticLog.SetForwarder(level, (severity, tag, message) => logs.Enqueue(new { at = DateTimeOffset.Now, level = severity.ToSettingName(), tag, message }));
         Console.CancelKeyPress += cancel;
         try
@@ -281,5 +286,7 @@ internal static class RecordCommand
             DiagnosticLog.ClearForwarder();
             events.Dispose();
         }
+
+        void RequestStop() => Interlocked.Exchange(ref interrupted, 1);
     }
 }

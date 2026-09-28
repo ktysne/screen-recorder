@@ -44,7 +44,8 @@ public sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostProce
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
             };
             foreach (var argument in Mp3TranscodeRules.BuildArguments(temporaryPath, outputPath, settings.Mp3BitrateKbps))
                 startInfo.ArgumentList.Add(argument);
@@ -54,6 +55,7 @@ public sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostProce
             var stopwatch = Stopwatch.StartNew();
             long lastOutputTicks = 0;
             var standardErrorTail = new StandardErrorTail(StandardErrorTailLength);
+            var standardOutputTask = DrainStandardOutputAsync(process.StandardOutput);
             // 読み取りを止めると stderr のパイプが詰まり、ffmpeg が書き込み待ちで停止する。
             var standardErrorTask = ReadStandardErrorAsync(process, standardErrorTail, stopwatch, ticks => Interlocked.Exchange(ref lastOutputTicks, ticks));
             var exitTask = process.WaitForExitAsync(cancellationToken);
@@ -84,12 +86,14 @@ public sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostProce
                     DiagnosticLog.Warn(DiagnosticLogTags.Convert, "ffmpeg を終了してから 10 秒以内に終了を確認できませんでした。");
                 }
                 await ObserveStandardErrorAsync(standardErrorTask).ConfigureAwait(false);
+                await ObserveStandardOutputAsync(standardOutputTask).ConfigureAwait(false);
                 standardError = standardErrorTail.ToString();
                 return KeepAac(temporaryPath, outputPath, "MP3 への変換に失敗したため、音声は AAC のまま保存しました。", $"ffmpeg が {Mp3TranscodeRules.OutputStallTimeout.TotalSeconds:0} 秒間何も出力しなかったため、変換を止めました; 標準エラー末尾={Tail(standardError)}");
             }
 
             await exitTask.ConfigureAwait(false);
             await standardErrorTask.ConfigureAwait(false);
+            await standardOutputTask.ConfigureAwait(false);
             standardError = standardErrorTail.ToString();
             var outcome = Mp3TranscodeRules.DecideOutcome(true, process.ExitCode, File.Exists(outputPath));
             if (outcome != Mp3TranscodeOutcome.UseConvertedFile)
@@ -124,9 +128,21 @@ public sealed class FfmpegVideoRecordingPostProcessor : IVideoRecordingPostProce
         }
     }
 
+    private static async Task DrainStandardOutputAsync(StreamReader reader)
+    {
+        var buffer = new char[4096];
+        while (await reader.ReadAsync(buffer.AsMemory()).ConfigureAwait(false) != 0) { }
+    }
+
     private static async Task ObserveStandardErrorAsync(Task standardErrorTask)
     {
         try { await standardErrorTask.WaitAsync(ProcessExitTimeoutAfterKill).ConfigureAwait(false); }
+        catch (TimeoutException) { }
+    }
+
+    private static async Task ObserveStandardOutputAsync(Task standardOutputTask)
+    {
+        try { await standardOutputTask.WaitAsync(ProcessExitTimeoutAfterKill).ConfigureAwait(false); }
         catch (TimeoutException) { }
     }
 
