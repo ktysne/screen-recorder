@@ -5,7 +5,7 @@ description: ScreenRecorder の自動化用 CLI(screenrecorder-cli)で、設定�
 
 # ScreenRecorder CLI の使い方
 
-状態：段階 5 は実装済み。MCP 接続は `mcp` を使い、登録例は `docs/development.md` を参照する。
+状態：段階 5 は実装済み。MCP 接続は `mcp` を使い、導入と登録の手順は `docs/mcp-setup.md` を参照する。
 
 設計の正本は `docs/automation-cli.md`、引数の正本は `help` の出力である。
 この Skill には場面ごとのコマンドの選び方だけを書き、引数の詳細は写さない。
