@@ -43,7 +43,8 @@ public sealed class McpToolCatalogTests
         Assert.True(GetTool("remote_exit").DestructiveHint);
         Assert.True(GetTool("screenshot").DestructiveHint);
         Assert.Contains("開発向け", GetTool("naming_preview").Description);
-        Assert.Contains("remote_perform と remote_wait", GetTool("record").Description);
+        Assert.Contains("remote_perform", GetTool("record").Description);
+        Assert.Contains("stopRecording", GetTool("record").Description);
     }
 
     [Fact]

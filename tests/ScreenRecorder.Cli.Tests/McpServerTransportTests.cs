@@ -11,7 +11,7 @@ namespace ScreenRecorder.Cli.Tests;
 public sealed class McpServerTransportTests
 {
     [McpPipeFact]
-    public async Task SdkHandlesInitializationToolsListAndInfoCallOverTwoPipes()
+    public async Task 初期化応答にinstructionsを含め道具一覧とinfoを提供する()
     {
         var suffix = Guid.NewGuid().ToString("N");
         var clientToServerName = $"ScreenRecorder.Mcp.Request.{suffix}";
@@ -31,14 +31,17 @@ public sealed class McpServerTransportTests
 
         await using var transport = new PipeMcpTransport(serverInput, serverOutput);
         var root = Path.Combine(Path.GetTempPath(), $"screenrecorder-mcp-test-{suffix}");
+        var allowedDirectory = Path.Combine(root, "allowed");
         var settingsDirectory = Path.Combine(root, "settings");
         var logDirectory = Path.Combine(root, "logs");
+        Directory.CreateDirectory(allowedDirectory);
         Directory.CreateDirectory(settingsDirectory);
         Directory.CreateDirectory(logDirectory);
         var environment = new CliEnvironment(settingsDirectory, logDirectory, () => [], () => DateTimeOffset.Now, "1.0.0");
+        var pathPolicy = McpPathAccessPolicy.Create([Path.GetTempPath(), allowedDirectory]);
         var service = new McpCommandService(
             Path.Combine(root, "ScreenRecorder.exe"),
-            McpPathAccessPolicy.Create([Path.GetTempPath()]),
+            pathPolicy,
             () => environment);
         using var executor = new McpSerialExecutor();
         await using var server = McpServerHost.CreateServer(transport, service, executor);
@@ -51,7 +54,14 @@ public sealed class McpServerTransportTests
         {
             await clientWriter.WriteLineAsync("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}""");
             using var initialized = await ReadResponseAsync(clientReader, 1, CancellationToken.None);
-            Assert.True(initialized.RootElement.GetProperty("result").GetProperty("capabilities").TryGetProperty("tools", out _));
+            var initializeResult = initialized.RootElement.GetProperty("result");
+            Assert.True(initializeResult.GetProperty("capabilities").TryGetProperty("tools", out _));
+            var instructions = initializeResult.GetProperty("instructions").GetString()!;
+            foreach (var allowedPath in pathPolicy.AllowedDirectories)
+                Assert.Contains($"`{allowedPath}`", instructions);
+            Assert.Contains($"`duration` は {McpCommandService.MaximumRecordDurationSeconds:0} 秒まで", instructions);
+            Assert.Contains($"`timeout` は {McpCommandService.MaximumRemoteWaitSeconds} 秒まで", instructions);
+            Assert.Contains("pathNotAllowed", instructions);
             await clientWriter.WriteLineAsync("""{"jsonrpc":"2.0","method":"notifications/initialized"}""");
 
             await clientWriter.WriteLineAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");

@@ -69,6 +69,7 @@ public sealed class McpCommandServiceTests
         Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
         Assert.Equal("1.0.0", json.RootElement.GetProperty("cliVersion").GetString());
         Assert.Contains("remote_perform", json.RootElement.GetProperty("error").GetProperty("message").GetString());
+        Assert.Contains("stopRecording", json.RootElement.GetProperty("error").GetProperty("message").GetString());
     }
 
     [Fact]
@@ -81,7 +82,8 @@ public sealed class McpCommandServiceTests
         Assert.Equal(2, result.ExitCode);
         using var json = JsonDocument.Parse(result.Json);
         Assert.Equal("invalidArguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
-        Assert.Contains("remote_wait", json.RootElement.GetProperty("error").GetProperty("message").GetString());
+        Assert.Contains("remote_perform", json.RootElement.GetProperty("error").GetProperty("message").GetString());
+        Assert.Contains("stopRecording", json.RootElement.GetProperty("error").GetProperty("message").GetString());
     }
 
     [Fact]
