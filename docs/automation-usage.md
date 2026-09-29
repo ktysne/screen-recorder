@@ -87,7 +87,7 @@ MCP の `record` で指定できる録画時間は 30 秒までです。
 長い録画は本体に録らせます。本体の録画は時間を指定できず、止めるまで続きます。
 
 1. 開始前の時刻を記録し、`remote_perform` で録画の動作を始めます。範囲やウィンドウの録画では選択画面が開くので、`remote_select` で選択を完了します。
-2. `state` を `recording` にした `remote_wait` で、カウントダウンが終わり録画が始まるのを待ちます。録画の長さは、ここから測ります。待ちが時間切れになったら手順 5 の確認に進みます。空き容量の不足などで、録画が始まらずに失敗していることがあるためです。
+2. `state` を `recording` にした `remote_wait` で、カウントダウンが終わり録画が始まるのを待ちます。録画の長さは、ここから測ります。待ちが時間切れになったら `remote_status` の `recording.state` を見ます。`countdown` か `preparing` なら待ち続け、`recording` なら手順 3 へ進みます。`idle` なら、空き容量の不足などで録画が始まらなかったので、手順 5 の確認に進みます。
 3. 必要な時間が経ったら、`remote_perform` の `stopRecording` で止めます。
 4. `state` を `idle` にした `remote_wait` を繰り返し、保存が終わるのを待ちます。
 5. `remote_status` を呼び、`kind` が `recording` で `at` が記録した時刻より後の記録だけを見ます。その `lastCapture` に `path` があれば保存は成功しているので、そのパスを `probe` で確かめます。このとき `lastFailure` もあれば、MP3 への変換ができなかったなどの警告として併せて伝えます。`lastCapture` が無く `lastFailure` だけがあれば、録画は失敗しているので、その内容を利用者に伝えます。
