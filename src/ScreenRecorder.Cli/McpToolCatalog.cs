@@ -50,7 +50,7 @@ internal static class McpToolCatalog
         var description = command.Description;
         if (command.Name == "naming preview") description += " 開発向けの道具です。";
         if (command.Name == "record")
-            description += " 録画の準備と書き終えの時間が加わるため、呼び出しは指定した長さより長くかかります。長い録画や時間切れが短いクライアントでは remote_perform で開始し、state=recording の remote_wait で開始を確かめます。必要な時間の後に remote_perform の stopRecording で止め、state=idle の remote_wait で保存完了を待ってください。";
+            description += " 録画の準備と書き終えの時間が加わるため、呼び出しは指定した長さより長くかかります。長い録画や時間切れが短いクライアントでは、remote_perform で本体に録画させ、remote_perform の stopRecording で止めてください。確かめ方を含む手順はサーバーの instructions にあります。";
 
         var readOnly = command.Name switch
         {
