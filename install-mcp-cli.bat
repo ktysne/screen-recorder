@@ -4,7 +4,7 @@ cd /d "%~dp0"
 set "DOTNET_ROOT=%LOCALAPPDATA%\Microsoft\dotnet"
 set "PATH=%DOTNET_ROOT%;%PATH%"
 
-rem Publish a Release copy of screenrecorder-cli for Claude Desktop (see docs/development.md).
+rem Publish a Release copy of screenrecorder-cli for Claude Desktop (see docs/mcp-setup.md).
 rem Claude Desktop keeps the registered exe running, so pointing it at the build output blocks rebuilding.
 rem Paths are expanded only outside parenthesized blocks, because a profile path may contain & or ).
 

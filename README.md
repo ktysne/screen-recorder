@@ -12,6 +12,12 @@
 配布ページ <https://ktysne.info/screen-recorder/> から zip を入手し、好きな場所に展開して `ScreenRecorder.exe` を起動します。
 使い方は同梱の `manual.html` を参照してください。
 
+## MCP で使う
+
+Claude Desktop などの MCP のクライアントから撮影と録画を頼めます。
+導入と初期設定の手順は [docs/mcp-setup.md](docs/mcp-setup.md) にまとめています。
+AI エージェントに設定を手伝ってもらうときも、この資料を参照するよう伝えてください。
+
 ## 開発者向けの情報
 
 仕様は [docs/design.md](docs/design.md)、実装の順序は [docs/implementation-plan.md](docs/implementation-plan.md) にあります。

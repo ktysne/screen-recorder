@@ -38,7 +38,7 @@ dotnet test ScreenRecorder.slnx
 
 `tools/` の Node スクリプトを触ったときは `npm run test:tools` も実行する。
 ビルド用の bat は `build-debug.bat`、`build-release.bat`、`build-package.bat`(配布)である。
-Claude Desktop に登録する MCP の CLI の写しは `install-mcp-cli.bat` で作る(`docs/development.md`「Claude Desktop から MCP を使う」)。
+Claude Desktop に登録する MCP の CLI の写しは `install-mcp-cli.bat` で作る(導入と登録の手順は `docs/mcp-setup.md`)。
 録画と撮影、設定と診断ログの確認には自動化用 CLI を使う。使い方は `.claude/skills/screenrecorder-cli/SKILL.md`、引数の正本は `screenrecorder-cli help` の出力である。
 
 ## リモートセッション時の作業について
