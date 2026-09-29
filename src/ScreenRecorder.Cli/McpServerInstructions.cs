@@ -15,7 +15,7 @@ internal static class McpServerInstructions
             "長い録画は次の手順で行います。",
             "開始前の時刻を記録します。",
             "`remote_perform` で録画を開始します。範囲またはウィンドウを使う場合は、`remote_select` で選択を完了します。",
-            "`state=recording` の `remote_wait` で録画の開始を待ちます。時間切れになったら `remote_status` の `recording.state` を見ます。`countdown` か `preparing` なら待ち続け、`recording` なら停止へ進み、`idle` なら録画は始まらなかったので最後の確認に進みます。",
+            "`state=recording` の `remote_wait` で録画の開始を待ちます。時間切れになったら `remote_status` の `recording.state` を見ます。`countdown` か `preparing` なら待ち続け、`recording` か `paused` なら停止へ進み、`saving` なら `idle` まで待ってから、`idle` ならそのまま最後の確認に進みます。",
             "必要な時間の後に `remote_perform` の `stopRecording` で録画を止めます。",
             "`state=idle` の `remote_wait` を繰り返して保存完了を待ちます。",
             "最後に `remote_status` を呼び、`kind` が `recording` で `at` が記録した時刻より後の記録だけを見ます。そのような `lastCapture` に `path` があれば成功で、そのパスを `probe` で確かめます。同じ条件の `lastFailure` もあれば警告として伝えます。`lastCapture` がなく `lastFailure` だけがあれば失敗です。",
