@@ -10,7 +10,8 @@ MCP に公開される道具名は、CLI コマンド名の空白を `_` に置�
 たとえば `remote wait` は `remote_wait` です。
 コマンドと道具の一覧は [CliCommands.cs](../src/ScreenRecorder.Cli/CliCommands.cs) と [McpToolCatalog.cs](../src/ScreenRecorder.Cli/McpToolCatalog.cs) で定義されています。
 
-CLI のオプションと MCP の入力プロパティは表記が異なる場合があるため、MCP では道具の入力スキーマに従ってください。
+入力のプロパティ名は、オプション名から先頭の `--` を除いて snake_case にした名前です(`--capture-after` は `capture_after`)。
+`-o` は `output` になるなど例外があるため、MCP では道具の入力スキーマに従ってください。
 
 ## 結果の読み方
 
@@ -83,7 +84,9 @@ MCP の `output` は絶対パスで指定し、`%TEMP%` または `mcp --allow-d
 MCP の `record` で指定できる録画時間は 30 秒までです。
 `remote_wait` の待ち時間は 45 秒までです。
 上限を超える値は `invalidArguments` で失敗します。
-長い録画は `remote_perform` で本体に開始させ、`remote_wait` を繰り返して終了を待ちます。
+長い録画は、開始前の時刻を記録してから `remote_perform` で本体に開始させます。
+本体の録画は時間を指定できず、止めるまで続きます。必要な時間が経ったら `remote_perform` の `stopRecording` で止めます。
+その後、`state` を `idle`、`capture_after` を記録した時刻にして `remote_wait` を繰り返し、返った `lastCapture.path` で保存されたファイルを確かめます。
 MCP クライアントの時間切れはクライアントごとに異なるため、進捗通知の扱いも確認してください。
 
 `remote_perform` で本体に撮影や録画をさせた場合、ファイルは本体の設定にある保存先へ保存され、`--allow-dir` の制限を受けません。
