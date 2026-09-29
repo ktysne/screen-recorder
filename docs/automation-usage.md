@@ -84,9 +84,13 @@ MCP の `output` は絶対パスで指定し、`%TEMP%` または `mcp --allow-d
 MCP の `record` で指定できる録画時間は 30 秒までです。
 `remote_wait` の待ち時間は 45 秒までです。
 上限を超える値は `invalidArguments` で失敗します。
-長い録画は、開始前の時刻を記録してから `remote_perform` で本体に開始させます。
-本体の録画は時間を指定できず、止めるまで続きます。必要な時間が経ったら `remote_perform` の `stopRecording` で止めます。
-その後、`state` を `idle`、`capture_after` を記録した時刻にして `remote_wait` を繰り返し、返った `lastCapture.path` で保存されたファイルを確かめます。
+長い録画は本体に録らせます。本体の録画は時間を指定できず、止めるまで続きます。
+
+1. 開始前の時刻を記録し、`remote_perform` で録画の動作を始めます。範囲やウィンドウの録画では選択画面が開くので、`remote_select` で選択を完了します。
+2. `state` を `recording` にした `remote_wait` で、カウントダウンが終わり録画が始まるのを待ちます。録画の長さは、ここから測ります。
+3. 必要な時間が経ったら、`remote_perform` の `stopRecording` で止めます。
+4. `state` を `idle` にした `remote_wait` を繰り返し、保存が終わるのを待ちます。
+5. `remote_status` を呼び、記録した時刻より後の `lastCapture` があればそのパスを `probe` で確かめます。記録した時刻より後の `lastFailure` があれば、録画は失敗しているので、その内容を利用者に伝えます。
 MCP クライアントの時間切れはクライアントごとに異なるため、進捗通知の扱いも確認してください。
 
 `remote_perform` で本体に撮影や録画をさせた場合、ファイルは本体の設定にある保存先へ保存され、`--allow-dir` の制限を受けません。
