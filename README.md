@@ -16,7 +16,7 @@
 
 Claude Desktop などの MCP のクライアントから撮影と録画を頼めます。
 導入と初期設定の手順は [docs/mcp-setup.md](docs/mcp-setup.md) にまとめています。
-AI エージェントに設定を手伝ってもらうときも、この資料を参照するよう伝えてください。
+AI に読ませる資料は、設定が [docs/mcp-setup.md](docs/mcp-setup.md)、使い方が [docs/automation-usage.md](docs/automation-usage.md) です。
 
 ## 開発者向けの情報
 
