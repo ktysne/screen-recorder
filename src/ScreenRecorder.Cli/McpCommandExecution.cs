@@ -15,13 +15,15 @@ internal sealed class McpCommandService(
     Func<CliEnvironment> environmentFactory,
     string? remoteAppPath = null)
 {
-    private const double MaximumRecordDurationSeconds = 30;
-    private const int MaximumRemoteWaitSeconds = 45;
+    internal const double MaximumRecordDurationSeconds = 30;
+    internal const int MaximumRemoteWaitSeconds = 45;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
+
+    internal IReadOnlyList<string> AllowedDirectories => pathPolicy.AllowedDirectories;
 
     public McpCallResult Invoke(string toolName, IReadOnlyDictionary<string, JsonElement> input, CancellationToken cancellationToken)
     {
@@ -68,13 +70,13 @@ internal sealed class McpCommandService(
             && command.Options.TryGetValue("--duration", out var durationValue)
             && double.TryParse(durationValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var duration)
             && duration > MaximumRecordDurationSeconds)
-            return "MCP から指定できる duration は 30 秒までです。長い録画は remote_perform で開始し、remote_wait を繰り返して終了を待ってください。";
+            return $"MCP から指定できる duration は {MaximumRecordDurationSeconds:0} 秒までです。長い録画は remote_perform で開始し、必要な時間の後に remote_perform の stopRecording で止めてください。";
 
         if (command.Definition.Name == "remote wait"
             && command.Options.TryGetValue("--timeout", out var timeoutValue)
             && int.TryParse(timeoutValue, NumberStyles.None, CultureInfo.InvariantCulture, out var timeout)
             && timeout > MaximumRemoteWaitSeconds)
-            return "MCP から指定できる timeout は 45 秒までです。remote_perform で録画を開始し、remote_wait を繰り返して終了を待ってください。";
+            return $"MCP から指定できる timeout は {MaximumRemoteWaitSeconds} 秒までです。長く待つときは remote_wait を繰り返してください。録画は remote_perform の stopRecording で止めるまで終わりません。";
 
         return null;
     }

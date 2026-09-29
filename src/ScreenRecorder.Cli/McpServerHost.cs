@@ -79,6 +79,7 @@ internal static class McpServerHost
         var serverOptions = new McpServerOptions
         {
             ServerInfo = new Implementation { Name = "screenrecorder-cli", Version = version },
+            ServerInstructions = McpServerInstructions.Create(service.AllowedDirectories),
             Capabilities = new ServerCapabilities { Tools = new ToolsCapability() },
             Handlers = new McpServerHandlers
             {

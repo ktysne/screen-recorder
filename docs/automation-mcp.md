@@ -41,6 +41,13 @@ CLI の出力の約束([automation-cli.md](automation-cli.md)「出力」)を、
 
 呼び出しごとに CLI の環境(`CliEnvironment`)を作り直す。設定の保存先などが、サーバーの起動後に変わりうるためである。
 
+### instructions
+
+初期化応答の `instructions` で、複数の道具を組み合わせる手順と制約を接続時に伝える。
+`%TEMP%` と `--allow-dir` の許可フォルダーは、`McpPathAccessPolicy` が実体パスに解決した値で示す。
+内容の正本は [automation-usage.md](automation-usage.md) とする。
+`instructions` は初期化応答に含める共通説明であり、範囲外としている MCP の `prompt` は追加しない。
+
 ## 道具の一覧
 
 CLI のコマンドの定義の表から、`help` と `mcp` を除いたすべてのコマンドを道具にする。
@@ -68,7 +75,7 @@ CLI のコマンドの定義の表から、`help` と `mcp` を除いたすべ�
 |---|---|---|
 | `info`、`settings_*`、`logs_*`、`remote_status`、`remote_wait`、`naming_preview` | 読み取りだけ | `naming_preview` には「開発向け」と書く |
 | `probe` | `output` を指定しなければ読み取りだけ | なし |
-| `record` | 書き込みあり | 呼び出しが録画の長さの間終わらないこと。長い録画は `remote_perform` と `remote_wait` で本体に録らせること |
+| `record` | 書き込みあり | 呼び出しが録画の長さの間終わらないこと。長い録画は `remote_perform` で開始と停止を行い、`remote_wait` で状態を確かめること |
 | `screenshot` | 書き込みあり | なし |
 | `remote_perform`、`remote_select` | 本体を操作する | なし |
 | `remote_exit` | 本体を終了する(破壊的) | なし |
@@ -92,7 +99,7 @@ SDK は呼び出しを並行して渡してくるので、実行中に届いた�
 このため、録画の長さの上限だけでは時間切れを防げない。
 
 - 呼び出しに進捗の印(`progressToken`)があれば、`record` と `remote_wait` は、準備、録画、書き終えの間ずっと 1 秒ごとに進捗を通知する。クライアントは進捗を受けて時間切れを延ばしてよいと MCP の仕様が定めているためである。
-- 進捗で時間切れを延ばさないクライアントに備え、MCP から呼ぶときは `record` の `--duration` を 30 秒まで、`remote wait` の `--timeout` を 45 秒までに限る。超える依頼は、`remote_perform` で本体に録画を始めさせ、`remote_wait` を繰り返して終わりを待つ手順を案内するエラーで断る。
+- 進捗で時間切れを延ばさないクライアントに備え、MCP から呼ぶときは `record` の `--duration` を 30 秒まで、`remote wait` の `--timeout` を 45 秒までに限る。長い録画は `remote_perform` で開始し、`state=recording` の `remote_wait` で開始を確認した後、必要な時間の後に `remote_perform` の `stopRecording` で停止し、`state=idle` の `remote_wait` で保存完了を待つ手順を案内する。
 - `record` の道具の説明に、呼び出しが録画の長さより長くかかること(準備と書き終えの分)と、時間切れが短いクライアントでは上の手順を使うことを書く。
 
 上限の値は、進捗に頼れない場合に 1 回の呼び出しを短く保つための目安であり、どのクライアントでも時間切れを防げる値ではない。

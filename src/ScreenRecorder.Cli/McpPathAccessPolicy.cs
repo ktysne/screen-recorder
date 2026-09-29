@@ -13,6 +13,8 @@ internal sealed class McpPathAccessPolicy
 
     private McpPathAccessPolicy(string[] allowedDirectories) => _allowedDirectories = allowedDirectories;
 
+    internal IReadOnlyList<string> AllowedDirectories => Array.AsReadOnly(_allowedDirectories);
+
     public static McpPathAccessPolicy Create(IEnumerable<string> allowedDirectories)
     {
         var resolved = allowedDirectories.Select(ResolveDirectory).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
