@@ -38,15 +38,19 @@ MCP の `record` は本体を録画の間だけ起動し、`remote_*` の道具�
 
 ## 3. CLI の写しを作る
 
-リポジトリを取得し、配布版を使う場合はその版のタグを取り出します。
+CLI は、手順 2 の本体と同じソースから作ります。
 
-```powershell
-git clone https://github.com/ktysne/screen-recorder.git
-cd screen-recorder
-git checkout v0.4.2
-```
+- 配布版を使う場合：リポジトリを取得し、本体の製品バージョンと同じタグを取り出します。例の `v0.4.2` は、実際の版に置き換えます。
 
-リポジトリの直下で `install-mcp-cli.bat` を実行します。
+  ```powershell
+  git clone https://github.com/ktysne/screen-recorder.git
+  cd screen-recorder
+  git checkout v0.4.2
+  ```
+
+- 手元でビルドする場合：本体をビルドしたのと同じ作業フォルダーをそのまま使います。別に取得したリポジトリやタグから作ると、本体と CLI の版がずれます。
+
+そのリポジトリの直下で `install-mcp-cli.bat` を実行します。
 CLI を Release で publish し、`%USERPROFILE%\.screenrecorder\mcp-cli\` に写します。
 
 写しを登録するのは、Claude Desktop が起動している間、登録したサーバーのプロセスを動かし続けるためです。
@@ -55,7 +59,8 @@ CLI を Release で publish し、`%USERPROFILE%\.screenrecorder\mcp-cli\` に�
 
 ## 4. 出力先のフォルダーを作る
 
-MCP から撮った画像や動画は、`%TEMP%` と、起動時に `--allow-dir` で指定したフォルダーの下にだけ書けます。
+`record` と `screenshot` の出力先は、`%TEMP%` と、起動時に `--allow-dir` で指定したフォルダーの下に限られます。
+`remote_perform` で常駐中の本体に撮らせたものは、この制限を受けず、本体の設定の保存先に保存されます。
 `--allow-dir` に指定するフォルダー(例：`D:\ScreenRecorder-MCP-output`)を先に作っておきます。
 `--allow-dir` は複数指定できます。
 
