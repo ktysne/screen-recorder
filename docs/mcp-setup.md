@@ -3,6 +3,7 @@
 この資料は、ScreenRecorder を導入し、Claude Desktop などの MCP のクライアントから使えるようにするまでの手順をまとめたものです。
 利用者が自分で設定するときも、AI エージェントが利用者の設定を手伝うときも、この資料を上から順に進めてください。
 MCP のサーバーの仕組みと安全性の設計は [automation-mcp.md](automation-mcp.md) にあります。
+AI に読ませる資料は、設定がこの資料、使い方が [automation-usage.md](automation-usage.md) です。
 
 ## 全体の流れ
 
