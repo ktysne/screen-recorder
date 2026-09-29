@@ -9,7 +9,9 @@ internal sealed class SettingsForm : Form
     private sealed record ChoiceOption<T>(string Label, T Value);
 
     private readonly Settings _initialSettings;
-    private readonly IReadOnlyDictionary<RecorderAction, HotkeyFailure> _hotkeyFailures;
+    private Dictionary<RecorderAction, HotkeyFailure> _hotkeyFailures;
+    private readonly Action _suspendHotkeys;
+    private readonly Func<IReadOnlyList<HotkeyFailure>> _resumeHotkeys;
     private readonly Func<Settings, bool, bool, bool, bool> _saveSettings;
     private readonly Func<bool> _isRecording;
     // Form はタイトルバーに設定したアイコンを破棄しないため、自分で破棄する。
@@ -18,7 +20,8 @@ internal sealed class SettingsForm : Form
     private bool _microphoneEnumerationFailed;
     private readonly List<Action<Settings>> _loaders = [];
     private readonly List<Action<Settings>> _readers = [];
-    private readonly Dictionary<RecorderAction, TextBox> _shortcutInputs = [];
+    private readonly Dictionary<RecorderAction, ShortcutInputBox> _shortcutInputs = [];
+    private readonly Dictionary<RecorderAction, ShortcutCaptureState> _shortcutCaptureStates = [];
     private readonly Dictionary<RecorderAction, Label> _shortcutStatuses = [];
     private readonly Dictionary<RecorderAction, CheckBox> _shortcutEnabled = [];
     private readonly Dictionary<string, Label> _directoryIssues = [];
@@ -26,6 +29,7 @@ internal sealed class SettingsForm : Form
     private readonly Label _shortcutStatus = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
     private readonly Label _shortcutFailureDetails = new() { AutoSize = true, ForeColor = SystemColors.ControlText, MaximumSize = new Size(760, 0), Visible = false };
     private readonly Label _printScreenHint = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
+    private readonly System.Windows.Forms.Timer _shortcutModifierTimer = new() { Interval = 50 };
     private readonly TableLayoutPanel _printScreenPanel = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1, Visible = false };
     private readonly Button _openKeyboardSettings = new() { Text = UiLabels.OpenKeyboardSettings };
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
@@ -36,6 +40,7 @@ internal sealed class SettingsForm : Form
     private readonly List<Control> _mp3Controls = [];
     private readonly List<Control> _microphoneControls = [];
     private readonly List<Control> _audioControls = [];
+    private readonly HashSet<RecorderAction> _shortcutCaptureErrors = [];
     private ComboBox _imageFormat = null!;
     private ComboBox _audioFormat = null!;
     private Label _mp3Hint = null!;
@@ -44,15 +49,22 @@ internal sealed class SettingsForm : Form
     private bool _loading;
     private bool _defaultsRestored;
     private bool _modalDialogOpen;
+    private bool _settingsFormActive;
+    private bool _shortcutHotkeysSuspended;
+    private bool _updatingShortcutDisplay;
 
     public SettingsForm(
         Settings settings,
         IReadOnlyList<HotkeyFailure> hotkeyFailures,
+        Action suspendHotkeys,
+        Func<IReadOnlyList<HotkeyFailure>> resumeHotkeys,
         Func<Settings, bool, bool, bool, bool> saveSettings,
         Func<bool> isRecording)
     {
         _initialSettings = settings.Clone();
         _hotkeyFailures = hotkeyFailures.ToDictionary(failure => failure.Action);
+        _suspendHotkeys = suspendHotkeys;
+        _resumeHotkeys = resumeHotkeys;
         _saveSettings = saveSettings;
         _isRecording = isRecording;
         _microphoneChoices = LoadMicrophoneChoices(_initialSettings.MicrophoneDeviceId, out _microphoneEnumerationFailed);
@@ -67,7 +79,25 @@ internal sealed class SettingsForm : Form
         Icon = _appIcon;
         BuildLayout();
         LoadSettings(_initialSettings);
-        Activated += (_, _) => UpdateEnablement();
+        _shortcutModifierTimer.Tick += (_, _) => UpdateFocusedShortcutModifierPreview();
+        Activated += (_, _) =>
+        {
+            _settingsFormActive = true;
+            UpdateEnablement();
+            SynchronizeHotkeySuspension();
+        };
+        Deactivate += (_, _) =>
+        {
+            _settingsFormActive = false;
+            ResetShortcutPreviews();
+            ResumeHotkeys();
+        };
+        FormClosed += (_, _) =>
+        {
+            _settingsFormActive = false;
+            ResetShortcutPreviews();
+            ResumeHotkeys();
+        };
     }
 
     private void BuildLayout()
@@ -265,11 +295,26 @@ internal sealed class SettingsForm : Form
             var enabled = new CheckBox { AutoSize = true, Checked = assignment.Enabled, AccessibleName = UiLabels.ShortcutEnabledAccessibleName(action), Anchor = AnchorStyles.Left, Margin = new Padding(4, 3, 4, 3) };
             enabled.CheckedChanged += (_, _) => { if (!_loading) RefreshValidation(); };
             _loaders.Add(settings => enabled.Checked = GetShortcutEnabled(settings, action));
-            var input = new TextBox { ReadOnly = true, Dock = DockStyle.Fill, AccessibleName = UiLabels.ShortcutActionName(action), TabStop = true };
+            var captureState = new ShortcutCaptureState(HotkeyShortcut.ToDisplayNotation(assignment.Notation) ?? assignment.Notation);
+            var input = new ShortcutInputBox { Dock = DockStyle.Fill, AccessibleName = UiLabels.ShortcutActionName(action), TabStop = true };
             var status = new Label { AutoSize = true, ForeColor = SystemColors.GrayText, Text = string.Empty, Margin = new Padding(4, 6, 4, 4) };
-            input.KeyDown += (_, eventArgs) => CaptureShortcut(action, input, eventArgs);
-            input.TextChanged += (_, _) => { if (!_loading) RefreshValidation(); };
+            input.ShortcutKeyDown += keyData => CaptureShortcut(action, input, captureState, keyData);
+            input.PrintScreenKeyUp += () => CapturePrintScreenOnKeyUp(action, input, captureState);
+            input.ShortcutKeyUp += _ => UpdateShortcutModifierPreview(input, captureState);
+            input.Enter += (_, _) => SynchronizeHotkeySuspension();
+            input.Leave += (_, _) =>
+            {
+                captureState.ClearPreview();
+                RenderShortcutInput(input, captureState);
+                _shortcutCaptureErrors.Remove(action);
+                ResumeHotkeys();
+            };
+            input.TextChanged += (_, _) =>
+            {
+                if (!_loading && !_updatingShortcutDisplay && !captureState.IsPreviewing) RefreshValidation();
+            };
             AddShortcutRow(grid, enabled, UiLabels.ShortcutActionName(action), input, status);
+            _shortcutCaptureStates.Add(action, captureState);
             _shortcutEnabled.Add(action, enabled);
             _shortcutInputs.Add(action, input);
             _shortcutStatuses.Add(action, status);
@@ -487,8 +532,11 @@ internal sealed class SettingsForm : Form
         foreach (var (action, input) in _shortcutInputs)
         {
             var notation = ShortcutBindings.For(action).GetNotation(settings);
-            input.Text = HotkeyShortcut.ToDisplayNotation(notation) ?? notation;
+            var captureState = _shortcutCaptureStates[action];
+            captureState.SetCommittedValue(HotkeyShortcut.ToDisplayNotation(notation) ?? notation);
+            RenderShortcutInput(input, captureState);
         }
+        _shortcutCaptureErrors.Clear();
         _loading = false;
         RefreshValidation();
         UpdateEnablement();
@@ -498,8 +546,8 @@ internal sealed class SettingsForm : Form
     {
         var result = _initialSettings.Clone();
         foreach (var reader in _readers) reader(result);
-        foreach (var (action, input) in _shortcutInputs)
-            SetShortcut(result, action, input.Text);
+        foreach (var (action, captureState) in _shortcutCaptureStates)
+            SetShortcut(result, action, captureState.CommittedValue);
         foreach (var (action, enabled) in _shortcutEnabled)
             SetShortcutEnabled(result, action, enabled.Checked);
         return result;
@@ -521,7 +569,7 @@ internal sealed class SettingsForm : Form
         var invalid = false;
         var hasShortcutProblem = false;
         var shortcutDetails = new List<string>();
-        foreach (var (action, input) in _shortcutInputs)
+        foreach (var action in _shortcutCaptureStates.Keys)
         {
             var status = _shortcutStatuses[action];
             if (!_shortcutEnabled[action].Checked)
@@ -540,7 +588,7 @@ internal sealed class SettingsForm : Form
                 invalid = true;
                 continue;
             }
-            var activeFailure = GetCurrentFailure(action, input.Text);
+            var activeFailure = GetCurrentFailure(action, _shortcutCaptureStates[action].CommittedValue);
             status.Text = activeFailure is null ? string.Empty : UiLabels.ShortcutStatusUnavailable;
             status.ForeColor = activeFailure is null ? SystemColors.GrayText : SystemColors.ControlText;
             if (activeFailure is not null)
@@ -550,10 +598,16 @@ internal sealed class SettingsForm : Form
                     shortcutDetails.Add($"{UiLabels.ShortcutActionName(action)}: {FailureLabel(activeFailure)}");
             }
         }
+        // 表示だけを差し替え、確定済みの値に対する保存可否の判定には使わない。
+        foreach (var action in _shortcutCaptureErrors)
+        {
+            _shortcutStatuses[action].Text = UiLabels.ShortcutKeyUnavailable;
+            _shortcutStatuses[action].ForeColor = SystemColors.ControlText;
+        }
         _shortcutStatus.Text = hasShortcutProblem ? UiLabels.ShortcutRegistrationProblem : UiLabels.NoShortcutFailures;
         _shortcutFailureDetails.Text = string.Join(Environment.NewLine, shortcutDetails);
         _shortcutFailureDetails.Visible = shortcutDetails.Count > 0;
-        var printScreenFailure = _hotkeyFailures.Values.Any(failure => failure.PrintScreenSettingsEnabled && _shortcutEnabled[failure.Action].Checked && GetCurrentFailure(failure.Action, _shortcutInputs[failure.Action].Text) is not null);
+        var printScreenFailure = _hotkeyFailures.Values.Any(failure => failure.PrintScreenSettingsEnabled && _shortcutEnabled[failure.Action].Checked && GetCurrentFailure(failure.Action, _shortcutCaptureStates[failure.Action].CommittedValue) is not null);
         _printScreenHint.Text = UiLabels.PrintScreenSnippingHint;
         _printScreenPanel.Visible = printScreenFailure;
         _openKeyboardSettings.Visible = printScreenFailure;
@@ -614,23 +668,133 @@ internal sealed class SettingsForm : Form
         _ => UiLabels.SettingsValuesInvalid
     };
 
-    private void CaptureShortcut(RecorderAction action, TextBox input, KeyEventArgs eventArgs)
+    private bool CaptureShortcut(RecorderAction action, ShortcutInputBox input, ShortcutCaptureState captureState, Keys keyData)
     {
-        eventArgs.Handled = true;
-        eventArgs.SuppressKeyPress = true;
-        if (eventArgs.KeyCode is Keys.Back or Keys.Delete)
+        var key = keyData & Keys.KeyCode;
+        var result = captureState.CaptureKey((int)key, GetShortcutModifiers(keyData));
+        return ApplyShortcutCaptureResult(action, input, captureState, result);
+    }
+
+    private void CapturePrintScreenOnKeyUp(RecorderAction action, ShortcutInputBox input, ShortcutCaptureState captureState)
+    {
+        var result = captureState.CaptureKey((int)Keys.PrintScreen, GetShortcutModifiers(Keys.None));
+        ApplyShortcutCaptureResult(action, input, captureState, result);
+    }
+
+    private bool ApplyShortcutCaptureResult(RecorderAction action, ShortcutInputBox input, ShortcutCaptureState captureState, ShortcutCaptureResult result)
+    {
+        RenderShortcutInput(input, captureState);
+        switch (result)
         {
-            input.Clear();
+            case ShortcutCaptureResult.PassThrough:
+            case ShortcutCaptureResult.ModifierPreview:
+                return result == ShortcutCaptureResult.ModifierPreview;
+            case ShortcutCaptureResult.Assigned:
+            case ShortcutCaptureResult.Cleared:
+                _shortcutCaptureErrors.Remove(action);
+                RefreshValidation();
+                return true;
+            case ShortcutCaptureResult.Unsupported:
+                _shortcutCaptureErrors.Add(action);
+                RefreshValidation();
+                return true;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(result), result, null);
+        }
+    }
+
+    private void UpdateShortcutModifierPreview(ShortcutInputBox input, ShortcutCaptureState captureState)
+    {
+        captureState.UpdateModifiers(GetShortcutModifiers(Keys.None));
+        RenderShortcutInput(input, captureState);
+    }
+
+    private void RenderShortcutInput(ShortcutInputBox input, ShortcutCaptureState captureState)
+    {
+        var text = captureState.DisplayText;
+        if (input.Text == text) return;
+        var wasUpdating = _updatingShortcutDisplay;
+        _updatingShortcutDisplay = true;
+        try
+        {
+            input.Text = text;
+        }
+        finally
+        {
+            _updatingShortcutDisplay = wasUpdating;
+        }
+    }
+
+    private void ResetShortcutPreviews()
+    {
+        foreach (var (action, input) in _shortcutInputs)
+        {
+            var captureState = _shortcutCaptureStates[action];
+            captureState.ClearPreview();
+            RenderShortcutInput(input, captureState);
+        }
+    }
+
+    private void SynchronizeHotkeySuspension()
+    {
+        var shortcutInputFocused = _shortcutInputs.Values.Any(input => input.Focused || ReferenceEquals(ActiveControl, input));
+        if (_settingsFormActive && shortcutInputFocused)
+        {
+            if (!_shortcutHotkeysSuspended)
+            {
+                _shortcutHotkeysSuspended = true;
+                _suspendHotkeys();
+            }
+            _shortcutModifierTimer.Start();
             return;
         }
-        if (eventArgs.KeyCode is Keys.ControlKey or Keys.ShiftKey or Keys.Menu or Keys.LWin or Keys.RWin) return;
+        ResumeHotkeys();
+    }
 
+    private void ResumeHotkeys()
+    {
+        _shortcutModifierTimer.Stop();
+        _shortcutHotkeysSuspended = false;
+        ApplyHotkeyFailures(_resumeHotkeys());
+    }
+
+    private void UpdateFocusedShortcutModifierPreview()
+    {
+        foreach (var (action, input) in _shortcutInputs)
+        {
+            if (!input.Focused) continue;
+            UpdateShortcutModifierPreview(input, _shortcutCaptureStates[action]);
+            return;
+        }
+    }
+
+    private static HotkeyModifiers GetShortcutModifiers(Keys keyData)
+    {
+        var key = keyData & Keys.KeyCode;
         var modifiers = HotkeyModifiers.None;
-        if (eventArgs.Control) modifiers |= HotkeyModifiers.Control;
-        if (eventArgs.Alt) modifiers |= HotkeyModifiers.Alt;
-        if (eventArgs.Shift) modifiers |= HotkeyModifiers.Shift;
-        if (GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0) modifiers |= HotkeyModifiers.Windows;
-        if (HotkeyShortcut.TryCreate(modifiers, (int)eventArgs.KeyCode, out var shortcut)) input.Text = shortcut!.ToDisplayString();
+        if ((keyData & Keys.Control) != 0 || IsAnyKeyDown(0x11, 0xA2, 0xA3)) modifiers |= HotkeyModifiers.Control;
+        if ((keyData & Keys.Alt) != 0 || IsAnyKeyDown(0x12, 0xA4, 0xA5)) modifiers |= HotkeyModifiers.Alt;
+        if ((keyData & Keys.Shift) != 0 || IsAnyKeyDown(0x10, 0xA0, 0xA1)) modifiers |= HotkeyModifiers.Shift;
+        if (IsAnyKeyDown(0x5B, 0x5C)) modifiers |= HotkeyModifiers.Windows;
+        return modifiers | ModifierForKey((int)key);
+    }
+
+    private static bool IsAnyKeyDown(int first, int second, int third = 0) =>
+        GetAsyncKeyState(first) < 0 || GetAsyncKeyState(second) < 0 || third != 0 && GetAsyncKeyState(third) < 0;
+
+    private static HotkeyModifiers ModifierForKey(int virtualKey) => virtualKey switch
+    {
+        0x10 or 0xA0 or 0xA1 => HotkeyModifiers.Shift,
+        0x11 or 0xA2 or 0xA3 => HotkeyModifiers.Control,
+        0x12 or 0xA4 or 0xA5 => HotkeyModifiers.Alt,
+        0x5B or 0x5C => HotkeyModifiers.Windows,
+        _ => HotkeyModifiers.None
+    };
+
+    private void ApplyHotkeyFailures(IReadOnlyList<HotkeyFailure> failures)
+    {
+        _hotkeyFailures = failures.ToDictionary(failure => failure.Action);
+        RefreshValidation();
     }
 
     private void Save()
@@ -725,6 +889,7 @@ internal sealed class SettingsForm : Form
 
     protected override void Dispose(bool disposing)
     {
+        if (disposing) _shortcutModifierTimer.Dispose();
         base.Dispose(disposing);
         if (disposing) _appIcon.Dispose();
     }

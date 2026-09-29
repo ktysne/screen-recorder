@@ -122,7 +122,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        var form = new SettingsForm(_settings, _hotkeyManager.Failures, SaveAndApplySettings, () => _recording.State != VideoRecordingState.Idle);
+        var form = new SettingsForm(
+            _settings,
+            _hotkeyManager.Failures,
+            _hotkeyManager.Suspend,
+            _hotkeyManager.Resume,
+            SaveAndApplySettings,
+            () => _recording.State != VideoRecordingState.Idle);
         _settingsForm = form;
         form.FormClosed += (_, _) =>
         {
