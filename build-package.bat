@@ -36,7 +36,8 @@ set PUBLISHED=
 for /f "delims=" %%P in ('node --use-system-ca tools\release-site.js published-version 2^>nul') do set PUBLISHED=%%P
 if not defined PUBLISHED set PUBLISHED=unknown, could not read the published update info
 set LASTTAG=
-for /f "delims=" %%T in ('git describe --tags --abbrev^=0 --match v* 2^>nul') do set LASTTAG=%%T
+rem Tags are listed in version order, so the last line is the highest release tag.
+for /f "delims=" %%T in ('git tag --list v* --sort^=v:refname 2^>nul') do set LASTTAG=%%T
 if not defined LASTTAG set LASTTAG=none
 echo.
 echo [ScreenRecorder] Published version:  %PUBLISHED%
