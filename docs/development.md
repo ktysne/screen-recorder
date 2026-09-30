@@ -66,7 +66,7 @@ GPL または nonfree の成分を含むビルドは配布できません。
 
 ## 配布
 
-`build-package.bat` を実行し、`X.Y.Z` 形式のバージョンを入力します。
+`build-package.bat` を実行し、`X.Y.Z` 形式のバージョンを入力します。入力の前に、公開中の版(`release-site.js published-version`)と最新のリリースタグが表示されます。
 スクリプトはラベル検査、公開バージョンの確認、Release テスト、自己完結 publish、同梱ファイルの検査、zip とサイト情報の生成を順に行います。
 zip と最新版情報を生成した後、ビルドしたコミットを指す注釈付きタグを push し、そのタグから GitHub Release を作ります。
 公開 URL から zip を取得して SHA-256 を照合した後、FTPS で紹介ページと最新版情報を送ります。

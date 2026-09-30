@@ -244,6 +244,11 @@ async function readPublishedState({ legacySite = false, fetchImpl = fetch } = {}
   return { current: legacy, legacy };
 }
 
+// build-package.bat が版を尋ねる前に表示する公開中の版。どちらの最新版情報も無ければ null。
+async function publishedVersionOf(fetchImpl = fetch) {
+  return (await readPublishedState({ fetchImpl })).current?.version ?? null;
+}
+
 async function checkPublishedVersion(version, { legacySite = false, fetchImpl = fetch } = {}) {
   const published = await readPublishedState({ legacySite, fetchImpl });
   if (!published.current) return { firstRelease: true };
@@ -505,7 +510,11 @@ async function uploadFiles(options, dependencies = {}) {
 
 function parseArgs(argv) {
   const command = argv[0];
-  if (!['generate', 'generate-pages', 'check-version', 'upload'].includes(command)) throw new Error('generate / generate-pages / check-version / upload のいずれかを指定してください');
+  if (command === 'published-version') {
+    if (argv.length > 1) throw new Error('published-version にはオプションを指定できません');
+    return { command };
+  }
+  if (!['generate', 'generate-pages', 'check-version', 'upload'].includes(command)) throw new Error('published-version / generate / generate-pages / check-version / upload のいずれかを指定してください');
   const options = { command, version: null, out: DEFAULT_OUT, zip: null, config: null, yes: false, dryRun: false, legacySite: false };
   for (let i = 1; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -526,7 +535,9 @@ function parseArgs(argv) {
 async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    if (options.command === 'generate') {
+    if (options.command === 'published-version') {
+      console.log((await publishedVersionOf()) ?? 'none');
+    } else if (options.command === 'generate') {
       const { output, manifest, legacyManifest } = generateFiles(options);
       console.log(`生成しました: ${output}`);
       console.log(`ダウンロード URL: ${manifest.latest.url}`);
@@ -550,7 +561,7 @@ if (require.main === module) main();
 module.exports = {
   isValidVersion, compareVersions, downloadUrlOf, githubDownloadUrlOf, zipFileName, localDateString,
   buildUpdateManifest, buildLegacyUpdateManifest, serializeUpdateManifest, renderTemplate, generateFiles, generatePages,
-  buildUploadItems, verifyReleaseInputs, checkPublishedVersion, readPublishedState, configFromEnvironment,
+  buildUploadItems, verifyReleaseInputs, checkPublishedVersion, publishedVersionOf, readPublishedState, configFromEnvironment,
   buildRemoteTargets, ffmpegBuildInfoFrom, decideUploadAgainstPublished, replaceRemoteFile,
   parseArgs, fetchPublicAssetSha256, verifyPublicAsset, uploadRelease, uploadFiles,
 };

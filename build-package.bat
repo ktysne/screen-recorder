@@ -31,6 +31,17 @@ echo [ScreenRecorder] Checking manual labels...
 node tools\check-manual-labels.js
 if errorlevel 1 goto :failed
 
+rem Show the published version and the latest release tag so the next version can be chosen at the prompt.
+set PUBLISHED=
+for /f "delims=" %%P in ('node --use-system-ca tools\release-site.js published-version 2^>nul') do set PUBLISHED=%%P
+if not defined PUBLISHED set PUBLISHED=unknown, could not read the published update info
+set LASTTAG=
+for /f "delims=" %%T in ('git describe --tags --abbrev^=0 --match v* 2^>nul') do set LASTTAG=%%T
+if not defined LASTTAG set LASTTAG=none
+echo.
+echo [ScreenRecorder] Published version:  %PUBLISHED%
+echo [ScreenRecorder] Latest release tag: %LASTTAG%
+
 :askversion
 set VERSION=
 set /p VERSION=Enter version to package as (e.g. 0.1.0):

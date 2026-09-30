@@ -115,6 +115,19 @@ test('版確認は update-v2.json を読み、両方が 404 なら初回公開�
   assert.deepEqual(fetch.calls, ['https://ktysne.info/screen-recorder/update-v2.json', 'https://ktysne.info/screen-recorder/update.json']);
 });
 
+test('公開中の版は update-v2.json から読み、無ければ update.json、どちらも無ければ null', async () => {
+  const current = manifestFetch({ 'https://ktysne.info/screen-recorder/update-v2.json': updateManifest('0.5.2') });
+  assert.equal(await release.publishedVersionOf(current.fetch), '0.5.2');
+  const legacyOnly = manifestFetch({ 'https://ktysne.info/screen-recorder/update.json': updateManifest('0.5.1', 1) });
+  assert.equal(await release.publishedVersionOf(legacyOnly.fetch), '0.5.1');
+  assert.equal(await release.publishedVersionOf(manifestFetch({}).fetch), null);
+});
+
+test('published-version はオプションを受け付けない', () => {
+  assert.deepEqual(release.parseArgs(['published-version']), { command: 'published-version' });
+  assert.throws(() => release.parseArgs(['published-version', '--version', '1.2.3']), /オプションを指定できません/);
+});
+
 test('schema 2 がある場合は旧版情報を読まずに版を比較する', async () => {
   const fetch = manifestFetch({ 'https://ktysne.info/screen-recorder/update-v2.json': updateManifest('1.2.3') });
   assert.deepEqual(await release.checkPublishedVersion('1.2.4', { fetchImpl: fetch.fetch }), { firstRelease: false, publishedVersion: '1.2.3' });
