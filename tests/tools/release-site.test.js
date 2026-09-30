@@ -468,8 +468,45 @@ test('再送の転送が途中で失敗しても公開中の旧版向け zip を
       }),
       /connection lost/,
     );
-    assert.deepEqual(uploaded, [`${release.zipFileName(version)}.uploading`]);
+    assert.ok(!uploaded.some(name => name.startsWith(release.zipFileName(version))));
     assert.deepEqual(renamed, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('公開中の旧版向け zip が手元と違えば差し替えずに止まる', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-recorder-release-'));
+  try {
+    const version = '1.2.3';
+    const body = 'retry archive';
+    const { zipPath, output, legacy } = writeLegacyReleaseFixture(dir, version, body);
+    const gh = ghStub([{ tagName: `v${version}`, isDraft: false }]);
+    const operations = [];
+    const client = {
+      async access() {},
+      async ensureDir() {},
+      async uploadFrom(_localPath, remoteName) { operations.push(['uploadFrom', remoteName]); },
+      async list() { return [{ name: release.zipFileName(version), size: Buffer.byteLength(body) + 1 }]; },
+      async rename(from, to) { operations.push(['rename', from, to]); },
+      close() {},
+    };
+    await assert.rejects(
+      release.uploadFiles({ version, zip: zipPath, out: output, legacySite: true, yes: true }, {
+        runGh: gh.runGh,
+        async fetchImpl(url) {
+          if (url === release.githubDownloadUrlOf(version)) return responseWithBody(body);
+          if (url.endsWith('/update-v2.json')) return { status: 404, ok: false };
+          if (url.endsWith('/update.json')) return { status: 200, ok: true, async json() { return legacy; } };
+          throw new Error(`unexpected URL: ${url}`);
+        },
+        loadConfig: () => ({ host: 'ftp.example', port: 21, remoteRoot: '/site' }),
+        createFtpClient: () => client,
+        log() {},
+      }),
+      /差し替えずに止めます/,
+    );
+    assert.deepEqual(operations, []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

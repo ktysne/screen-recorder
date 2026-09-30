@@ -407,9 +407,17 @@ async function assertUploadVersion(version, localSha256, legacySite, fetchImpl) 
     }
   }
   decideUploadAgainstPublished(version, localSha256, published.current);
+  return published;
 }
 
 class UploadDeclinedError extends Error {}
+
+function isSameLegacyZip(version, localSha256, legacy, remoteSize, localSize) {
+  return Boolean(legacy)
+    && compareVersions(version, legacy.version) === 0
+    && legacy.sha256 === localSha256
+    && remoteSize === localSize;
+}
 
 async function askYesNo(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -432,6 +440,7 @@ async function uploadFiles(options, dependencies = {}) {
 
   let config;
   let targets;
+  let published;
   let declined = false;
   const log = dependencies.log || console.log;
   const confirm = dependencies.confirm || askYesNo;
@@ -442,7 +451,7 @@ async function uploadFiles(options, dependencies = {}) {
     localSha256,
     dryRun: Boolean(options.dryRun),
     beforeCreate: async () => {
-      await assertUploadVersion(options.version, localSha256, Boolean(options.legacySite), dependencies.fetchImpl || fetch);
+      published = await assertUploadVersion(options.version, localSha256, Boolean(options.legacySite), dependencies.fetchImpl || fetch);
       config = (dependencies.loadConfig || loadConfig)(options.config);
       targets = buildRemoteTargets(items, config.remoteRoot);
       log(`接続先: ${config.host}:${config.port}`);
@@ -467,6 +476,17 @@ async function uploadFiles(options, dependencies = {}) {
     await client.access({ host: config.host, port: config.port, user: config.user, password: config.password, secure: config.secure });
     for (const item of targets) {
       await client.ensureDir(`${config.remoteRoot}/${item.remoteDir}`.replace(/\/$/, ''));
+      if (item.name === zipFileName(options.version)) {
+        const existing = (await client.list()).find(entry => entry.name === item.name);
+        if (existing) {
+          // 公開中の zip は退避も差し替えもしない。退避の直後に切断されると旧版の利用者が取れなくなるため。
+          if (!isSameLegacyZip(options.version, localSha256, published?.legacy, existing.size, item.size)) {
+            throw new Error(`公開中の archives/${item.name} は手元の zip と一致しないため、差し替えずに止めます`);
+          }
+          log(`公開中の同じ zip を使います: ${item.name}`);
+          continue;
+        }
+      }
       // 再送が途中で切れても公開中のファイルを壊さないよう、一時名で送って照合してから差し替える。
       const uploadName = `${item.name}${UPLOADING_SUFFIX}`;
       await client.uploadFrom(item.localPath, uploadName);
