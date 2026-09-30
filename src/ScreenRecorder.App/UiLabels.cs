@@ -177,13 +177,14 @@ public static class UiLabels
     public const string SettingsApplyPrintScreenFailed = "Windows の画面キャプチャ設定が有効なため、PrtSc を登録できませんでした。";
     public const string NoShortcutFailures = "登録に失敗したショートカットはありません。";
     public const string ShortcutRegistrationProblem = "登録できないショートカットがあります。";
-    public const string ShortcutEntryHelp = "入力欄を選んでキーを押すと登録します。Backspace または Delete で割り当てを解除します。";
+    public const string ShortcutEntryHelp = "入力欄を選んでキーを押すと登録します。Backspace または Delete で割り当てを解除します。入力欄を選んでいる間は、このアプリのショートカットは働きません。";
     public const string ShortcutRegistrationStatus = "登録状態";
     public const string ShortcutColumnAction = "操作";
     public const string ShortcutColumnEnabled = "有効";
     public const string ShortcutColumnKey = "キー";
     public const string ShortcutColumnStatus = "状態";
     public const string ShortcutStatusDisabled = "無効";
+    public const string ShortcutKeyUnavailable = "このキーは割り当てられません。";
     public const string ShortcutDisabledToolTip = "設定のショートカットタブで無効にしています";
     public const string FilenameTemplateHelp = "{date} は日付、{time} は時刻、{mode} は撮影方法、{window} はウィンドウ名に置き換わります。";
     public const string CaptureDelayHelp = "撮影の操作をしてから撮影するまで待つ時間です。範囲やウィンドウを指定する場合は、選び終えてから数えます。";

@@ -21,6 +21,8 @@ internal sealed class HotkeyManager : IDisposable
     private readonly Dictionary<int, RecorderAction> _actionsById = [];
     private readonly HashSet<int> _registeredIds = [];
     private IReadOnlyList<HotkeyFailure> _failures = [];
+    private Settings? _lastSettings;
+    private bool _suspended;
 
     public HotkeyManager(Action<RecorderAction> actionHandler)
     {
@@ -31,6 +33,28 @@ internal sealed class HotkeyManager : IDisposable
     public IReadOnlyList<HotkeyFailure> Failures => _failures;
 
     public IReadOnlyList<HotkeyFailure> Replace(Settings settings)
+    {
+        var settingsSnapshot = settings.Clone();
+        _lastSettings = settingsSnapshot;
+        _suspended = false;
+        return Register(settingsSnapshot);
+    }
+
+    public void Suspend()
+    {
+        if (_suspended) return;
+        _suspended = true;
+        UnregisterAll();
+    }
+
+    public IReadOnlyList<HotkeyFailure> Resume()
+    {
+        if (!_suspended) return _failures;
+        _suspended = false;
+        return _lastSettings is null ? _failures : Register(_lastSettings);
+    }
+
+    private IReadOnlyList<HotkeyFailure> Register(Settings settings)
     {
         UnregisterAll();
         var assignments = ShortcutSettingsValidator.GetAssignments(settings);
