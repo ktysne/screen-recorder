@@ -6,7 +6,7 @@ namespace ScreenRecorder.Core.Tests;
 public sealed class UpdateCheckTests
 {
     private static string Manifest(string version) =>
-        $$"""{ "schema": 1, "latest": { "version": "{{version}}", "url": "https://ktysne.info/screen-recorder/archives/a.zip", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""";
+        $$"""{ "schema": 2, "latest": { "version": "{{version}}", "url": "https://ktysne.info/screen-recorder/archives/a.zip", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""";
 
     [Theory]
     [InlineData("1.2.3", "1.2.4", -1)]

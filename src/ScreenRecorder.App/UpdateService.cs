@@ -37,7 +37,7 @@ internal sealed record PreparedUpdate(UpdateManifest Manifest, string ExtractedD
     public string ExecutablePath => Path.Combine(ExtractedDirectory, UpdateApplyPlanner.ExecutableName);
 }
 
-/// <summary>update.json の取得と、配布 zip のダウンロード、照合、展開を行う。</summary>
+/// <summary>update-v2.json の取得と、配布 zip のダウンロード、照合、展開を行う。</summary>
 internal sealed class UpdateService
 {
     private static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(15);
@@ -131,7 +131,7 @@ internal sealed class UpdateService
         timeout.CancelAfter(ManifestTimeout);
         try
         {
-            using var response = await SendWithAllowedRedirectsAsync(UpdateManifestParser.ManifestUrl, timeout.Token).ConfigureAwait(false);
+            using var response = await SendWithAllowedRedirectsAsync(UpdateManifestParser.ManifestUrl, timeout.Token, packageDownload: false).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
             await using var streamScope = stream.ConfigureAwait(false);
@@ -157,7 +157,7 @@ internal sealed class UpdateService
         stall.CancelAfter(DownloadStallTimeout);
         try
         {
-            using var response = await SendWithAllowedRedirectsAsync(url, stall.Token).ConfigureAwait(false);
+            using var response = await SendWithAllowedRedirectsAsync(url, stall.Token, packageDownload: true, onRedirectReceived: () => stall.CancelAfter(DownloadStallTimeout)).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;
             if (total > MaxPackageBytes) throw new UpdatePackageException("ダウンロードするファイルが大きすぎるため、中止しました。");
@@ -201,23 +201,29 @@ internal sealed class UpdateService
 
     private static HttpRequestMessage CreateRequest(string url)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var request = new HttpRequestMessage(HttpMethod.Get, UpdateRedirectPolicy.CreateRequestUri(url));
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         request.Headers.Pragma.Add(new NameValueHeaderValue("no-cache"));
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("ScreenRecorder", UpdateVersion.TryParseApplicationVersion(AppVersion.Current, out var version) ? version.ToString() : "0.0.0"));
         return request;
     }
 
-    private static async Task<HttpResponseMessage> SendWithAllowedRedirectsAsync(string url, CancellationToken cancellationToken)
+    private static async Task<HttpResponseMessage> SendWithAllowedRedirectsAsync(string url, CancellationToken cancellationToken, bool packageDownload, Action? onRedirectReceived = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var currentUri))
             throw new UpdatePackageException("更新サーバーの URL が正しくありません。");
 
+        var currentUrl = url;
         for (var redirectsFollowed = 0; ; redirectsFollowed++)
         {
-            using var request = CreateRequest(currentUri.AbsoluteUri);
+            using var request = CreateRequest(currentUrl);
             var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            if ((int)response.StatusCode is < 300 or > 399) return response;
+            var statusCode = (int)response.StatusCode;
+            var isRedirect = packageDownload
+                ? UpdateRedirectPolicy.IsRedirectStatus(statusCode)
+                : statusCode is >= 300 and <= 399;
+            if (!isRedirect) return response;
+            onRedirectReceived?.Invoke();
 
             Uri? location;
             try { location = response.Headers.Location; }
@@ -226,13 +232,26 @@ internal sealed class UpdateService
                 response.Dispose();
                 throw new UpdatePackageException("配布サーバーの転送先を確認できませんでした。", exception);
             }
-            if (!UpdateRedirectPolicy.TryResolve(currentUri, location, redirectsFollowed, out var target, out var error))
+            string? targetUrl;
+            bool allowed;
+            string? error;
+            if (packageDownload)
+            {
+                allowed = UpdateRedirectPolicy.TryResolvePackage(currentUri, location?.OriginalString, redirectsFollowed, out targetUrl, out error);
+            }
+            else
+            {
+                allowed = UpdateRedirectPolicy.TryResolve(currentUri, location, redirectsFollowed, out var target, out error);
+                targetUrl = target?.AbsoluteUri;
+            }
+            if (!allowed)
             {
                 response.Dispose();
                 throw new UpdatePackageException(error ?? "配布サーバーの転送先を確認できませんでした。");
             }
             response.Dispose();
-            currentUri = target!;
+            currentUrl = targetUrl!;
+            currentUri = new Uri(currentUrl, UriKind.Absolute);
         }
     }
 

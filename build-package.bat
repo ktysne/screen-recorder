@@ -2,6 +2,16 @@
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
+set LEGACY_SITE=
+if /i "%~1"=="--legacy-site" (
+    set LEGACY_SITE=--legacy-site
+    shift
+)
+if not "%~1"=="" (
+    echo [ScreenRecorder] ERROR: unknown option: %~1
+    goto :failed
+)
+
 where node >nul 2>nul
 if errorlevel 1 (
     echo [ScreenRecorder] ERROR: Node.js was not found on PATH.
@@ -13,7 +23,7 @@ if errorlevel 1 (
     goto :failed
 )
 if not exist "node_modules\basic-ftp" (
-    echo [ScreenRecorder] ERROR: node_modules\basic-ftp is missing. Run npm install.
+    echo [ScreenRecorder] ERROR: node_modules\basic-ftp is missing. Run npm ci.
     goto :failed
 )
 
@@ -70,7 +80,7 @@ if defined TAG_HASH if not "!TAG_TYPE!"=="tag" (
     goto :failed
 )
 
-node --use-system-ca tools\release-site.js check-version --version %VERSION%
+node --use-system-ca tools\release-site.js check-version --version %VERSION% %LEGACY_SITE%
 if errorlevel 1 goto :failed
 dotnet test ScreenRecorder.slnx -c Release
 if errorlevel 1 goto :failed
@@ -129,7 +139,7 @@ if not exist "build\release" mkdir "build\release"
 set ZIP=build\release\ScreenRecorder-%VERSION%-win-x64.zip
 powershell -NoProfile -Command "Compress-Archive -Path 'artifacts\publish\*' -DestinationPath '%ZIP%' -Force"
 if errorlevel 1 goto :failed
-node tools\release-site.js generate --version %VERSION% --zip "%ZIP%" --out build\release --ffmpeg-info artifacts\site-stage\ffmpeg-version.txt
+node tools\release-site.js generate --version %VERSION% --zip "%ZIP%" --out build\release --ffmpeg-info artifacts\site-stage\ffmpeg-version.txt %LEGACY_SITE%
 if errorlevel 1 goto :failed
 
 set NOW_HASH=
@@ -147,8 +157,6 @@ echo Package ready: %ZIP%
 set UPLOAD=
 set /p UPLOAD=Upload this release now? (y/N):
 if /i not "%UPLOAD%"=="y" goto :done
-node --use-system-ca tools\release-site.js upload --version %VERSION% --zip "%ZIP%" --out build\release --yes
-if errorlevel 1 goto :uploadfailed
 
 set TAG_HASH=
 git show-ref --verify --quiet "refs/tags/%TAG%"
@@ -162,20 +170,19 @@ if errorlevel 1 (
 git push origin "%TAG%"
 if errorlevel 1 goto :tagpushfailed
 echo [ScreenRecorder] Release tag %TAG% pushed.
+node --use-system-ca tools\release-site.js upload --version %VERSION% --zip "%ZIP%" --out build\release --yes %LEGACY_SITE%
+if errorlevel 1 goto :uploadfailed
 goto :done
 
 :uploadfailed
-echo [ScreenRecorder] Upload failed. The package files are kept.
-echo Retry: npm run release:upload -- --version %VERSION% --zip "%ZIP%" --out build\release
-echo After upload succeeds, create and push only this tag:
-echo   git tag -a %TAG% %BUILD_HASH% -m "Release %TAG%"
-echo   git push origin %TAG%
+echo [ScreenRecorder] Upload failed. The package files and pushed tag are kept.
+echo Retry upload only: npm run release:upload -- --version %VERSION% --zip "%ZIP%" --out build\release --yes %LEGACY_SITE%
 goto :pausefail
 :tagmismatch
-echo [ScreenRecorder] Upload completed, but %TAG% points to a different commit.
+echo [ScreenRecorder] %TAG% points to a different commit.
 goto :pausefail
 :tagcreatefailed
-echo [ScreenRecorder] Could not create the tag after upload.
+echo [ScreenRecorder] Could not create the release tag.
 echo Retry: git tag -a %TAG% %BUILD_HASH% -m "Release %TAG%"
 echo Then run: git push origin %TAG%
 goto :pausefail

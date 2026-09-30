@@ -10,6 +10,7 @@
 ## 入手と使い方
 
 配布ページ <https://ktysne.info/screen-recorder/> から zip を入手し、好きな場所に展開して `ScreenRecorder.exe` を起動します。
+zip は [GitHub Releases](https://github.com/ktysne/screen-recorder/releases) から配布します。
 使い方は同梱の `manual.html` を参照してください。
 
 ## MCP で使う
@@ -28,7 +29,8 @@ dotnet test ScreenRecorder.slnx
 ```
 
 配布は `build-package.bat` をダブルクリックして行います。
-事前にリポジトリの直下で `npm install` を実行し、`tools/deploy.config.example.json` をコピーして `tools/deploy.config.json` を作り、配布サーバの接続情報を書いてください。
+旧版利用者にも更新を届ける場合は `build-package.bat --legacy-site` を実行します。
+事前にリポジトリの直下で `npm ci` を実行し、`tools/deploy.config.example.json` をコピーして `tools/deploy.config.json` を作り、配布サーバの接続情報を書いてください。
 
 ## ライセンス
 

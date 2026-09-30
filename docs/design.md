@@ -487,14 +487,14 @@ Ctrl/Alt/Win を押さない Tab(Shift+Tab を含む)と、修飾キーなしの
 
 ### 最新バージョン情報
 
-配布サーバの `https://ktysne.info/screen-recorder/update.json` に最新バージョンの情報を置く。
+配布サーバの `https://ktysne.info/screen-recorder/update-v2.json` に最新バージョンの情報を置く。
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "latest": {
     "version": "0.2.0",
-    "url": "https://ktysne.info/screen-recorder/archives/ScreenRecorder-0.2.0-win-x64.zip",
+    "url": "https://github.com/ktysne/screen-recorder/releases/download/v0.2.0/ScreenRecorder-0.2.0-win-x64.zip",
     "sha256": "<zip の SHA-256 の 16 進 64 文字>",
     "releasedAt": "2026-10-01"
   }
@@ -503,15 +503,24 @@ Ctrl/Alt/Win を押さない Tab(Shift+Tab を含む)と、修飾キーなしの
 
 アプリは次のすべてを満たす場合だけ受け付け、1 つでも外れれば「確認できなかった」として扱う。
 
-- `schema` が整数の 1
+- `schema` が整数の 2
 - `latest.version` が `X.Y.Z`(各要素は数字だけ)
-- `latest.url` が `https://` で始まり、ホストが `ktysne.info` と完全に一致する
+- `latest.url` が既存の `ktysne.info` の HTTPS URL、または `latest.version` と完全に一致する GitHub Releases の URL
 - `latest.sha256` が 16 進 64 文字
 
-ホストの比較は、`https://` の直後から最初の `/`、`?`、`#` までを取り出して一字一句比べる。
-`https://ktysne.info@example.com/` のように利用者情報を挟む書き方では、実際に接続する先が後ろ側になるためである。
-`update.json` と zip の取得では HTTP の転送を自動で追わず、`Location` を現在の URL に対して解決する。
-転送先が HTTPS で、ホストが `ktysne.info` と一致するときだけ、最大 5 回まで追う。
+`ktysne.info` の URL は `https://` の直後から最初の `/`、`?`、`#` までを取り出し、`ktysne.info` と一字一句比べる。
+利用者情報やポートを挟む URL は受け付けない。
+GitHub Releases の URL は `https://github.com/ktysne/screen-recorder/releases/download/v<X.Y.Z>/ScreenRecorder-<X.Y.Z>-win-x64.zip` と完全一致することを確かめる。
+タグ名と zip 名の両方を版文字列と比較し、別の版の zip を最新として配れないようにする。
+
+最新版情報の取得は HTTPS の `ktysne.info` 内に限り、現在の転送規則を使う。
+zip 取得では 301、302、303、307、308 の転送を最大 5 回まで追う。
+GitHub の転送先は `github.com` または `.githubusercontent.com` でラベル境界が一致する HTTPS ホストに限る。
+`githubusercontent.com` 単体、利用者情報、443 以外のポート、フラグメント、空白、制御文字、バックスラッシュは拒否する。
+GitHub の転送 URL は絶対 URL に限り、パスは制限せずクエリを許す。
+署名付きクエリに含まれる `+`、`%2B`、`%3B` は送信する要求 URL でも書き換えない。
+最初の zip URL が既存の `ktysne.info` 形式の場合に限り、同じホスト内の転送をこれまでの規則で追える。
+転送応答を受け取ったときは通信停止の判定を延長する。
 
 ### 確認のタイミング
 
@@ -530,7 +539,7 @@ Ctrl/Alt/Win を押さない Tab(Shift+Tab を含む)と、修飾キーなしの
 
 ### 更新の手順
 
-1. zip を更新用フォルダーへダウンロードし、SHA-256 を `update.json` の値と照合する。一致しなければ中止する
+1. zip を更新用フォルダーへダウンロードし、SHA-256 を `update-v2.json` の値と照合する。一致しなければ中止する
 2. zip を同じフォルダの下へ展開し、中に `ScreenRecorder.exe` があることを確かめる
 3. 展開した新しい exe を、引数 `--apply-update <旧プロセスの PID> <展開先> <インストール先>` で起動し、旧プロセスは終了する。`--apply-update` の起動は多重起動の判定の対象外にする
 4. 新しい exe は旧プロセスの終了を待ち、さらにインストール先の exe と DLL を排他で開けるようになるまで待つ(PID の再利用と、ウイルス対策ソフトによる一時的なロックがあるため。最大 30 秒、再試行付き)
@@ -567,31 +576,52 @@ exe は .NET のアセンブリを 1 つにまとめた単一ファイルにし�
 
 録画中と撮影中は更新を始めない(ダイアログの「今すぐ更新」を、録画と撮影が終わり、録画プロセスが終了するまで無効にし、その理由をダイアログに出す)。録画プロセスは exe と `ScreenRecorderLib.dll` を開いているためである。
 インストール先へ書き込めない場所(Program Files など)に置かれている場合は、更新を始める前にそれを検出し、zip の手動展開を案内して配布ページを開くボタンを出す。
-update.json の取得は 15 秒で打ち切り、キャッシュさせない(`Cache-Control: no-cache, no-store`)。
+update-v2.json の取得は 15 秒で打ち切り、キャッシュさせない(`Cache-Control: no-cache, no-store`)。
 
 ## 配布
 
 `build-package.bat` のダブルクリックで、次の順に進む。
 
-1. Node.js 22.15 以降があり、`node_modules\basic-ftp` が入っていることを確かめる
+1. Node.js 22.15 以降と `node_modules\basic-ftp` があることを確かめる
 2. バージョン(`X.Y.Z`)を尋ねる
 3. 追跡中のファイルに未コミットの変更が無いことを確かめる
-4. テストを実行する
+4. `check-version` で公開済みの版を確認し、テストを実行する
 5. `dotnet publish` で自己完結の exe を作り、ScreenRecorderLib、VC++ ランタイム、ffmpeg を並べる
-6. `index.html`(配布ページ)、`manual.html`(マニュアル)、`license.html`(ライセンス)、`update.json` を生成する
-7. `ScreenRecorder-X.Y.Z-win-x64.zip` を作り、その SHA-256 を `update.json` に書く
-8. 確認のうえで配布サーバへ転送する。順序は zip、`manual.html`、`license.html`、`index.html`、`update.json` の順で固定する
-9. 転送できたら、ビルドしたコミットに `vX.Y.Z` のタグを付けて push する
+6. `ScreenRecorder-X.Y.Z-win-x64.zip` とサイトのページを生成し、schema 2 の `update-v2.json` を作る
+7. `--legacy-site` がある場合だけ、同じ zip の SHA-256 を持つ schema 1 の `update.json` も作る
+8. zip と最新版情報の生成後、ビルドしたコミットを指す注釈付き `vX.Y.Z` タグを作って `origin` へ push する
+9. `gh release create ... --verify-tag` でそのタグの公開 Release を作り、公開 URL から zip を取り直して SHA-256 を照合する
+10. 照合後に FTPS でサイトのファイルを送る。`--legacy-site` の場合は zip、ページ、`update.json`、`update-v2.json` の順で送り、それ以外は zip と `update.json` を送らない
 
-`update.json` を最後に置くのは、通知を受けた利用者がまだ存在しない zip を取りに行く瞬間を作らないためである。
+`check-version` と `upload` は、公開中の版を `update-v2.json` から読む。
+`update-v2.json` が 404 の場合は `update.json` を読む。
+旧版用の `update.json` だけが残っている状態で `--legacy-site` を省くと発行を拒否し、旧版利用者へ更新を届けるための指定を案内する。
+`--legacy-site` は旧版用 `update.json` の版より大きい場合だけ使える。
+両方が 404 の場合は初回発行として扱う。
+同じ版のアップロード再試行は、公開済み Release の zip と手元の SHA-256 が一致するときだけ許す。
+
+`update-v2.json` は必ず最後に置く。
+通知を受けた利用者が、まだ配信されていない zip を取りに行く状態を防ぐためである。
+アップロードが失敗した場合、タグは残し、アップロードだけを再試行する。
+
+Release はソースリポジトリ `ktysne/screen-recorder` に作る。
+タグはビルドしたコミットを指す注釈付きタグを使い、発行ツールはタグを作成または削除しない。
+同名タグが別のコミットを指す場合はパッケージ前に止める。
+同じタグの下書き Release があれば、手動削除のコマンドを案内して止める。
+同じタグの公開 Release と同名 zip がある場合は SHA-256 が一致するときだけ作成を省略し、一致しない zip は差し替えない。
+`--zip` のファイル名が規定名と異なる場合は、一時フォルダーへ規定名で複製して Release に渡す。
+公開 URL の照合は 5 秒間隔で最大 6 回行う。
+照合に失敗した場合は、この実行で作った Release だけを削除し、タグは残す。
+`--dry-run` は Release の作成と削除、FTPS の送信を行わない。
 
 配布サーバ上の置き場は次のとおり。
 
 - `https://ktysne.info/screen-recorder/`(`index.html`)：配布ページ
 - `https://ktysne.info/screen-recorder/manual.html`：マニュアル
 - `https://ktysne.info/screen-recorder/license.html`：ライセンス(本体と同梱物のライセンス表記)
-- `https://ktysne.info/screen-recorder/update.json`：最新バージョン情報
-- `https://ktysne.info/screen-recorder/archives/ScreenRecorder-X.Y.Z-win-x64.zip`：配布 zip
+- `https://ktysne.info/screen-recorder/update-v2.json`：最新版情報
+- `https://github.com/ktysne/screen-recorder/releases/download/vX.Y.Z/ScreenRecorder-X.Y.Z-win-x64.zip`：配布 zip
+- `https://ktysne.info/screen-recorder/update.json` と `archives/` の zip：`--legacy-site` を付けた発行でのみ更新する旧版向け配布物
 
 zip の中身は次のとおりとする。
 
@@ -602,6 +632,7 @@ zip の中身は次のとおりとする。
 - `manual.html`、`license.html`
 
 `build-package.bat` は、publish の出力がこの一覧と一致することを確かめ、想定外のファイル(`.pdb`、`.xml` など)があれば止まる。
+`--legacy-site` は `build-package.bat --legacy-site` の形式で指定する。
 VC++ ランタイムの DLL は、ScreenRecorderLib のビルドに使われたバージョン以上のものを、Visual Studio の再頒布用のフォルダーから写す。
 ffmpeg は、GPL や nonfree の成分を含まない LGPL の shared ビルドを使い、ビルドの入手元とバージョン、対応するソースの入手先を license.html に書く。
 配布の前に、VC++ の再頒布パッケージを入れていない環境(Windows サンドボックスなど)で、起動から録画までができることを確かめる。

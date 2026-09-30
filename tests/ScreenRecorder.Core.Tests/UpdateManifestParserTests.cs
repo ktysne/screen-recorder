@@ -8,7 +8,7 @@ public sealed class UpdateManifestParserTests
     private const string ValidSha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private const string ValidUrl = "https://ktysne.info/screen-recorder/archives/ScreenRecorder-0.2.0-win-x64.zip";
 
-    private static string Manifest(string schema = "1", string version = "\"0.2.0\"", string url = $"\"{ValidUrl}\"", string sha = $"\"{ValidSha}\"", string releasedAt = "\"2026-10-01\"") =>
+    private static string Manifest(string schema = "2", string version = "\"0.2.0\"", string url = $"\"{ValidUrl}\"", string sha = $"\"{ValidSha}\"", string releasedAt = "\"2026-10-01\"") =>
         $$"""{ "schema": {{schema}}, "latest": { "version": {{version}}, "url": {{url}}, "sha256": {{sha}}, "releasedAt": {{releasedAt}} } }""";
 
     [Fact]
@@ -37,14 +37,14 @@ public sealed class UpdateManifestParserTests
     }
 
     [Theory]
-    [InlineData("1.0")]
-    [InlineData("1e0")]
-    [InlineData("\"1\"")]
-    [InlineData("2")]
+    [InlineData("1")]
+    [InlineData("2.0")]
+    [InlineData("2e0")]
+    [InlineData("\"2\"")]
     [InlineData("0")]
     [InlineData("true")]
     [InlineData("null")]
-    public void SchemaOtherThanIntegerOneIsRejected(string schema)
+    public void SchemaOtherThanIntegerTwoIsRejected(string schema)
     {
         var result = UpdateManifestParser.Parse(Manifest(schema: schema));
         Assert.Null(result.Manifest);
@@ -115,8 +115,8 @@ public sealed class UpdateManifestParserTests
     [InlineData("")]
     [InlineData("not json")]
     [InlineData("[]")]
-    [InlineData("{ \"schema\": 1 }")]
-    [InlineData("{ \"schema\": 1, \"latest\": \"0.2.0\" }")]
+    [InlineData("{ \"schema\": 2 }")]
+    [InlineData("{ \"schema\": 2, \"latest\": \"0.2.0\" }")]
     public void MalformedDocumentIsRejected(string json)
     {
         var result = UpdateManifestParser.Parse(json);
@@ -127,8 +127,27 @@ public sealed class UpdateManifestParserTests
     [Fact]
     public void MissingFieldsAreRejected()
     {
-        Assert.Null(UpdateManifestParser.Parse("""{ "schema": 1, "latest": { "url": "https://ktysne.info/a.zip", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""").Manifest);
-        Assert.Null(UpdateManifestParser.Parse("""{ "schema": 1, "latest": { "version": "0.2.0", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""").Manifest);
-        Assert.Null(UpdateManifestParser.Parse("""{ "schema": 1, "latest": { "version": "0.2.0", "url": "https://ktysne.info/a.zip" } }""").Manifest);
+        Assert.Null(UpdateManifestParser.Parse("""{ "schema": 2, "latest": { "url": "https://ktysne.info/a.zip", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""").Manifest);
+        Assert.Null(UpdateManifestParser.Parse("""{ "schema": 2, "latest": { "version": "0.2.0", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } }""").Manifest);
+        Assert.Null(UpdateManifestParser.Parse("""{ "schema": 2, "latest": { "version": "0.2.0", "url": "https://ktysne.info/a.zip" } }""").Manifest);
+    }
+
+    [Fact]
+    public void ExactGitHubReleaseUrlForLatestVersionIsAccepted()
+    {
+        var url = "https://github.com/ktysne/screen-recorder/releases/download/v0.2.0/ScreenRecorder-0.2.0-win-x64.zip";
+
+        Assert.Equal(url, UpdateManifestParser.Parse(Manifest(url: $"\"{url}\"")).Manifest!.Url);
+    }
+
+    [Theory]
+    [InlineData("https://github.com/ktysne/screen-recorder/releases/download/v0.2.1/ScreenRecorder-0.2.0-win-x64.zip")]
+    [InlineData("https://github.com/ktysne/screen-recorder/releases/download/v0.2.0/ScreenRecorder-0.2.1-win-x64.zip")]
+    [InlineData("https://github.com/ktysne/screen-recorder/releases/download/0.2.0/ScreenRecorder-0.2.0-win-x64.zip")]
+    [InlineData("https://github.com/other/screen-recorder/releases/download/v0.2.0/ScreenRecorder-0.2.0-win-x64.zip")]
+    [InlineData("https://github.com/ktysne/other/releases/download/v0.2.0/ScreenRecorder-0.2.0-win-x64.zip")]
+    public void GitHubUrlMustMatchRepositoryTagAndZipVersion(string url)
+    {
+        Assert.Null(UpdateManifestParser.Parse(Manifest(url: $"\"{url}\"")).Manifest);
     }
 }
