@@ -409,6 +409,17 @@ async function assertUploadVersion(version, localSha256, legacySite, fetchImpl) 
   decideUploadAgainstPublished(version, localSha256, published.current);
 }
 
+class UploadDeclinedError extends Error {}
+
+async function askYesNo(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return /^y(es)?$/i.test((await rl.question(question)).trim());
+  } finally {
+    rl.close();
+  }
+}
+
 async function uploadFiles(options, dependencies = {}) {
   const items = buildUploadItems(options);
   const zipPath = path.resolve(ROOT, options.zip || path.join(options.out || DEFAULT_OUT, zipFileName(options.version)));
@@ -420,6 +431,11 @@ async function uploadFiles(options, dependencies = {}) {
   }
 
   let config;
+  let targets;
+  let declined = false;
+  const log = dependencies.log || console.log;
+  const confirm = dependencies.confirm || askYesNo;
+  // 確認は Release の作成を含む最初の外部変更より前に行う。断ったら Release も FTP も触らない。
   const release = await uploadRelease({
     version: options.version,
     zipPath,
@@ -428,22 +444,22 @@ async function uploadFiles(options, dependencies = {}) {
     beforeCreate: async () => {
       await assertUploadVersion(options.version, localSha256, Boolean(options.legacySite), dependencies.fetchImpl || fetch);
       config = (dependencies.loadConfig || loadConfig)(options.config);
+      targets = buildRemoteTargets(items, config.remoteRoot);
+      log(`接続先: ${config.host}:${config.port}`);
+      log('転送順:');
+      for (const item of targets) log(`  ${item.name} (${item.size} bytes)`);
+      if (options.dryRun || options.yes) return;
+      if (!(await confirm('GitHub Release の公開とサイトへの転送を行いますか? (y/N): '))) {
+        declined = true;
+        throw new UploadDeclinedError();
+      }
     },
-  }, dependencies);
-  const targets = buildRemoteTargets(items, config.remoteRoot);
-  const log = dependencies.log || console.log;
-  log(`接続先: ${config.host}:${config.port}`);
-  log('転送順:');
-  for (const item of targets) log(`  ${item.name} (${item.size} bytes)`);
+  }, dependencies).catch(error => {
+    if (declined && error instanceof UploadDeclinedError) return null;
+    throw error;
+  });
+  if (declined) return { release, targets, declined: true };
   if (options.dryRun) return { release, targets };
-  if (!options.yes) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      if (!/^y(es)?$/i.test((await rl.question('転送しますか? (y/N): ')).trim())) return { release, targets, declined: true };
-    } finally {
-      rl.close();
-    }
-  }
 
   const createClient = dependencies.createFtpClient || (() => new (require('basic-ftp').Client)(30000));
   const client = createClient();
@@ -451,14 +467,15 @@ async function uploadFiles(options, dependencies = {}) {
     await client.access({ host: config.host, port: config.port, user: config.user, password: config.password, secure: config.secure });
     for (const item of targets) {
       await client.ensureDir(`${config.remoteRoot}/${item.remoteDir}`.replace(/\/$/, ''));
-      const uploadName = item.name === 'update.json' || item.name === 'update-v2.json' ? `${item.name}${UPLOADING_SUFFIX}` : item.name;
+      // 再送が途中で切れても公開中のファイルを壊さないよう、一時名で送って照合してから差し替える。
+      const uploadName = `${item.name}${UPLOADING_SUFFIX}`;
       await client.uploadFrom(item.localPath, uploadName);
       const entries = await client.list();
       const remote = entries.find(entry => entry.name === uploadName);
       if (!remote || remote.size !== item.size) {
         throw new Error(`${item.name} の転送後サイズが一致しません (local=${item.size}, remote=${remote?.size ?? 'missing'})`);
       }
-      if (uploadName !== item.name) await replaceRemoteFile(client, uploadName, item.name, entries.some(entry => entry.name === item.name));
+      await replaceRemoteFile(client, uploadName, item.name, entries.some(entry => entry.name === item.name));
       log(`転送・照合完了: ${item.name}`);
     }
   } finally {

@@ -396,6 +396,85 @@ test('upload は同じ版と SHA-256 の legacy-site 再試行を許す', async 
   }
 });
 
+function writeLegacyReleaseFixture(dir, version, body) {
+  const zipPath = path.join(dir, release.zipFileName(version));
+  const output = path.join(dir, 'site');
+  fs.mkdirSync(path.join(output, 'assets'), { recursive: true });
+  fs.writeFileSync(zipPath, body);
+  for (const name of ['app-icon-256.png', 'manual.html', 'license.html', 'index.html']) {
+    fs.writeFileSync(path.join(name === 'app-icon-256.png' ? path.join(output, 'assets') : output, name), 'site file');
+  }
+  const sha256 = crypto.createHash('sha256').update(body).digest('hex');
+  const current = { schema: 2, latest: { version, url: release.githubDownloadUrlOf(version), sha256 } };
+  const legacy = { schema: 1, latest: { version, url: release.downloadUrlOf(version), sha256 } };
+  fs.writeFileSync(path.join(output, 'update-v2.json'), JSON.stringify(current));
+  fs.writeFileSync(path.join(output, 'update.json'), JSON.stringify(legacy));
+  return { zipPath, output, legacy };
+}
+
+test('確認で断ると Release も FTP も触らない', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-recorder-release-'));
+  try {
+    const version = '1.2.3';
+    const { zipPath, output } = writeLegacyReleaseFixture(dir, version, 'new archive');
+    const gh = ghStub([]);
+    const result = await release.uploadFiles({ version, zip: zipPath, out: output }, {
+      runGh: gh.runGh,
+      async fetchImpl() { return { status: 404, ok: false }; },
+      loadConfig: () => ({ host: 'ftp.example', port: 21, remoteRoot: '/site' }),
+      createFtpClient() { throw new Error('FTP client must not be created'); },
+      confirm: async () => false,
+      log() {},
+    });
+    assert.equal(result.declined, true);
+    assert.equal(gh.calls.some(args => args[1] === 'create' || args[1] === 'delete'), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('再送の転送が途中で失敗しても公開中の旧版向け zip を上書きしない', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-recorder-release-'));
+  try {
+    const version = '1.2.3';
+    const body = 'retry archive';
+    const { zipPath, output, legacy } = writeLegacyReleaseFixture(dir, version, body);
+    const gh = ghStub([{ tagName: `v${version}`, isDraft: false }]);
+    const uploaded = [];
+    const renamed = [];
+    const client = {
+      async access() {},
+      async ensureDir() {},
+      async uploadFrom(_localPath, remoteName) {
+        uploaded.push(remoteName);
+        throw new Error('connection lost');
+      },
+      async list() { return [{ name: release.zipFileName(version), size: Buffer.byteLength(body) }]; },
+      async rename(from, to) { renamed.push([from, to]); },
+      close() {},
+    };
+    await assert.rejects(
+      release.uploadFiles({ version, zip: zipPath, out: output, legacySite: true, yes: true }, {
+        runGh: gh.runGh,
+        async fetchImpl(url) {
+          if (url === release.githubDownloadUrlOf(version)) return responseWithBody(body);
+          if (url.endsWith('/update-v2.json')) return { status: 404, ok: false };
+          if (url.endsWith('/update.json')) return { status: 200, ok: true, async json() { return legacy; } };
+          throw new Error(`unexpected URL: ${url}`);
+        },
+        loadConfig: () => ({ host: 'ftp.example', port: 21, remoteRoot: '/site' }),
+        createFtpClient: () => client,
+        log() {},
+      }),
+      /connection lost/,
+    );
+    assert.deepEqual(uploaded, [`${release.zipFileName(version)}.uploading`]);
+    assert.deepEqual(renamed, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('コマンドラインは legacy-site を受け取り、generate-pages では拒否する', () => {
   assert.equal(release.parseArgs(['generate', '--version', '1.2.3', '--zip', 'archive.zip', '--legacy-site']).legacySite, true);
   assert.throws(() => release.parseArgs(['generate-pages', '--version', '1.2.3', '--legacy-site']), /generate-pages/);
