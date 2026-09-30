@@ -433,12 +433,14 @@ test('確認で断ると Release も FTP も触らない', async () => {
   }
 });
 
-test('再送の転送が途中で失敗しても公開中の旧版向け zip を上書きしない', async () => {
+test('zip の後に update.json の前で失敗した再送では、公開中の同じ zip を送り直さない', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-recorder-release-'));
   try {
     const version = '1.2.3';
     const body = 'retry archive';
-    const { zipPath, output, legacy } = writeLegacyReleaseFixture(dir, version, body);
+    const { zipPath, output } = writeLegacyReleaseFixture(dir, version, body);
+    // update.json は前の版を指したまま残っている
+    const legacy = { schema: 1, latest: { version: '1.2.2', url: release.downloadUrlOf('1.2.2'), sha256: 'b'.repeat(64) } };
     const gh = ghStub([{ tagName: `v${version}`, isDraft: false }]);
     const uploaded = [];
     const renamed = [];
@@ -457,7 +459,7 @@ test('再送の転送が途中で失敗しても公開中の旧版向け zip を
       release.uploadFiles({ version, zip: zipPath, out: output, legacySite: true, yes: true }, {
         runGh: gh.runGh,
         async fetchImpl(url) {
-          if (url === release.githubDownloadUrlOf(version)) return responseWithBody(body);
+          if (url === release.githubDownloadUrlOf(version) || url === release.downloadUrlOf(version)) return responseWithBody(body);
           if (url.endsWith('/update-v2.json')) return { status: 404, ok: false };
           if (url.endsWith('/update.json')) return { status: 200, ok: true, async json() { return legacy; } };
           throw new Error(`unexpected URL: ${url}`);
@@ -475,7 +477,7 @@ test('再送の転送が途中で失敗しても公開中の旧版向け zip を
   }
 });
 
-test('公開中の旧版向け zip が手元と違えば差し替えずに止まる', async () => {
+test('公開中の旧版向け zip が同じ大きさでも中身が違えば差し替えずに止まる', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-recorder-release-'));
   try {
     const version = '1.2.3';
@@ -487,7 +489,7 @@ test('公開中の旧版向け zip が手元と違えば差し替えずに止ま
       async access() {},
       async ensureDir() {},
       async uploadFrom(_localPath, remoteName) { operations.push(['uploadFrom', remoteName]); },
-      async list() { return [{ name: release.zipFileName(version), size: Buffer.byteLength(body) + 1 }]; },
+      async list() { return [{ name: release.zipFileName(version), size: Buffer.byteLength(body) }]; },
       async rename(from, to) { operations.push(['rename', from, to]); },
       close() {},
     };
@@ -496,6 +498,7 @@ test('公開中の旧版向け zip が手元と違えば差し替えずに止ま
         runGh: gh.runGh,
         async fetchImpl(url) {
           if (url === release.githubDownloadUrlOf(version)) return responseWithBody(body);
+          if (url === release.downloadUrlOf(version)) return responseWithBody('other archive');
           if (url.endsWith('/update-v2.json')) return { status: 404, ok: false };
           if (url.endsWith('/update.json')) return { status: 200, ok: true, async json() { return legacy; } };
           throw new Error(`unexpected URL: ${url}`);

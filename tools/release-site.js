@@ -412,13 +412,6 @@ async function assertUploadVersion(version, localSha256, legacySite, fetchImpl) 
 
 class UploadDeclinedError extends Error {}
 
-function isSameLegacyZip(version, localSha256, legacy, remoteSize, localSize) {
-  return Boolean(legacy)
-    && compareVersions(version, legacy.version) === 0
-    && legacy.sha256 === localSha256
-    && remoteSize === localSize;
-}
-
 async function askYesNo(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -440,7 +433,6 @@ async function uploadFiles(options, dependencies = {}) {
 
   let config;
   let targets;
-  let published;
   let declined = false;
   const log = dependencies.log || console.log;
   const confirm = dependencies.confirm || askYesNo;
@@ -451,7 +443,7 @@ async function uploadFiles(options, dependencies = {}) {
     localSha256,
     dryRun: Boolean(options.dryRun),
     beforeCreate: async () => {
-      published = await assertUploadVersion(options.version, localSha256, Boolean(options.legacySite), dependencies.fetchImpl || fetch);
+      await assertUploadVersion(options.version, localSha256, Boolean(options.legacySite), dependencies.fetchImpl || fetch);
       config = (dependencies.loadConfig || loadConfig)(options.config);
       targets = buildRemoteTargets(items, config.remoteRoot);
       log(`接続先: ${config.host}:${config.port}`);
@@ -480,7 +472,14 @@ async function uploadFiles(options, dependencies = {}) {
         const existing = (await client.list()).find(entry => entry.name === item.name);
         if (existing) {
           // 公開中の zip は退避も差し替えもしない。退避の直後に切断されると旧版の利用者が取れなくなるため。
-          if (!isSameLegacyZip(options.version, localSha256, published?.legacy, existing.size, item.size)) {
+          // update.json は zip より後に送り、途中で失敗した再送では旧い版を指したまま残るので、zip そのものを取得して比べる。
+          let publishedSha256;
+          try {
+            publishedSha256 = await fetchPublicAssetSha256(downloadUrlOf(options.version), dependencies.fetchImpl || fetch);
+          } catch (error) {
+            throw new Error(`公開中の archives/${item.name} を取得して確かめられないため止めます: ${error.message}`);
+          }
+          if (existing.size !== item.size || publishedSha256 !== localSha256) {
             throw new Error(`公開中の archives/${item.name} は手元の zip と一致しないため、差し替えずに止めます`);
           }
           log(`公開中の同じ zip を使います: ${item.name}`);
